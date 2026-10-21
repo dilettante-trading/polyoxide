@@ -182,7 +182,7 @@ async fn live_the_event_group_holds_both_outcomes_of_the_market() {
 const ESTABLISHED_DAYS: i64 = 3;
 
 /// How many of the busiest markets are looked at for one that qualifies.
-const CANDIDATES: usize = 30;
+const CANDIDATES: usize = 100;
 
 /// The market with the most trades in the host's latest 1000 among those opened at least
 /// `ESTABLISHED_DAYS` ago. With none among the busiest `CANDIDATES`, the test is an
