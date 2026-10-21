@@ -213,6 +213,15 @@ The event route was clean at 20 requests a second and refused 40 after 3.51 s, s
 
 **The 429 as the host sent it.** A 429 was provoked on purpose once more, with a 24-worker burst of at most 250 reads that stopped issuing reads at its first refusal (13 refusals in all, the reads already in flight included): `{"error":{"code":"too_many_requests","message":"too many requests"}}`, `Content-Type: application/json; charset=utf-8`, `cache-control: no-store`, with no `Retry-After` and no `X-RateLimit-*` header. That is the nested shape of Kalshi's other errors and not the flat `{"error":"too many requests"}` the rate-limit page documents, and `tests/fixtures/predictions/error_rate_limited.json` is the flat one, written from the page and not captured.
 
+**The signed-bucket probe**, demo host (`https://external-api.demo.kalshi.co`), 2026-10-21 12:31Z. The demo key's account is tier `basic` with a Read bucket of 600 tokens refilling 200 a second; a public read costs 10 tokens and the limits read 10. Each phase sends signed reads faster than the bucket refills, so a bucket that starts full empties after the time in the table, and stops at its first 429. The control repeats the limits route, which is signed and so uncached; the public phase reads distinct tickers.
+
+| Phase | Route | Requests a second | The key's bucket empties after | First 429 |
+|---|---|---|---|---|
+| control (needs the key) | `GET /account/limits` | 40 | 3 s | 2.97 s (155 replies: 131 served, 24 throttled) |
+| public | `GET /markets/{ticker}` | 40 | 3 s | none in the 10 s window (401 replies over 401 distinct tickers, all served) |
+
+Verdict: does not follow. The control throttled at 2.97 s, where a bucket that empties after 3 s puts it, so the host enforces the key's bucket at this rate, and the public read then did not throttle in 10 s, three times the time the key's bucket takes to empty, so a signed public read does not draw on the key's bucket. The probe was made on the demo host; the production host was measured unsigned only (above), where a public read at the same 40 requests a second was refused after 3.26 s.
+
 <!-- rate limits end -->
 
 <!-- epic 9 findings go above this line -->
