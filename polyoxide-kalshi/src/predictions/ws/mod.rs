@@ -31,8 +31,9 @@
 //! in the membership. When the refusal follows a command of the same change that Kalshi
 //! accepted, its subscriptions no longer match the membership, so the connection is replaced as
 //! well: the stream yields `Event::Disconnected` with that error as the reason, and
-//! `Event::Reconnected` once the replay has brought the subscriptions back to the membership.
-//! A refusal of the first command leaves them as they were, and the connection stays.
+//! `Event::Reconnected` once the replay has brought the subscriptions back to the membership
+//! (an error of code 9 stops the stream instead, as it does wherever it arrives). A refusal of
+//! the first command leaves them as they were, and the connection stays.
 //!
 //! A gap in the order book's `seq` is repaired on the same connection. The stream yields
 //! `Event::Resyncing` for the whole membership, the socket asks Kalshi for a snapshot of every

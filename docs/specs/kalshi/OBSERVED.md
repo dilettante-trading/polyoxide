@@ -239,4 +239,8 @@ At Basic's sizing the host refused about 0.3% of calls in both runs, spread over
 
 <!-- rate limits end -->
 
+### A daily candle may not span 24 hours across a clock change (open question, 2026-10-21)
+
+One capture's daily candles ended at 04:00 UTC (the 1440 row of the candlestick capture above: `end_period_ts` mod the width was 14,400 s). That is midnight Eastern time while daylight saving is in force. If Kalshi's day follows Eastern midnight, the day of 2026-11-01, when the clocks go back, runs from 04:00 UTC to 05:00 UTC on 2026-11-02 and is 25 hours long, and the client's `open_time` (`end_period_ts` less the width, 86,400 seconds) is an hour late for that candle (and an hour early for the 23-hour day when the clocks go forward). This was not observed: no capture crosses a clock change, and the reading that the day follows Eastern time rests on one end time. A recapture of a daily candle across 2026-11-01 settles it (`uv run scripts/capture_kalshi_predictions.py --candlesticks <dir> --ticker T`, with a `--ticker` that was open before the change, since the script chooses no aged market by default).
+
 <!-- epic 9 findings go above this line -->

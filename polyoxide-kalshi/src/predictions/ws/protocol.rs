@@ -1232,8 +1232,9 @@ pub trait PredictionsMembership {
     /// accepting another: the change fails with Kalshi's error all the same, and the
     /// connection is replaced, since its subscriptions no longer match the membership. The
     /// stream yields `Event::Disconnected` with that error as the reason, then
-    /// `Event::Reconnected`, and the replay brings the subscriptions back to the membership.
-    /// A refusal of the first command keeps the connection.
+    /// `Event::Reconnected`, and the replay brings the subscriptions back to the membership
+    /// (an error of code 9 stops the stream instead, as it does wherever it arrives). A
+    /// refusal of the first command keeps the connection.
     fn subscribe(
         &self,
         tickers: impl IntoIterator<Item = Ticker>,
