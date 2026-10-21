@@ -203,7 +203,7 @@ the path it opens in a `const _` outside `cfg(test)`, so `cargo hack --each-feat
 re-export whose `cfg` leaves a feature out. The prelude re-exports a selection of the enabled
 modules' clients, errors and stream types under the umbrella's feature names, aliasing a stream's
 `Event` by its venue (`PerpsEvent`, `SportsEvent`, `UsdmEvent`, `PredictionsEvent`). One `const _` per prelude block
-pins it to its feature, and one more pins the unified client to `polymarket`. Kalshi's prelude names are `Predictions`, `PredictionsBuilder` and `PredictionsError`, `Credentials` as `KalshiCredentials` (a bare `Credentials` names the CLOB's), and, with `kalshi-predictions-ws`, `PredictionsWsBuilder`, `SupervisedPredictionsWs`, `PredictionsWsError` and `Books` as `PredictionsBooks`; `parse_key` also names `kalshi.predictions` under `kalshi-predictions`.
+pins it to its feature, and one more pins the unified client to `polymarket`. Kalshi's prelude names are `Predictions`, `PredictionsBuilder` and `PredictionsError`, `Credentials` as `KalshiCredentials` (a bare `Credentials` names the CLOB's), and, with `kalshi-predictions-ws`, `Event` as `PredictionsEvent`, `PredictionsWsBuilder`, `SupervisedPredictionsWs`, `PredictionsWsError`, `PredictionsMembership`, `Channel` as `PredictionsChannel` and `Books` as `PredictionsBooks`; `parse_key` also names `kalshi.predictions` under `kalshi-predictions`.
 
 ## Key Patterns
 

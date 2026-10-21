@@ -238,7 +238,9 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
   - The prelude: under `kalshi-predictions`, `Predictions`, `PredictionsBuilder`,
     `PredictionsError` and `Credentials as KalshiCredentials` (a bare `Credentials` already names
     the CLOB's); under `kalshi-predictions-ws`, `Event as PredictionsEvent`, `PredictionsWsBuilder`,
-    `SupervisedPredictionsWs`, `PredictionsWsError` and `Books as PredictionsBooks`. Exact names
+    `SupervisedPredictionsWs`, `PredictionsWsError`, `Books as PredictionsBooks`, and (the owner,
+    2026-10-21, after the final review's M5, matching perps' block) `PredictionsMembership` and
+    `Channel as PredictionsChannel`. Exact names
     follow the crate's public items; a name the crate lacks is a question for the owner.
   - One `const _` per passthrough and per prelude block, as the others have, and the
     `DynMarketData` and `parse_key` pins gain `kalshi-predictions`.

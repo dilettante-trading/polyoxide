@@ -262,11 +262,12 @@ pub mod prelude {
         Credentials as KalshiCredentials, Predictions, PredictionsBuilder, PredictionsError,
     };
 
-    // Aliased as the other venues' streams are: a bare `Event` or `Books` names no venue.
+    // Aliased as the other venues' streams are: a bare `Event`, `Books` or `Channel` names no
+    // venue.
     #[cfg(feature = "kalshi-predictions-ws")]
     pub use polyoxide_kalshi::predictions::ws::{
-        Books as PredictionsBooks, Event as PredictionsEvent, PredictionsWsBuilder,
-        PredictionsWsError, SupervisedPredictionsWs,
+        Books as PredictionsBooks, Channel as PredictionsChannel, Event as PredictionsEvent,
+        PredictionsMembership, PredictionsWsBuilder, PredictionsWsError, SupervisedPredictionsWs,
     };
 }
 

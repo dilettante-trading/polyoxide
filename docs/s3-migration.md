@@ -158,7 +158,8 @@ default build, `polymarket`, gains no crate.
   `full` and none in the default; `polyoxide::kalshi`; `polyoxide::parse_key` names
   `kalshi.predictions` under `kalshi-predictions`; and the prelude names `Predictions`,
   `PredictionsBuilder`, `PredictionsError`, `KalshiCredentials`, `PredictionsEvent`,
-  `PredictionsWsBuilder`, `SupervisedPredictionsWs`, `PredictionsWsError` and `PredictionsBooks`.
+  `PredictionsWsBuilder`, `SupervisedPredictionsWs`, `PredictionsWsError`,
+  `PredictionsMembership`, `PredictionsChannel` and `PredictionsBooks`.
 - `polyoxide-venue`, feature `market`: `Candles::intervals()`, a provided method that returns
   the widths a venue serves, `CandleInterval::ALL` by default, so every existing implementation
   keeps its behaviour and `DynCandles` forwards it. `CandleQuery::ensure_served` and the new
