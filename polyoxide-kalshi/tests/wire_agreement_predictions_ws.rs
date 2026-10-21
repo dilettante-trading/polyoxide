@@ -358,3 +358,20 @@ fn a_one_sid_update_is_answered_ok_on_its_own_sid_and_only_the_numbered_channels
         );
     }
 }
+
+#[test]
+fn a_snapshot_for_a_ticker_no_market_has_is_an_empty_snapshot_carrying_the_commands_id() {
+    // Kalshi answers `get_snapshot` for a ticker no market has with an ordinary
+    // `orderbook_snapshot`: the command's `id`, an empty `market_id` and no levels (the demo
+    // host, 2026-10-21), not an error.
+    let text = ws().text("snapshot_unknown");
+    assert_agrees::<Snapshot>("snapshot_unknown", &text);
+    let answer: Snapshot = serde_json::from_str(&text).unwrap();
+    assert_eq!(answer.kind, "orderbook_snapshot", "{answer:?}");
+    assert_eq!(answer.id, Some(10), "{answer:?}");
+    assert_eq!(answer.msg.market_id, "", "{answer:?}");
+    assert!(
+        answer.msg.yes_dollars_fp.is_empty() && answer.msg.no_dollars_fp.is_empty(),
+        "{answer:?}"
+    );
+}
