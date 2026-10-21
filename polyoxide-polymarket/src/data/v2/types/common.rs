@@ -54,7 +54,9 @@ polyoxide_venue::open_enum! {
 
 polyoxide_venue::open_enum! {
     /// Activity row type. `TIP` is never in the default set and is only
-    /// returned when requested explicitly.
+    /// returned when requested explicitly. The host refuses a `type` filter
+    /// naming any value it does not list with a `400`, so an
+    /// [`Other`](Self::Other) sent as a filter fails.
     pub enum ActivityType {
         /// `TRADE`
         Trade => "TRADE",
@@ -62,12 +64,14 @@ polyoxide_venue::open_enum! {
         Split => "SPLIT",
         /// `MERGE`
         Merge => "MERGE",
-        /// `REDEEM`
+        /// `REDEEM`, automatic redemptions included.
         Redeem => "REDEEM",
         /// `REWARD`
         Reward => "REWARD",
         /// `CONVERSION`
         Conversion => "CONVERSION",
+        /// `MIGRATION`
+        Migration => "MIGRATION",
         /// `DEPOSIT`. Excluded unless `exclude_deposits_withdrawals(false)` is sent.
         Deposit => "DEPOSIT",
         /// `WITHDRAWAL`. Excluded unless `exclude_deposits_withdrawals(false)` is sent.

@@ -100,6 +100,12 @@ from (2026-09-14):
 
 `leaderboard` `category` accepts any string without error. All thirteen activity
 types (`TRADE` … `TAKER_REBATE`, `TIP`) are accepted by `/v2/activity?type=`.
+The spec's `type` description (#67, 2026-10-21) lists a fourteenth, `MIGRATION`,
+which the host accepts too, and says any other value is a `400`: `type=BOGUS`
+answers `400` with `unknown activity type: BOGUS`, code `invalid_request`,
+parameter `type`. `type=DEPOSIT` alone, under the default
+`exclude_deposits_withdrawals=true`, returns an empty page, as the description
+says (all 2026-10-21).
 
 ## `/v2/activity`'s sort error message is stale
 
