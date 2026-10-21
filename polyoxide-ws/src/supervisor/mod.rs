@@ -218,6 +218,28 @@ pub trait Protocol: Send + Sized + 'static {
     /// without awaiting an answer; the answer is a frame like any other.
     fn ping(&mut self, connection: &mut Connection) -> Option<Message>;
 
+    /// A frame to send right after a frame was decoded, or `None` for none (the
+    /// default): how a protocol asks the server for something its last frame
+    /// showed it needs, such as the state of a stream it can no longer trust.
+    ///
+    /// The supervisor calls it once after each [`decode`](Self::decode) that
+    /// leaves the connection up: not after a decode error that reconnects or
+    /// stops, and not on a connection that has already ended, such as after
+    /// the server's close frame. What it returns is sent on the same
+    /// connection, one frame for each call, within [`Timing::stale_after`],
+    /// and the answer is not awaited: it is a frame like any other. A send
+    /// that fails, or outlives that window, ends the connection as a failed
+    /// [`ping`](Self::ping) does, and [`recover`](Self::recover) decides what
+    /// follows.
+    ///
+    /// A protocol with several frames to send returns one for each call, so
+    /// the rest go out after later frames. What it still holds when the
+    /// connection ends stays with it, and is cleared in
+    /// [`reset`](Self::reset).
+    fn follow_up(&mut self) -> Option<Message> {
+        None
+    }
+
     /// Whether the membership still wants a connection. One that stops being
     /// wanted on a healthy connection closes it politely, with no marker, and
     /// ends the stream; during an outage it ends the outage with
@@ -303,6 +325,10 @@ pub trait Protocol: Send + Sized + 'static {
 ///   which [`Timing::stale_after`] bounds.
 /// - **Staleness.** Silence for [`Timing::stale_after`], by the protocol's
 ///   liveness rule, replaces the connection.
+/// - **Follow-ups.** After each decoded frame that leaves the connection up,
+///   the frame [`Protocol::follow_up`] returns is sent within
+///   [`Timing::stale_after`]; a send that fails or outlives it replaces the
+///   connection, as a failed ping does.
 /// - **No drops.** No decoded event is dropped; a bounded queue holds the
 ///   task back instead.
 /// - **Outage markers.** At most one [`Protocol::disconnected`] per outage,

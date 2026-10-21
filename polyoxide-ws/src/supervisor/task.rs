@@ -237,6 +237,30 @@ async fn ping<P: Protocol>(
     }
 }
 
+/// Send the protocol's follow-up frame, if it has one, within the staleness
+/// window.
+///
+/// A connection that has already ended is not asked: the frame the protocol
+/// would return stays with it, and its `reset` clears it. The server's close
+/// frame is the last item the connection yields and leaves it finished, so
+/// the decode of a close prompts no send on the dead socket to hide it.
+async fn follow_up<P: Protocol>(
+    protocol: &mut P,
+    timing: &Timing,
+    connection: &mut Connection,
+) -> Result<(), P::Error> {
+    if connection.is_finished() {
+        return Ok(());
+    }
+    let Some(frame) = protocol.follow_up() else {
+        return Ok(());
+    };
+    match tokio::time::timeout(timing.stale_after, connection.send(frame)).await {
+        Ok(sent) => sent.map_err(P::Error::from),
+        Err(_) => Err(P::stalled(timing.stale_after)),
+    }
+}
+
 /// Send a close frame, but not wait on a peer that has stopped reading.
 async fn close_politely(connection: &mut Connection) {
     let _ = tokio::time::timeout(CLOSE_WAIT, connection.close()).await;
@@ -536,6 +560,10 @@ impl<P: Protocol> Task<P> {
                                 Recovery::Skip => self.pending.push_back(Err(err)),
                                 Recovery::Reconnect | Recovery::Stop => return End::Failed(err),
                             },
+                        }
+                        let sent = follow_up(&mut self.protocol, &self.timing, connection).await;
+                        if let Err(err) = sent {
+                            return End::Failed(err);
                         }
                     }
                 },
