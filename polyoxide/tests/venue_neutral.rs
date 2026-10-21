@@ -16,6 +16,10 @@ use polyoxide::binance::usdm::{
     types::{DepthLimit, Symbol},
     Usdm,
 };
+use polyoxide::kalshi::predictions::{
+    key::{self as kalshi_key, Outcome, Ticker},
+    Predictions,
+};
 use polyoxide::polymarket::clob::{Clob, ClobBuilder};
 use polyoxide::polymarket::perps::{types::InstrumentId, Perps};
 use polyoxide::polymarket::shared::keys::{self, TokenId};
@@ -248,4 +252,130 @@ fn the_traits_are_on_polyoxide_venue() {
     candles::<Clob>();
     funding::<Perps>();
     instruments::<Usdm>();
+}
+
+/// A ticker of this suite's own, for Kalshi's inline bodies.
+const KALSHI_TICKER: &str = "KXTEST-26OCT18-T50.5";
+
+/// A book as Kalshi serves it: each side's bids in ascending price, worst first. Two YES bids,
+/// 0.40 and 0.45, and two NO bids, 0.50 and 0.52.
+const KALSHI_BOOK: &str = r#"{"orderbook_fp":{"yes_dollars":[["0.4000","10.00"],["0.4500","5.00"]],"no_dollars":[["0.5000","7.00"],["0.5200","3.00"]]}}"#;
+
+fn kalshi_book_path() -> String {
+    format!("/trade-api/v2/markets/{KALSHI_TICKER}/orderbook")
+}
+
+fn kalshi_client(server: &ServerGuard) -> Predictions {
+    Predictions::builder()
+        .base_url(server.url())
+        .with_retry_config(once())
+        .build()
+        .unwrap()
+}
+
+fn kalshi_key_of(outcome: Outcome) -> MarketKey {
+    kalshi_key::key(&Ticker::new(KALSHI_TICKER).unwrap(), outcome)
+}
+
+#[tokio::test]
+async fn best_bid_ask_reads_kalshi_predictions_unchanged() {
+    let mut server = Server::new_async().await;
+    // A client's first send also reads `/account/endpoint_costs`, which this server leaves
+    // unanswered: the confirmation never fails a send, and keeps the compiled costs.
+    let mock = server
+        .mock("GET", kalshi_book_path().as_str())
+        .match_query(Matcher::Exact("depth=1".to_owned()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(KALSHI_BOOK)
+        .expect(2)
+        .create_async()
+        .await;
+    let kalshi_venue = DynMarketData::new_arc(kalshi_client(&server));
+
+    // YES: its best bid, and the best NO bid priced as a YES ask (1 - 0.52).
+    let yes = best_bid_ask(&kalshi_venue, &kalshi_key_of(Outcome::Yes))
+        .await
+        .unwrap();
+    assert_eq!(yes, (Some(level("0.45", "5")), Some(level("0.48", "3"))));
+    // NO is the same book read from the other side: its best bid is the NO bid, and its ask
+    // is the best YES bid priced as a NO ask (1 - 0.45).
+    let no = best_bid_ask(&kalshi_venue, &kalshi_key_of(Outcome::No))
+        .await
+        .unwrap();
+    assert_eq!(no, (Some(level("0.52", "3")), Some(level("0.55", "5"))));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn one_classifier_reads_kalshis_errors_natively_and_through_the_traits() {
+    let ticker = Ticker::new(KALSHI_TICKER).unwrap();
+    let cases = [
+        (
+            429,
+            Some("1"),
+            Handling::Backoff(Some(Duration::from_secs(1))),
+        ),
+        (503, None, Handling::Retry),
+        (401, None, Handling::Reauthenticate),
+        (451, None, Handling::Restricted { alert: false }),
+        (400, None, Handling::Rejected { alert: true }),
+    ];
+    for (status, retry_after, expected) in cases {
+        let mut server = Server::new_async().await;
+        let mut mock = server
+            .mock("GET", kalshi_book_path().as_str())
+            .match_query(Matcher::Any)
+            .with_status(status)
+            .with_body(r#"{"error":{"code":"refused","message":"refused"}}"#);
+        if let Some(wait) = retry_after {
+            mock = mock.with_header("retry-after", wait);
+        }
+        let _mock = mock.create_async().await;
+
+        let native = kalshi_client(&server)
+            .markets()
+            .orderbook(&ticker)
+            .depth(1)
+            .send()
+            .await
+            .unwrap_err();
+        assert_eq!(classify(&native), expected, "{status}, native");
+        let kalshi_venue = DynMarketData::new_arc(kalshi_client(&server));
+        let err = best_bid_ask(&kalshi_venue, &kalshi_key_of(Outcome::Yes))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            classify_classified(&err),
+            expected,
+            "{status}, through the traits"
+        );
+    }
+}
+
+#[test]
+fn the_traits_are_on_polyoxide_venue_for_kalshi() {
+    fn market_data<T: polyoxide::venue::MarketData>() {}
+    fn trades<T: polyoxide::venue::Trades>() {}
+    fn candles<T: polyoxide::venue::Candles>() {}
+    fn event_groups<T: polyoxide::venue::EventGroups>() {}
+    market_data::<Predictions>();
+    trades::<Predictions>();
+    candles::<Predictions>();
+    event_groups::<Predictions>();
+}
+
+#[test]
+fn kalshi_serves_three_candle_widths_through_the_umbrella() {
+    use polyoxide::venue::{CandleInterval, Candles};
+
+    let kalshi = Predictions::new().unwrap();
+    assert_eq!(
+        kalshi.intervals(),
+        &[
+            CandleInterval::Minute1,
+            CandleInterval::Hour1,
+            CandleInterval::Day1,
+        ]
+    );
 }

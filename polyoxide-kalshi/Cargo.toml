@@ -63,10 +63,13 @@ mockito = { workspace = true }
 # answer (`src/predictions/ws/scripted.rs`). Path-only, so cargo strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 # `tests/venue_predictions.rs` includes the umbrella's `examples/venue_neutral.rs`
-# by `#[path]`. The three features are that example's `required-features`; they
-# build the CLOB, perps and USDⓈ-M stacks into Kalshi's test builds only.
-# Path-only, so cargo strips it on publish.
-polyoxide = { path = "../polyoxide", default-features = false, features = ["polymarket-clob", "polymarket-perps", "binance-usdm"] }
+# by `#[path]`. The four features are that example's `required-features`; they
+# build the CLOB, perps and USDⓈ-M stacks into Kalshi's test builds only, and
+# `kalshi-predictions` is the example's Kalshi arm, which names the umbrella's
+# `polyoxide::kalshi`. That makes a dev-dependency cycle with the umbrella's own
+# dependency on this crate, which cargo allows. Path-only, so cargo strips it on
+# publish.
+polyoxide = { path = "../polyoxide", default-features = false, features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"] }
 # Reads the OpenAPI mirror, which Kalshi publishes as YAML only; dev-only, so it is in no
 # normal build and no dependency allowlist.
 serde-saphyr = { workspace = true }

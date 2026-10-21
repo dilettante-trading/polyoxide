@@ -78,10 +78,10 @@ polyoxide-core = { path = "../polyoxide-core" }
 polyoxide-test-support = { path = "../polyoxide-test-support" }
 
 # The example's generic code and its two suites use one module of each kind:
-# the CLOB, perps and USDⓈ-M.
+# the CLOB, perps, USDⓈ-M and Kalshi's Predictions.
 [[example]]
 name = "venue_neutral"
-required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
 
 [[test]]
 name = "live_venue"
@@ -94,7 +94,7 @@ required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kal
 
 [[test]]
 name = "venue_neutral"
-required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
 
 # docs.rs documents every module of every venue.
 [package.metadata.docs.rs]
