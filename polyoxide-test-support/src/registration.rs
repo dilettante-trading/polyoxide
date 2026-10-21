@@ -2,6 +2,7 @@
 //! own `Cargo.toml`, so its tests can hold the ids it declares in code to the
 //! ones its registration declares.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// The ids a crate's `[package.metadata.polyoxide]` declares.
@@ -17,11 +18,13 @@ use std::path::Path;
 ///     [package.metadata.polyoxide]
 ///     venue = "acme"
 ///     products = ["spot", "events"]
+///     classes = { spot = "perpetual-future" }
 ///     "#,
 /// )
 /// .unwrap();
 /// assert_eq!(declared.venue.as_deref(), Some("acme"));
 /// assert_eq!(declared.products, ["spot", "events"]);
+/// assert_eq!(declared.classes["spot"], "perpetual-future");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Registration {
@@ -29,6 +32,9 @@ pub struct Registration {
     pub venue: Option<String>,
     /// `products`, empty when the crate declares none.
     pub products: Vec<String>,
+    /// `classes`: each product's class, as written, keyed by product; empty
+    /// when the crate declares none.
+    pub classes: BTreeMap<String, String>,
 }
 
 impl Registration {
@@ -53,8 +59,9 @@ impl Registration {
     ///
     /// # Errors
     ///
-    /// The manifest is not TOML, or its `venue` is not a string or its
-    /// `products` not an array of strings.
+    /// The manifest is not TOML, or its `venue` is not a string, its
+    /// `products` not an array of strings or its `classes` not a table of
+    /// strings.
     pub fn parse(manifest: &str) -> Result<Self, String> {
         let manifest: toml::Table = toml::from_str(manifest).map_err(|e| e.to_string())?;
         let Some(table) = manifest
@@ -82,7 +89,24 @@ impl Registration {
                 .collect::<Result<_, _>>()?,
             Some(other) => return Err(format!("`products` is not an array: {other}")),
         };
-        Ok(Self { venue, products })
+        let classes = match table.get("classes") {
+            None => BTreeMap::new(),
+            Some(toml::Value::Table(classes)) => classes
+                .iter()
+                .map(|(product, class)| {
+                    class
+                        .as_str()
+                        .map(|class| (product.clone(), class.to_owned()))
+                        .ok_or_else(|| format!("the class of {product:?} is not a string: {class}"))
+                })
+                .collect::<Result<_, _>>()?,
+            Some(other) => return Err(format!("`classes` is not a table: {other}")),
+        };
+        Ok(Self {
+            venue,
+            products,
+            classes,
+        })
     }
 }
 
@@ -141,5 +165,37 @@ mod tests {
     #[should_panic(expected = "Cargo.toml")]
     fn a_missing_manifest_names_its_path() {
         let _ = Registration::of("/no/such/crate");
+    }
+
+    #[test]
+    fn classes_are_read_per_product() {
+        let declared = Registration::parse(
+            "[package.metadata.polyoxide]\nproducts = [\"spot\"]\n\
+             classes = { spot = \"perpetual-future\" }\n",
+        )
+        .unwrap();
+        assert_eq!(
+            declared.classes.get("spot").map(String::as_str),
+            Some("perpetual-future")
+        );
+        let none = Registration::parse("[package.metadata.polyoxide]\nproducts = [\"spot\"]\n");
+        assert!(none.unwrap().classes.is_empty());
+    }
+
+    #[test]
+    fn classes_of_the_wrong_shape_are_refused() {
+        for (manifest, fault) in [
+            (
+                "[package.metadata.polyoxide]\nclasses = \"spot\"\n",
+                "`classes` is not a table",
+            ),
+            (
+                "[package.metadata.polyoxide]\nclasses = { spot = 1 }\n",
+                "the class of \"spot\" is not a string",
+            ),
+        ] {
+            let err = Registration::parse(manifest).unwrap_err();
+            assert!(err.contains(fault), "{manifest:?}: {err}");
+        }
     }
 }

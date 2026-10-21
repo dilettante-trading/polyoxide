@@ -172,6 +172,8 @@ quantity that counted a fixed amount of the underlying other than one unit would
 factor.
 Instruments that move more within an hour differ more (ENA-USD by 21%, BTC-USD by 4%),
 since this prices each hour at its close; none is off by a constant factor.
+The AsyncAPI's `statistics` channel has agreed since drift #57 (2026-10-21): its `vol` is
+"quote-asset notional (sum of price times quantity)". The OpenAPI's `volume` still says contracts.
 
 ## Rate limits
 
@@ -289,7 +291,9 @@ that day and pushed a trade within 4 s.
   empty `data` array while a candle is open (the first two captures on
   instrument 1 saw only empty ones, so the capture script keeps the first
   non-empty `klines` frame when one arrives).
-- **`trades` entries carry `settlement`**, as the REST route does.
+- **`trades` entries carry `settlement`**, as the REST route does. The AsyncAPI
+  has listed it as required since drift #57 (2026-10-21); the client keeps it
+  an `Option`, as it was before the schema named it.
 - **Unsubscribe takes effect at the acknowledgement.** In
   `tests/live_perps_ws.rs` on 2026-09-30, `tickers::all` was unsubscribed while
   nothing consumed the stream; 1,055 fan-out frames were then yielded, every

@@ -18,7 +18,7 @@
 
 use std::borrow::Cow;
 
-use polyoxide_venue::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
+use polyoxide_venue::{KeyError, KeySpace, MarketKey, ProductClass, ProductId, RawKey, VenueId};
 
 use crate::usdm::types::Symbol;
 
@@ -35,6 +35,7 @@ pub struct UsdmKeys;
 impl KeySpace for UsdmKeys {
     const VENUE: VenueId = VENUE;
     const PRODUCT: ProductId = PRODUCT;
+    const CLASS: ProductClass = ProductClass::PerpetualFuture;
     type Id = Symbol;
 
     fn parse_id(text: &str) -> Result<Symbol, String> {
@@ -87,6 +88,11 @@ mod tests {
                 .products
                 .iter()
                 .any(|product| product == PRODUCT.as_str()),
+            "{declared:?}"
+        );
+        assert_eq!(
+            declared.classes.get(PRODUCT.as_str()).map(String::as_str),
+            Some(UsdmKeys::CLASS.as_str()),
             "{declared:?}"
         );
     }

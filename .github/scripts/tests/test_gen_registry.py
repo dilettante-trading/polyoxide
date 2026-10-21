@@ -506,6 +506,30 @@ def test_bad_identifiers_fail(tmp_path: Path, value) -> None:
         build(tmp_path, bad)
 
 
+def test_a_crate_registers_a_class_per_product(tmp_path: Path) -> None:
+    def classes(metadata, workspace, manifests):
+        manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["classes"] = {
+            "a": "event-contract"}
+
+    registry = build(tmp_path, classes)
+    assert registry.crate("polyoxide-alpha").classes == (("a", "event-contract"),)
+    assert registry.crate("polyoxide-omega").classes == ()
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [({"z": "event-contract"}, "names 'z', which is not one of the crate's products"),
+     ({"a": "Event Contract"}, "is not an id"),
+     (["event-contract"], "must be a table of product = class")],
+)
+def test_a_bad_class_fails(tmp_path: Path, value, message: str) -> None:
+    def bad(metadata, workspace, manifests):
+        manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["classes"] = value
+
+    with pytest.raises(RegistryError, match=message):
+        build(tmp_path, bad)
+
+
 def test_an_unknown_mirror_fails(tmp_path: Path) -> None:
     def unknown(metadata, workspace, manifests):
         manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["mirrors"] = ["nope"]

@@ -14,7 +14,7 @@ use std::{
 use futures_util::FutureExt;
 use polyoxide_venue::{
     Candle, CandleInterval, CandleQuery, Candles, Class, ClassifiedError, Classify, DynCandles,
-    KeySpace, MarketKey, ProductId, UnixMillis, UnservedInterval, VenueId,
+    KeySpace, MarketKey, ProductClass, ProductId, UnixMillis, UnservedInterval, VenueId,
 };
 use rust_decimal::Decimal;
 
@@ -115,6 +115,7 @@ struct Spot;
 impl KeySpace for Spot {
     const VENUE: VenueId = VenueId::from_static("acme");
     const PRODUCT: ProductId = ProductId::from_static("spot");
+    const CLASS: ProductClass = ProductClass::PerpetualFuture;
     type Id = String;
 
     fn parse_id(text: &str) -> Result<String, String> {

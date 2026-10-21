@@ -52,3 +52,11 @@ const _: fn() = || {
     #[cfg(feature = "predictions-ws")]
     is::<predictions::ws::PredictionsWsError>();
 };
+
+// Every product implements its class's bundle; one that drops a defining
+// capability fails the build here.
+#[cfg(feature = "predictions")]
+const _: fn() = || {
+    fn bundle<T: polyoxide_venue::EventContractMarket>() {}
+    bundle::<predictions::Predictions>();
+};

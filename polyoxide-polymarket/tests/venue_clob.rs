@@ -19,7 +19,7 @@ use polyoxide_test_support::fixtures;
 use polyoxide_venue::{
     CandleInterval, CandleQuery, Candles, Class, Classify, DynCandles, DynEventGroups,
     DynMarketData, DynTrades, EventGroups, KeySpace, Level, MarketData, MarketKey, NotListed,
-    ProductId, Side, SizeUnit, Trades, UnixMillis, VenueId,
+    ProductClass, ProductId, Side, SizeUnit, Trades, UnixMillis, VenueId,
 };
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -709,6 +709,7 @@ struct Elsewhere;
 impl KeySpace for Elsewhere {
     const VENUE: VenueId = VenueId::from_static("elsewhere");
     const PRODUCT: ProductId = ProductId::from_static("spot");
+    const CLASS: ProductClass = ProductClass::PerpetualFuture;
     type Id = String;
 
     fn parse_id(text: &str) -> Result<String, String> {
