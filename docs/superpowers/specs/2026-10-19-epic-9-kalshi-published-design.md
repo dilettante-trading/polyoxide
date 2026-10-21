@@ -306,7 +306,15 @@ No Rust. Each finding goes in `OBSERVED.md` under a `## Epic 9` section, with th
   - `get_snapshot` on the order-book `sid`: the answer's `id`, `sid` and `seq`, and whether later
     deltas continue from it;
   - `get_snapshot` naming a ticker outside the subscription, and one on the `ticker` channel's
-    `sid`: the error codes;
+    `sid`: the error codes. (The owner, 2026-10-21, on Task 1.4's probe: the demo host refuses
+    neither an outside ticker nor an unknown one. It answers an outside ticker with a normal
+    `orderbook_snapshot` carrying the command's `id`, on the `sid`'s numbering, without
+    subscribing it, and an unknown ticker with an empty snapshot (`market_id: ""`). That answer is
+    captured as `snapshot_outside.json` in place of `error_snapshot_outside.json`, recorded in
+    `OBSERVED.md`, with the touch set and the script's check to match. Story 5's wire test pins
+    that it decodes as a snapshot carrying the command's `id`. An error-frame fixture, if one is
+    still needed, comes from `get_snapshot` on the `ticker` or `trade` `sid` if that is refused.
+    D9's client-side refusal of an outside ticker stays and is now the only guard.)
   - a `ticker`/`trade` subscribe with no `market_tickers`, to confirm it means every market (stop
     after a few frames).
   Fixtures under `tests/fixtures/predictions/ws/`.
