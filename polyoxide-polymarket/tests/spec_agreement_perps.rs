@@ -29,31 +29,94 @@ fn spec() -> Value {
 }
 
 fn schemas() -> Map<String, Value> {
-    let mut schemas = Value::Object(openapi::schemas(&spec()));
-    with_numeric_placeholders(&mut schemas);
-    match schemas {
-        Value::Object(map) => map,
-        _ => unreachable!(),
-    }
+    let mut schemas = openapi::schemas(&spec());
+    with_numeric_examples(&mut schemas);
+    schemas
 }
 
-/// Gives every string without an `example` or an `enum` the example `"1"`.
-/// The shared synthesiser falls back to `"x"` for such a string, which a
-/// decimal field rejects, and the settlement and competition schemas spell
-/// their numbers as strings with no example; `"1"` decodes as a `String` too.
-fn with_numeric_placeholders(node: &mut Value) {
-    match node {
-        Value::Object(map) => {
-            if map.get("type").and_then(Value::as_str) == Some("string")
-                && !map.contains_key("example")
-                && !map.contains_key("enum")
-            {
-                map.insert("example".into(), Value::from("1"));
-            }
-            map.values_mut().for_each(with_numeric_placeholders);
+/// Strings the spec gives no `example` that the types read as decimals:
+/// `(schema, properties)`, an empty list naming a schema that is itself the
+/// string. The shared synthesiser falls back to `"x"` for a string with no
+/// example, which a decimal rejects, so each of these gets the example `"1"`.
+/// Text fields keep `"x"`, so a text field mistyped as a number still fails.
+const NUMERIC_STRINGS: &[(&str, &[&str])] = &[
+    ("settlement_price", &[]),
+    ("settlement_insurance_debit", &[]),
+    (
+        "CompetitionAccount",
+        &[
+            "pnl",
+            "realized_pnl",
+            "unrealized_pnl",
+            "fees",
+            "funding",
+            "volume",
+            "boosted_volume",
+            "min_volume",
+            "volume_to_qualify",
+            "qualification_progress",
+            "prize",
+            "score_to_prize_zone",
+        ],
+    ),
+    ("CompetitionDetail", &["prize_pool"]),
+    (
+        "CompetitionEntry",
+        &[
+            "pnl",
+            "realized_pnl",
+            "unrealized_pnl",
+            "volume",
+            "boosted_volume",
+            "prize",
+        ],
+    ),
+    ("CompetitionLockedPosition", &["size_at_start"]),
+    (
+        "CompetitionWidget",
+        &["volume", "min_volume", "qualification_progress"],
+    ),
+    (
+        "PositionCardSnapshot",
+        &[
+            "size_after",
+            "entry_price",
+            "as_of_price",
+            "pnl",
+            "pnl_percent",
+        ],
+    ),
+];
+
+/// Adds `NUMERIC_STRINGS`' examples, refusing an entry that names no string
+/// without one, so the table cannot go stale.
+fn with_numeric_examples(schemas: &mut Map<String, Value>) {
+    for (schema, properties) in NUMERIC_STRINGS {
+        let node = schemas
+            .get_mut(*schema)
+            .unwrap_or_else(|| panic!("{schema} is not a schema"));
+        let targets: Vec<&mut Value> = if properties.is_empty() {
+            vec![node]
+        } else {
+            let props = node["properties"].as_object_mut().unwrap();
+            props
+                .iter_mut()
+                .filter(|(name, _)| properties.contains(&name.as_str()))
+                .map(|(_, prop)| prop)
+                .collect()
+        };
+        assert_eq!(
+            targets.len(),
+            properties.len().max(1),
+            "{schema}: a NUMERIC_STRINGS property is missing"
+        );
+        for target in targets {
+            assert!(
+                target["type"] == "string" && target.get("example").is_none(),
+                "{schema}: NUMERIC_STRINGS names {target}, which is not a string without an example"
+            );
+            target["example"] = Value::from("1");
         }
-        Value::Array(items) => items.iter_mut().for_each(with_numeric_placeholders),
-        _ => {}
     }
 }
 

@@ -899,3 +899,27 @@ async fn a_settled_instrument_is_not_tradable_and_carries_its_settlement() {
     assert_eq!(ext.settlement, native[0].settlement);
     assert!(ext.settlement.is_some());
 }
+
+#[tokio::test]
+async fn a_settlement_record_alone_makes_an_instrument_untradable() {
+    let mut server = Server::new_async().await;
+    let mut settled: Vec<Value> = serde_json::from_str(&fixture("instrument_settled")).unwrap();
+    settled[0]["close_only"] = Value::Bool(false);
+    let rows = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=51",
+        &Value::Array(settled).to_string(),
+        1,
+    )
+    .await;
+    let fees = route(&mut server, "/v1/info/fees", "", &fixture("fees"), 1).await;
+    let venue: Arc<DynMarketData<'static>> = DynMarketData::new_arc(client(&server));
+    let instrument = venue.instrument(&key(51)).await.unwrap();
+    rows.assert_async().await;
+    fees.assert_async().await;
+    assert_eq!(instrument.tradable, Some(false));
+    let ext = instrument.extensions.get::<InstrumentExt>().unwrap();
+    assert_eq!(ext.close_only, Some(false));
+    assert!(ext.settlement.is_some());
+}

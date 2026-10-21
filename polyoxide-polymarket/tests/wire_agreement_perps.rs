@@ -68,7 +68,7 @@ const EXPECTED_ABSENT: &[(&str, &str, &str)] = &[
     (
         "competitions",
         "/landing_competition_id",
-        "sent only when a competition exists",
+        "absent while no competition exists",
     ),
 ];
 

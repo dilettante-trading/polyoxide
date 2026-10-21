@@ -145,13 +145,14 @@ renamed, and no signature changes.
   enabled instruments only, but filtered by `instrument_id` it also returns a settled one, with
   `close_only` set and its settlement record; `perps::venue`'s `instrument` now reports such an
   instrument with `tradable: Some(false)` and the record in `InstrumentExt::settlement`.
-- New routes: `perps.public().registered(address)`; `perps.public().position_snapshots(address)`,
-  a `POST` with `.active(instrument_ids)` (at most 20) and `.history(fills)` (at most 4,
+- New routes: `perps.public().registered(address)`; `perps.public().position_snapshots(address)`, a
+  `POST` with `.active(instrument_ids)` (at most 20) and `.history(fills)` (at most 4,
   `PositionSnapshotFill`, which converts from a `PositionFill`), refused before sending when it
-  names neither, too many or one twice; and the namespace `perps.competitions()`: `list()`,
-  `get(id)`, `leaderboard(id)`, `account(id, address)` and `widget()`, with `CompetitionId`,
-  `CompetitionStatus` and `CompetitionRowState` in `perps::types`. No competition has existed
-  yet, so the competition types are modelled from the spec alone.
+  names neither, too many or one twice, or an instrument id or fill time past the host's bounds; and
+  the namespace `perps.competitions()`: `list()`, `get(id)`, `leaderboard(id)`, `account(id,
+  address)` and `widget()`, with `CompetitionId`, `CompetitionStatus` and `CompetitionRowState` in
+  `perps::types`. No competition has existed yet, so the competition types are modelled from the
+  spec alone.
 
 ## Epic 9: Kalshi published
 

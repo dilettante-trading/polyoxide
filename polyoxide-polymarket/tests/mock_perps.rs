@@ -757,7 +757,9 @@ async fn a_400_venue_body_is_a_venue_error_with_its_reference() {
 // ── registration, position snapshots and competitions ───────────
 
 use polyoxide_polymarket::perps::{
-    api::public::{PositionSnapshotFill, MAX_SNAPSHOT_ACTIVE, MAX_SNAPSHOT_HISTORY},
+    api::public::{
+        PositionSnapshotFill, MAX_SNAPSHOT_ACTIVE, MAX_SNAPSHOT_HISTORY, MAX_SNAPSHOT_TIMESTAMP,
+    },
     types::{
         CompetitionId, CompetitionRowState, CompetitionStatus, PositionSnapshotStatus,
         SnapshotMarkerKind,
@@ -887,10 +889,22 @@ async fn a_selection_the_host_would_refuse_is_refused_before_sending() {
             .public()
             .position_snapshots("0xabc")
             .active([InstrumentId(1), InstrumentId(1)]),
+        perps.public().position_snapshots("0xabc").history([
+            PositionSnapshotFill::new(InstrumentId(1), 7, 1),
+            PositionSnapshotFill::new(InstrumentId(1), 7, 2),
+        ]),
         perps
             .public()
             .position_snapshots("0xabc")
-            .history([fill(7), fill(7)]),
+            .active([InstrumentId(u64::from(u32::MAX) + 1)]),
+        perps
+            .public()
+            .position_snapshots("0xabc")
+            .history([PositionSnapshotFill::new(
+                InstrumentId(1),
+                7,
+                MAX_SNAPSHOT_TIMESTAMP + 1,
+            )]),
     ];
     for request in refusals {
         let err = request.send().await.unwrap_err();
@@ -925,7 +939,7 @@ async fn the_competition_routes_send_their_parameters_and_decode() {
     let board = server
         .mock("GET", "/v1/info/competition/leaderboard")
         .match_query(Matcher::AllOf(vec![
-            Matcher::UrlEncoded("competition_id".into(), "3".into()),
+            Matcher::UrlEncoded("competition_id".into(), "2".into()),
             Matcher::UrlEncoded("limit".into(), "2".into()),
             Matcher::UrlEncoded("offset".into(), "4".into()),
         ]))
@@ -935,7 +949,7 @@ async fn the_competition_routes_send_their_parameters_and_decode() {
     let account = server
         .mock("GET", "/v1/info/competition/account")
         .match_query(Matcher::AllOf(vec![
-            Matcher::UrlEncoded("competition_id".into(), "3".into()),
+            Matcher::UrlEncoded("competition_id".into(), "2".into()),
             Matcher::UrlEncoded("address".into(), "0xabc".into()),
         ]))
         .with_body(text("competition_account"))
@@ -969,18 +983,21 @@ async fn the_competition_routes_send_their_parameters_and_decode() {
     assert_eq!(one.start_trading_instrument_id, Some(InstrumentId(51)));
 
     let page = competitions
-        .leaderboard(CompetitionId(3))
+        .leaderboard(CompetitionId(2))
         .limit(2)
         .offset(4)
         .send()
         .await
         .expect("competition leaderboard");
-    assert_eq!(page.entries[0].rank, Some(1));
+    assert_eq!(page.status, CompetitionStatus::Ended);
+    assert_eq!(page.entries[0].row_state, CompetitionRowState::Paid);
+    assert_eq!(page.entries[0].score, Decimal::from(40_000_000));
+    assert_eq!(page.entries[1].rank, None);
     assert!(page.entries[1].score.is_sign_negative());
-    assert_eq!(page.entries[1].row_state, CompetitionRowState::Paid);
+    assert_eq!(page.entries[1].row_state, CompetitionRowState::Disqualified);
 
     let standing = competitions
-        .account(CompetitionId(3), "0xabc")
+        .account(CompetitionId(2), "0xabc")
         .send()
         .await
         .expect("competition account");
@@ -1086,4 +1103,28 @@ async fn a_settled_instrument_carries_its_settlement() {
     let settlement = rows[0].settlement.as_ref().expect("settled");
     assert_eq!(settlement.price, Decimal::new(35387, 2));
     assert_eq!(settlement.insurance_debit, Decimal::ZERO);
+}
+
+#[tokio::test]
+async fn a_selection_at_each_limit_is_sent() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/info/position-snapshots")
+        .with_body(r#"{"active":[],"history":[],"history_as_of_at":1}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    test_perps(&server)
+        .public()
+        .position_snapshots("0xabc")
+        .active((1..=MAX_SNAPSHOT_ACTIVE as u64).map(InstrumentId))
+        .history(
+            (1..=MAX_SNAPSHOT_HISTORY as u64)
+                .map(|trade_id| PositionSnapshotFill::new(InstrumentId(1), trade_id, 1)),
+        )
+        .send()
+        .await
+        .expect("twenty instruments and four fills are within the limits");
+    mock.assert_async().await;
 }

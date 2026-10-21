@@ -22,6 +22,9 @@ pub const MAX_SNAPSHOT_ACTIVE: usize = 20;
 /// Most historical fills one `POST /v1/info/position-snapshots` takes.
 pub const MAX_SNAPSHOT_HISTORY: usize = 4;
 
+/// Latest fill timestamp, Unix ms, `POST /v1/info/position-snapshots` takes.
+pub const MAX_SNAPSHOT_TIMESTAMP: u64 = 18_446_744_073_709;
+
 /// Public namespace.
 #[derive(Clone)]
 pub struct PublicApi {
@@ -169,8 +172,9 @@ impl GetPositionSnapshots {
     }
 
     /// Past fills whose positions to snapshot, in the order the answer's
-    /// `history` keeps: each a fill from [`PublicApi::position_fills`] or the
-    /// public trades, keyed by its instrument, trade id and time. At most
+    /// `history` keeps: the account's own fills, as
+    /// [`PublicApi::position_fills`] returns them, keyed by instrument, trade
+    /// id and time. A fill the account does not own is `not_found`. At most
     /// [`MAX_SNAPSHOT_HISTORY`].
     pub fn history(mut self, fills: impl IntoIterator<Item = PositionSnapshotFill>) -> Self {
         self.body.history_fills = fills.into_iter().collect();
@@ -183,8 +187,10 @@ impl GetPositionSnapshots {
     ///
     /// `ApiError::Validation`, with nothing sent, when the request names no
     /// instrument and no fill, more than [`MAX_SNAPSHOT_ACTIVE`] instruments or
-    /// [`MAX_SNAPSHOT_HISTORY`] fills, or one of either twice: the host refuses
-    /// each with a `400`.
+    /// [`MAX_SNAPSHOT_HISTORY`] fills, one of either twice (a fill by its
+    /// instrument and trade id), an instrument id past `u32::MAX` or a fill
+    /// time past [`MAX_SNAPSHOT_TIMESTAMP`]: the host refuses each with a
+    /// `400`.
     pub async fn send(self) -> Result<PositionSnapshots, PerpsError> {
         self.body.validate()?;
         Request::new(self.http_client, "/v1/info/position-snapshots")
@@ -222,6 +228,23 @@ impl PositionSnapshotsRequest {
             return refuse(&format!(
                 "{} historical fills, more than {MAX_SNAPSHOT_HISTORY}",
                 self.history_fills.len()
+            ));
+        }
+        let ids = self
+            .active_instrument_ids
+            .iter()
+            .chain(self.history_fills.iter().map(|f| &f.instrument_id));
+        if let Some(id) = ids.clone().find(|id| id.0 > u64::from(u32::MAX)) {
+            return refuse(&format!("instrument id {id} is past {}", u32::MAX));
+        }
+        if let Some(fill) = self
+            .history_fills
+            .iter()
+            .find(|f| f.timestamp > MAX_SNAPSHOT_TIMESTAMP)
+        {
+            return refuse(&format!(
+                "fill time {} is past {MAX_SNAPSHOT_TIMESTAMP}",
+                fill.timestamp
             ));
         }
         let ids: BTreeSet<_> = self.active_instrument_ids.iter().collect();

@@ -156,6 +156,10 @@ def main():
             "so these were written by hand from `docs/specs/perps/openapi.json` and kept:",
             "",
             *(f"- `{name}.json`" for name in by_hand),
+            "",
+            "They are synthetic: `competition.json` and `competition_widget.json` describe a live",
+            "competition 3, and `competition_leaderboard.json` and `competition_account.json` an ended,",
+            "paid competition 2, each score computed as PnL × √(boosted volume) to six places.",
         ]
     capture_common.write_provenance(out, lines)
     print(f"captured {len(captured)} fixtures to {out}")
