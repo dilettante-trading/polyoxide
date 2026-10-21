@@ -94,7 +94,7 @@ pub use key::{KeyError, KeySpace, MarketKey, ProductClass, ProductId, RawKey, Ve
 #[cfg(feature = "market")]
 pub use market::{
     Candles, DynCandles, DynEventGroups, DynFunding, DynInstruments, DynMarketData, DynTrades,
-    EventGroups, Funding, Instruments, MarketData, Trades,
+    EventContractMarket, EventGroups, Funding, Instruments, MarketData, PerpetualMarket, Trades,
 };
 #[cfg(feature = "market")]
 pub use records::{

@@ -7,6 +7,11 @@
 //! [`Funding`] and [`EventGroups`]. No method answers "unsupported": a product
 //! that cannot do something does not implement its trait.
 //!
+//! A class bundle names what every product of a [`ProductClass`](crate::ProductClass)
+//! offers: [`PerpetualMarket`] is [`MarketData`] and [`Funding`], and
+//! [`EventContractMarket`] is [`MarketData`] and [`EventGroups`]. Each is
+//! implemented for every type that implements its members.
+//!
 //! Each method returns a [`ClassifiedError`], built with `?` from the module's
 //! own error; the native clients keep their typed errors. A key of another
 //! product is a [`KeyError`](crate::KeyError), an
@@ -170,6 +175,41 @@ pub trait EventGroups: Send + Sync {
         key: &MarketKey,
     ) -> impl Future<Output = Result<EventGroup, ClassifiedError>> + Send;
 }
+
+/// What every perpetual-future product offers: [`MarketData`] and
+/// [`Funding`], so a function generic over perpetuals needs one bound.
+///
+/// A class bundle names only what defines its class. A capability that
+/// products of other classes share too, such as [`Candles`], stays out, so a
+/// later product of the class that lacks it still has the bundle. The bundle
+/// is implemented for every type that implements its members, and it has no
+/// `Dyn` wrapper: code that holds trait objects holds one per member.
+///
+/// ```
+/// use polyoxide_venue::{ClassifiedError, FundingRate, MarketKey, PerpetualMarket, Quote};
+///
+/// /// The quote and the funding rate of one perpetual, on any venue.
+/// async fn quote_and_rate<M: PerpetualMarket>(
+///     market: &M,
+///     key: &MarketKey,
+/// ) -> Result<(Quote, FundingRate), ClassifiedError> {
+///     Ok((market.quote(key).await?, market.funding_rate(key).await?))
+/// }
+/// ```
+pub trait PerpetualMarket: MarketData + Funding {}
+
+impl<T: MarketData + Funding> PerpetualMarket for T {}
+
+/// What every event-contract product offers: [`MarketData`] and
+/// [`EventGroups`], so a function generic over event contracts needs one
+/// bound.
+///
+/// Like [`PerpetualMarket`], it names only what defines its class, is
+/// implemented for every type that implements its members, and has no `Dyn`
+/// wrapper.
+pub trait EventContractMarket: MarketData + EventGroups {}
+
+impl<T: MarketData + EventGroups> EventContractMarket for T {}
 
 #[cfg(test)]
 mod tests {
@@ -382,5 +422,30 @@ mod tests {
         let err = ready(market.book(&unknown)).unwrap_err();
         assert_eq!(err.class, Class::VenueRefusal { code: None });
         assert!(err.source.downcast_ref::<NotListed>().is_some());
+    }
+    #[test]
+    fn a_product_with_a_bundles_members_is_held_by_its_one_bound() {
+        fn perpetual<M: PerpetualMarket>(market: &M, key: &MarketKey) -> (Quote, FundingRate) {
+            (
+                ready(market.quote(key)).unwrap(),
+                ready(market.funding_rate(key)).unwrap(),
+            )
+        }
+        fn event_contract<M: EventContractMarket>(
+            market: &M,
+            key: &MarketKey,
+        ) -> (Quote, EventGroup) {
+            (
+                ready(market.quote(key)).unwrap(),
+                ready(market.event_group(key)).unwrap(),
+            )
+        }
+
+        let (quote, rate) = perpetual(&Acme, &abc());
+        assert_eq!(quote.bid, Some(Level::new(Decimal::ONE, Decimal::TWO)));
+        assert_eq!(rate.rate, Decimal::ONE);
+        let (quote, group) = event_contract(&Acme, &abc());
+        assert_eq!(quote.key, abc());
+        assert_eq!(group.outcomes.len(), 1);
     }
 }
