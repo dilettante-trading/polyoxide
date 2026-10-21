@@ -53,8 +53,9 @@ Paths under `polyoxide-kalshi/` are from the crate root.
 - `src/predictions/request.rs` (modify): the two routes in `routes` and `routes::ALL`.
 - `src/predictions/api/markets.rs` (modify): `candlesticks` and `series_candlesticks` and their builders.
 - `src/predictions/types/markets.rs` (modify): `PeriodInterval` and the candlestick types.
+- `src/predictions/types/mod.rs` (modify): their re-export.
 - `src/predictions/venue.rs` (modify): `impl Candles`, `CandleExt` and `Ohlc`, and the module docs.
-- `tests/mock_predictions_routes.rs`, `tests/query_setters_predictions.rs`, `tests/spec_agreement_predictions.rs`, `tests/wire_agreement_predictions.rs`, `tests/venue_predictions.rs`, `tests/live_predictions_venue.rs` (modify, append only).
+- `tests/mock_predictions_routes.rs`, `tests/query_setters_predictions.rs`, `tests/spec_agreement_predictions.rs`, `tests/wire_agreement_predictions.rs`, `tests/venue_predictions.rs`, `tests/live_predictions_venue.rs` (modify, append only), except the owner's exception (spec §13): the four eight-route tests, in `request.rs`, `mock_predictions_routes.rs`, `spec_agreement_predictions.rs` and `tests/live_predictions.rs` (modify), go to ten routes.
 - `docs/specs/kalshi/OBSERVED.md` (modify, above the anchor, only for a finding of its own).
 
 **Story 4: `Protocol::follow_up`.**
@@ -68,7 +69,7 @@ Paths under `polyoxide-kalshi/` are from the crate root.
 - `src/predictions/ws/builder.rs`, `ws/protocol.rs`, `ws/event.rs`, `ws/error.rs` (modify).
 - `src/predictions/ws/scripted.rs` (modify): the answerer learns several channels and `get_snapshot`.
 - `src/predictions/ws/mod.rs` (modify): the module block the names contract gives for Story 5.
-- `tests/supervision_predictions.rs`, `tests/wire_agreement_predictions_ws.rs`, `tests/live_predictions_ws.rs` (modify, append only).
+- `tests/supervision_predictions.rs`, `tests/wire_agreement_predictions_ws.rs`, `tests/live_predictions_ws.rs` (modify, append only), except the owner's exception (spec §13): two gap tests in `supervision_predictions.rs` rewritten to D9, and `ws/protocol.rs`'s unit tests moved to the multi-channel shapes.
 - `docs/specs/kalshi/OBSERVED.md` (modify, above the anchor, only for a finding of its own).
 
 **Story 6: the local book.**
@@ -126,7 +127,7 @@ Every name one story defines for another, with its type, signature and visibilit
 
 - in `trait Candles`: `fn intervals(&self) -> &'static [CandleInterval] { CandleInterval::ALL }`, forwarded by `DynCandles`;
 - `impl CandleQuery { pub fn ensure_served(&self, served: &'static [CandleInterval]) -> Result<(), UnservedInterval> }`;
-- `#[derive(Debug, Clone, PartialEq, Eq)] #[non_exhaustive] pub struct UnservedInterval { pub interval: CandleInterval, pub served: &'static [CandleInterval] }`, with `Display`, `std::error::Error` and `Classify` (`InvalidRequest`, a fault, no `retry_after`); `ClassifiedError: From<UnservedInterval>` through the existing blanket impl.
+- `#[derive(Debug, Clone, PartialEq, Eq)] #[non_exhaustive] pub struct UnservedInterval { pub interval: CandleInterval, pub served: &'static [CandleInterval] }`, with `Display`, `std::error::Error` and `Classify` (`InvalidRequest`, a fault, no `retry_after`); `ClassifiedError: From<UnservedInterval>` through the existing blanket impl. No public constructor: only `ensure_served` builds it. Its `Display` is, for example, `` `Minute5` candles are not served; this venue serves Hour1, Day1 `` (the widths' `Debug` names, `, `-joined, `none` for an empty list).
 
 **Story 3 → Stories 8 and 9.**
 
@@ -134,7 +135,7 @@ Every name one story defines for another, with its type, signature and visibilit
 - `predictions::venue::CandleExt { pub yes_bid: Ohlc, pub yes_ask: Ohlc, pub open_interest: Decimal, pub mean: Option<Decimal> }` and `predictions::venue::Ohlc { pub open: Decimal, pub high: Decimal, pub low: Decimal, pub close: Decimal }`, each `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive]`.
 - `MarketsApi::candlesticks(&self, ticker: &Ticker, period: PeriodInterval, start_ts: i64, end_ts: i64) -> GetCandlesticks` and `MarketsApi::series_candlesticks(&self, series_ticker: &str, ticker: &Ticker, period: PeriodInterval, start_ts: i64, end_ts: i64) -> GetSeriesCandlesticks`; `predictions::types::PeriodInterval { Minute1, Hour1, Day1 }`.
 
-**Story 4 → Story 5.** In `polyoxide_ws::Protocol`: `fn follow_up(&mut self) -> Option<Message> { None }`, `Message` being the type `Protocol::ping` returns. The task calls it after every `decode` and sends what it returns, bounded by `stale_after`, a failed or timed-out send ending the connection as a failed ping does.
+**Story 4 → Story 5.** In `polyoxide_ws::Protocol`: `fn follow_up(&mut self) -> Option<Message> { None }`, `Message` being the type `Protocol::ping` returns. The task calls it once after each `decode` that leaves the connection up (not after a decode error that reconnects or stops) and sends what it returns, one frame per call, bounded by `stale_after`, a failed or timed-out send ending the connection as a failed ping does. A frame the protocol still holds when the connection ends stays with it, so the protocol clears its queued follow-ups in `reset`.
 
 **Story 5 → Stories 6, 8 and 9.** In `predictions::ws`:
 
@@ -166,6 +167,7 @@ Every name one story defines for another, with its type, signature and visibilit
 - `TickerUpdate` and `PublicTrade`, `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive]`, with spec D8's fields, all `pub`; prices and sizes `Decimal`, `ts: UnixMillis`, `taker_outcome_side: OutcomeSide`, `taker_book_side: BookSide` (both from `crate::predictions::types`).
 - `Change` gains `Snapshot(Vec<Ticker>)`; `PredictionsMembership` gains `fn snapshot(&self, tickers: impl IntoIterator<Item = Ticker>) -> impl Future<Output = Result<(), PredictionsWsError>> + Send`.
 - `PredictionsWsError` gains `SnapshotTimeout { pub sid: u64, pub waited: Duration }`, classed `Unavailable`, with recovery `Reconnect`.
+- `PredictionsWsError` gains `InvalidRequest { reason: String }`, classed `InvalidRequest`, not retriable: an empty channel set at `connect`, or a `snapshot()` of a ticker outside the membership or without the order-book channel.
 
 **Story 6 → Stories 8 and 9.** In `predictions::ws::book`, re-exported at `predictions::ws`:
 
@@ -213,7 +215,7 @@ Every name one story defines for another, with its type, signature and visibilit
   Adds both candle routes to the route table with their costs, the native builders and query setters, `PeriodInterval` and the candlestick types (every `price` field and `previous_dollars` an `Option`, since the venue omits them), and `impl Candles for Predictions` with `CandleExt` and `Ohlc`: the span shifted by one width because Kalshi selects by a candle's end, the trade-price OHLC, a `no` key mirrored with high and low swapped, an untraded period closed at `previous`, a period with no `previous` skipped, and an unserved width refused before any request. The suites cover both routes on a mock server, the setters' exact pairs, spec and wire agreement on Story 1's fixtures, each D6 rule in `venue_predictions`, and the three widths live through the trait.
 
   - **Developer:** intermediate-dev
-  - **Files:** `polyoxide-kalshi/src/predictions/request.rs`, `polyoxide-kalshi/src/predictions/api/markets.rs`, `polyoxide-kalshi/src/predictions/types/markets.rs`, `polyoxide-kalshi/src/predictions/venue.rs`, `polyoxide-kalshi/tests/mock_predictions_routes.rs`, `polyoxide-kalshi/tests/query_setters_predictions.rs`, `polyoxide-kalshi/tests/spec_agreement_predictions.rs`, `polyoxide-kalshi/tests/wire_agreement_predictions.rs`, `polyoxide-kalshi/tests/venue_predictions.rs`, `polyoxide-kalshi/tests/live_predictions_venue.rs`, `docs/specs/kalshi/OBSERVED.md`
+  - **Files:** `polyoxide-kalshi/src/predictions/request.rs`, `polyoxide-kalshi/src/predictions/api/markets.rs`, `polyoxide-kalshi/src/predictions/types/markets.rs`, `polyoxide-kalshi/src/predictions/types/mod.rs`, `polyoxide-kalshi/src/predictions/venue.rs`, `polyoxide-kalshi/tests/mock_predictions_routes.rs`, `polyoxide-kalshi/tests/query_setters_predictions.rs`, `polyoxide-kalshi/tests/spec_agreement_predictions.rs`, `polyoxide-kalshi/tests/wire_agreement_predictions.rs`, `polyoxide-kalshi/tests/venue_predictions.rs`, `polyoxide-kalshi/tests/live_predictions_venue.rs`, `polyoxide-kalshi/tests/live_predictions.rs`, `docs/specs/kalshi/OBSERVED.md`
   - **Interfaces:** exposes "Story 3 → Stories 8 and 9"; uses Story 1's candlestick fixtures and anchor and Story 2's `intervals`, `ensure_served` and `UnservedInterval`
   - **Verify:** `cargo test -p polyoxide-kalshi --no-default-features --features predictions && cargo test -p polyoxide-kalshi --no-default-features --features predictions --test live_predictions_venue -- --ignored && python3 scripts/live_unwraps.py && bash _bmad-output/specs/spec-venue-extensibility/epic-9-touch-set.sh`
   - **Review:** deep (the price mapping every candle consumer reads)
