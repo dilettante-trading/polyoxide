@@ -24,14 +24,30 @@
 //! reaching the origin, and a route is probed once before any stage so a run never measures a path
 //! the host does not serve. The ramp's rules are `polyoxide_test_support::soak::verdict::strict`,
 //! unit-tested there.
-#![allow(dead_code)] // Task 7.2 calls everything below from `main` and drops this line.
+use std::{
+    collections::HashSet,
+    process::ExitCode,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
-use std::{collections::HashSet, time::Duration};
-
-use polyoxide_kalshi::predictions::{key::Ticker, Credentials};
-use polyoxide_test_support::soak::{
-    self,
-    verdict::strict::{Reply, Verdict},
+use polyoxide_core::reqwest::{Client, RequestBuilder};
+use polyoxide_kalshi::predictions::{
+    key::Ticker,
+    types::{MarketStatusFilter, MveFilter},
+    Credentials, Predictions, DEMO, PRODUCTION,
+};
+use polyoxide_test_support::{
+    load_env,
+    soak::{
+        self,
+        observe::install_observer,
+        verdict::strict::{classify, judge, summarize, Reply, Verdict},
+        Pacer,
+    },
 };
 
 const DEFAULT_STAGES: [f64; 6] = [10.0, 20.0, 40.0, 80.0, 160.0, 240.0];
@@ -473,7 +489,527 @@ impl Config {
     }
 }
 
-fn main() {} // Task 7.2 replaces this with the harness's drivers and `main`.
+// ── Drivers ─────────────────────────────────────────────────────
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn now_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis())
+}
+
+/// The whole seconds that cover `duration`.
+fn whole_secs(duration: Duration) -> u64 {
+    duration.as_secs_f64().ceil() as u64
+}
+
+/// A bare client for the raw requests. It sets no `Accept-Encoding` of its own, so it sends what
+/// core's reqwest sends every polyoxide client.
+fn http_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| error.to_string())
+}
+
+/// Sends `request` and reads the reply as the ramp's rules do: its status, its cache header, its
+/// `Retry-After` and its body.
+async fn fetch(request: RequestBuilder) -> Reply {
+    let Ok(response) = request.send().await else {
+        return Reply::Error(0);
+    };
+    let status = response.status().as_u16();
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    };
+    let cache = header("x-cache").or_else(|| header("cf-cache-status"));
+    let retry_after = header("retry-after");
+    let body = response.text().await.unwrap_or_default();
+    classify(status, cache.as_deref(), retry_after.as_deref(), &body)
+}
+
+/// One request of the harness, signed when `signer` is given.
+async fn send(client: &Client, target: &Target, signer: Option<&Credentials>) -> Reply {
+    let mut request = client.get(&target.url);
+    if let Some(credentials) = signer {
+        match signed_headers(credentials, &target.path, now_millis()) {
+            Ok(headers) => {
+                for (name, value) in headers {
+                    request = request.header(name, value);
+                }
+            }
+            Err(_) => return Reply::Error(0),
+        }
+    }
+    fetch(request).await
+}
+
+/// Sends `targets` at `rate` a second from `concurrency` workers until `secs` seconds pass, every
+/// target has gone out, or the first `429` lands. Returns the replies in arrival order.
+async fn drive(
+    client: &Client,
+    targets: Vec<Target>,
+    signer: Option<Arc<Credentials>>,
+    rate: f64,
+    secs: u64,
+    concurrency: usize,
+) -> Vec<(Duration, Reply)> {
+    let pacer = Arc::new(Pacer::new(Duration::from_secs_f64(1.0 / rate)));
+    let replies = Arc::new(Mutex::new(Vec::new()));
+    let stop = Arc::new(AtomicBool::new(false));
+    let start = Instant::now();
+    let deadline = start + Duration::from_secs(secs);
+    let mut shares: Vec<Vec<Target>> = (0..concurrency).map(|_| Vec::new()).collect();
+    for (n, target) in targets.into_iter().enumerate() {
+        shares[n % concurrency].push(target);
+    }
+    let mut workers = Vec::new();
+    for share in shares {
+        let client = client.clone();
+        let pacer = Arc::clone(&pacer);
+        let replies = Arc::clone(&replies);
+        let stop = Arc::clone(&stop);
+        let signer = signer.clone();
+        workers.push(tokio::spawn(async move {
+            for target in share {
+                if stop.load(Ordering::Relaxed) || Instant::now() >= deadline {
+                    break;
+                }
+                pacer.wait().await;
+                let reply = send(&client, &target, signer.as_deref()).await;
+                let throttled = matches!(reply, Reply::Throttled { .. });
+                lock(&replies).push((start.elapsed(), reply));
+                if throttled {
+                    stop.store(true, Ordering::Relaxed);
+                    break;
+                }
+            }
+        }));
+    }
+    for worker in workers {
+        let _ = worker.await;
+    }
+    let mut out = lock(&replies).clone();
+    out.sort_by_key(|(at, _)| *at);
+    out
+}
+
+/// Walks the open listing, without the multivariate combinations it serves first, for up to
+/// `pages` pages.
+async fn walk(client: &Predictions, pages: usize) -> Result<Listing, String> {
+    let mut rows = Vec::new();
+    let mut cursor = String::new();
+    for _ in 0..pages {
+        let mut request = client
+            .markets()
+            .list()
+            .status(MarketStatusFilter::Open)
+            .mve_filter(MveFilter::Exclude)
+            .limit(LISTING_LIMIT);
+        if !cursor.is_empty() {
+            request = request.cursor(cursor.clone());
+        }
+        let page = request
+            .send()
+            .await
+            .map_err(|error| format!("the listing walk failed: {error}"))?;
+        rows.extend(
+            page.markets
+                .into_iter()
+                .map(|market| (market.ticker, market.event_ticker)),
+        );
+        if page.cursor.is_empty() {
+            break;
+        }
+        cursor = page.cursor;
+    }
+    Ok(Listing::from_rows(rows))
+}
+
+/// One request to a route before any stage uses it, so a run never measures a path the host does
+/// not serve: it must answer 2xx.
+async fn probe(
+    client: &Client,
+    label: &str,
+    target: &Target,
+    signer: Option<&Credentials>,
+) -> Result<(), String> {
+    match send(client, target, signer).await {
+        Reply::Ok | Reply::CacheHit => {
+            eprintln!("probe {label}: {} answers 2xx", target.path);
+            Ok(())
+        }
+        other => Err(format!(
+            "probe {label}: {} did not answer 2xx: {other:?}",
+            target.path
+        )),
+    }
+}
+
+/// A signed phase is a finding only when every reply was a 2xx or a `429`: any other reply means
+/// the host did not accept the signed requests, and the phase says nothing about a bucket.
+fn check_accepted(label: &str, replies: &[(Duration, Reply)]) -> Result<(), String> {
+    let statuses: Vec<u16> = replies
+        .iter()
+        .filter_map(|(_, reply)| match reply {
+            Reply::Error(status) => Some(*status),
+            _ => None,
+        })
+        .collect();
+    if let Some(first) = statuses.first() {
+        return Err(format!(
+            "{label}: {} replies were neither 2xx nor 429, the first with status {first} (0 is no \
+             response): {}",
+            statuses.len(),
+            summarize(replies)
+        ));
+    }
+    Ok(())
+}
+
+/// One read through the shipped client.
+async fn read(kalshi: &Predictions, route: Route, id: &str) -> Result<(), String> {
+    match route {
+        Route::Market => {
+            let ticker = Ticker::new(id).map_err(|error| error.to_string())?;
+            kalshi
+                .markets()
+                .get(&ticker)
+                .send()
+                .await
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+        Route::Event => kalshi
+            .events()
+            .get(id)
+            .send()
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string()),
+    }
+}
+
+/// Steps one route up through `--stages` until the host refuses a stage.
+async fn run_ramp(cfg: &Config) -> Result<ExitCode, String> {
+    let base = cfg
+        .base_url
+        .clone()
+        .unwrap_or_else(|| PRODUCTION.to_owned());
+    let route = cfg.routes[0];
+    let kalshi = Predictions::builder()
+        .base_url(base.as_str())
+        .build()
+        .map_err(|error| error.to_string())?;
+    let listing = walk(&kalshi, cfg.pages).await?;
+    eprintln!(
+        "the listing walk found {} tickers and {} events",
+        listing.tickers.len(),
+        listing.events.len()
+    );
+    let mut pool = Pool::new(listing.ids(route));
+    let http = http_client()?;
+    let probed = pool
+        .draw()
+        .ok_or_else(|| format!("the listing walk found no {} ids", route.name()))?;
+    probe(&http, route.name(), &route.target(&base, &probed), None).await?;
+    let mut stages = Vec::new();
+    for &rate in &cfg.stages {
+        let ids = match pool.take(stage_urls(rate, cfg.stage_secs)) {
+            Ok(ids) => ids,
+            Err(reason) => {
+                eprintln!("== stopping before {rate:.1} req/s: {reason}");
+                break;
+            }
+        };
+        let targets = ids.iter().map(|id| route.target(&base, id)).collect();
+        eprintln!(
+            "== {} at {rate:.1} req/s for {}s",
+            route.name(),
+            cfg.stage_secs
+        );
+        let replies = drive(&http, targets, None, rate, cfg.stage_secs, cfg.concurrency).await;
+        let verdict = judge(&replies, rate, cfg.stage_secs);
+        eprintln!("   {} replies, verdict {verdict:?}", replies.len());
+        eprintln!("   {}", summarize(&replies));
+        let unclean = verdict != Verdict::Clean;
+        stages.push((rate, verdict));
+        if unclean {
+            break;
+        }
+        eprintln!("   cooling down {}s", cfg.cooldown_secs);
+        tokio::time::sleep(Duration::from_secs(cfg.cooldown_secs)).await;
+    }
+    let refused = stages
+        .last()
+        .is_some_and(|(_, verdict)| matches!(verdict, Verdict::Throttled { .. }));
+    let clean = highest_clean(&stages);
+    println!(
+        "RESULT ramp route={} highest_clean={clean:?} refused={refused} stages={stages:?}",
+        route.name()
+    );
+    Ok(if clean.is_some() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
+}
+
+/// Paces reads by the shipped client's own throttle and requires zero `429`s.
+async fn run_validation(cfg: &Config) -> Result<ExitCode, String> {
+    let observer = install_observer(Instant::now());
+    let base = cfg
+        .base_url
+        .clone()
+        .unwrap_or_else(|| PRODUCTION.to_owned());
+    // The shipped client, untouched but for the in-flight cap a caller asks to lift: its own
+    // throttle paces every request.
+    let mut builder = Predictions::builder().base_url(base.as_str());
+    if let Some(cap) = cfg.max_concurrent {
+        builder = builder.max_concurrent(cap);
+    }
+    let kalshi = builder.build().map_err(|error| error.to_string())?;
+    let listing = walk(&kalshi, cfg.pages).await?;
+    eprintln!(
+        "the listing walk found {} tickers and {} events",
+        listing.tickers.len(),
+        listing.events.len()
+    );
+    let http = http_client()?;
+    let mut pools = Vec::new();
+    for &route in &cfg.routes {
+        let mut pool = Pool::new(listing.ids(route));
+        let probed = pool
+            .draw()
+            .ok_or_else(|| format!("the listing walk found no {} ids", route.name()))?;
+        probe(&http, route.name(), &route.target(&base, &probed), None).await?;
+        pools.push((route, Arc::new(Mutex::new(pool))));
+    }
+    let deadline = Instant::now() + Duration::from_secs(cfg.stage_secs);
+    let sent = Arc::new(AtomicU64::new(0));
+    let failed = Arc::new(AtomicU64::new(0));
+    let exhausted = Arc::new(AtomicBool::new(false));
+    let mut workers = Vec::new();
+    for (route, pool) in &pools {
+        for _ in 0..cfg.concurrency {
+            let route = *route;
+            let pool = Arc::clone(pool);
+            let kalshi = kalshi.clone();
+            let sent = Arc::clone(&sent);
+            let failed = Arc::clone(&failed);
+            let exhausted = Arc::clone(&exhausted);
+            workers.push(tokio::spawn(async move {
+                while Instant::now() < deadline {
+                    let drawn = lock(&pool).draw();
+                    let Some(id) = drawn else {
+                        exhausted.store(true, Ordering::Relaxed);
+                        break;
+                    };
+                    let result = read(&kalshi, route, &id).await;
+                    sent.fetch_add(1, Ordering::Relaxed);
+                    if let Err(error) = result {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        eprintln!("{}: {error}", route.name());
+                    }
+                }
+            }));
+        }
+    }
+    for worker in workers {
+        let _ = worker.await;
+    }
+    let sent = sent.load(Ordering::Relaxed);
+    let failed = failed.load(Ordering::Relaxed);
+    let exhausted = exhausted.load(Ordering::Relaxed);
+    let throttles = observer.throttles_by_path();
+    let throttled: u64 = throttles.values().sum();
+    // `sent` counts calls: a call the retry loop re-sends is several requests on the wire but one
+    // here; the throttle counts are per request.
+    println!(
+        "validation: {sent} calls over {}s, {throttled} throttled, {failed} failed{}",
+        cfg.stage_secs,
+        if exhausted {
+            ", and the distinct URLs ran out first"
+        } else {
+            ""
+        }
+    );
+    for (path, count) in &throttles {
+        println!("  {path}: {count} throttled");
+    }
+    let clean = throttled == 0 && failed == 0 && !exhausted;
+    println!("RESULT validation clean={clean} calls={sent} throttled={throttled} failed={failed}");
+    Ok(if clean {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
+}
+
+/// Drains the demo key's Read bucket on a route that needs the key and then on a public route,
+/// and says whether the public read's `429` follows the key's bucket.
+async fn run_signed(cfg: &Config) -> Result<ExitCode, String> {
+    let creds = load_env(&["KALSHI_DEMO_API_KEY_ID", "KALSHI_DEMO_PRIVATE_KEY"])
+        .map_err(|missing| missing.to_string())?;
+    let credentials = Credentials::from_pem(
+        creds.get("KALSHI_DEMO_API_KEY_ID"),
+        creds.get("KALSHI_DEMO_PRIVATE_KEY"),
+    )
+    .map_err(|error| error.to_string())?;
+    let base = cfg.base_url.clone().unwrap_or_else(|| DEMO.to_owned());
+    let kalshi = Predictions::builder()
+        .base_url(base.as_str())
+        .credentials(credentials.clone())
+        .build()
+        .map_err(|error| error.to_string())?;
+    let limits = kalshi
+        .account()
+        .limits()
+        .send()
+        .await
+        .map_err(|error| format!("account().limits() failed: {error}"))?;
+    let costs = kalshi
+        .account()
+        .endpoint_costs()
+        .send()
+        .await
+        .map_err(|error| format!("account().endpoint_costs() failed: {error}"))?;
+    let cost_of = |template: &str| {
+        costs
+            .endpoint_costs
+            .iter()
+            .find(|entry| entry.method == "GET" && entry.path == template)
+            .map_or(costs.default_cost, |entry| entry.cost)
+    };
+    let (capacity, refill) = (limits.read.bucket_capacity, limits.read.refill_rate);
+    let (public_cost, private_cost) = (cost_of(PUBLIC_TEMPLATE), cost_of(PRIVATE_TEMPLATE));
+    let public = Drain::new(capacity, refill, public_cost)?;
+    let private = Drain::new(capacity, refill, private_cost)?;
+    eprintln!(
+        "the key's Read bucket: {capacity} tokens refilling {refill} a second (tier {}); a public \
+         read costs {public_cost} tokens and the limits read {private_cost}",
+        limits.usage_tier
+    );
+
+    let listing = walk(&kalshi, cfg.pages).await?;
+    let mut pool = Pool::new(listing.ids(Route::Market));
+    let http = http_client()?;
+    let signer = Arc::new(credentials);
+    let control_target = Target {
+        url: format!("{base}{PRIVATE_TEMPLATE}"),
+        path: PRIVATE_TEMPLATE.to_owned(),
+    };
+    probe(
+        &http,
+        "private control",
+        &control_target,
+        Some(signer.as_ref()),
+    )
+    .await?;
+    let probed = pool.draw().ok_or("the listing walk found no tickers")?;
+    probe(
+        &http,
+        "public",
+        &Route::Market.target(&base, &probed),
+        Some(signer.as_ref()),
+    )
+    .await?;
+
+    let window = whole_secs(private.window);
+    eprintln!(
+        "== control: {PRIVATE_TEMPLATE}, signed, {:.1} req/s for {window}s; a bucket that starts \
+         full empties after {:?}",
+        private.rate, private.model
+    );
+    let targets = vec![control_target; stage_urls(private.rate, window)];
+    let control = drive(
+        &http,
+        targets,
+        Some(Arc::clone(&signer)),
+        private.rate,
+        window,
+        cfg.concurrency,
+    )
+    .await;
+    check_accepted("control", &control)?;
+    eprintln!("   {}", summarize(&control));
+
+    let refill_wait =
+        Duration::from_secs_f64(f64::from(capacity) / f64::from(refill)) + REFILL_MARGIN;
+    eprintln!("   waiting {refill_wait:?} for the bucket to refill");
+    tokio::time::sleep(refill_wait).await;
+
+    let window = whole_secs(public.window);
+    let ids = pool.take(stage_urls(public.rate, window))?;
+    let targets: Vec<Target> = ids
+        .iter()
+        .map(|id| Route::Market.target(&base, id))
+        .collect();
+    eprintln!(
+        "== public: {PUBLIC_TEMPLATE}, signed, {:.1} req/s for {window}s over {} distinct URLs; \
+         a bucket that starts full empties after {:?}",
+        public.rate,
+        targets.len(),
+        public.model
+    );
+    let public_replies = drive(
+        &http,
+        targets,
+        Some(Arc::clone(&signer)),
+        public.rate,
+        window,
+        cfg.concurrency,
+    )
+    .await;
+    check_accepted("public", &public_replies)?;
+    eprintln!("   {}", summarize(&public_replies));
+
+    let control_first = first_throttle(&control);
+    let public_first = first_throttle(&public_replies);
+    let verdict = signed_verdict(private.model, control_first, public.model, public_first);
+    println!(
+        "RESULT signed verdict={verdict:?} control_first_429={control_first:?} \
+         control_model={:?} public_first_429={public_first:?} public_model={:?}",
+        private.model, public.model
+    );
+    Ok(match verdict {
+        SignedVerdict::Inconclusive(_) => ExitCode::from(1),
+        SignedVerdict::Follows | SignedVerdict::DoesNotFollow => ExitCode::SUCCESS,
+    })
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let cfg = match Config::from_args(std::env::args().skip(1)) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Err(error) => {
+            eprintln!("error: {error}\n\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let outcome = match cfg.mode {
+        Mode::Ramp => run_ramp(&cfg).await,
+        Mode::Validate => run_validation(&cfg).await,
+        Mode::Signed => run_signed(&cfg).await,
+    };
+    outcome.unwrap_or_else(|error| {
+        eprintln!("error: {error}");
+        ExitCode::from(2)
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -866,5 +1402,277 @@ mod tests {
         let verified = UnparsedPublicKey::new(&ED25519, &public_key)
             .verify(b"1700000000000GET/trade-api/v2/markets/KXA-1", &signature);
         assert!(verified.is_ok(), "the signature does not verify");
+    }
+}
+
+#[cfg(test)]
+mod drive_tests {
+    use std::sync::atomic::AtomicUsize;
+
+    use mockito::{Matcher, Mock, Server, ServerGuard};
+    use polyoxide_test_support::fixtures;
+
+    use super::tests::throwaway_key;
+    use super::*;
+
+    /// What the mock host saw of one request.
+    #[derive(Debug, Clone)]
+    struct Seen {
+        path_and_query: String,
+        key: Option<String>,
+        timestamp: Option<String>,
+        signature: Option<String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct Log(Arc<Mutex<Vec<Seen>>>);
+
+    impl Log {
+        fn all(&self) -> Vec<Seen> {
+            lock(&self.0).clone()
+        }
+    }
+
+    fn ids(count: usize) -> Vec<String> {
+        (1..=count).map(|n| format!("T{n}")).collect()
+    }
+
+    /// A host that records every GET, answers with `status_of` the request's number counted from
+    /// zero, and sends the body `body_of` makes of the request.
+    async fn host(
+        log: &Log,
+        status_of: impl Fn(usize) -> usize + Send + Sync + 'static,
+        body_of: impl Fn(&mockito::Request) -> String + Send + Sync + 'static,
+    ) -> (ServerGuard, Mock) {
+        let mut server = Server::new_async().await;
+        let served = AtomicUsize::new(0);
+        let recorder = log.clone();
+        let mock = server
+            .mock("GET", Matcher::Any)
+            .match_query(Matcher::Any)
+            .with_status_code_from_request(move |request| {
+                let header = |name: &str| {
+                    request
+                        .header(name)
+                        .first()
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_owned)
+                };
+                lock(&recorder.0).push(Seen {
+                    path_and_query: request.path_and_query().to_owned(),
+                    key: header("kalshi-access-key"),
+                    timestamp: header("kalshi-access-timestamp"),
+                    signature: header("kalshi-access-signature"),
+                });
+                status_of(served.fetch_add(1, Ordering::SeqCst))
+            })
+            .with_header("content-type", "application/json")
+            .with_body_from_request(move |request| body_of(request).into_bytes())
+            .create_async()
+            .await;
+        (server, mock)
+    }
+
+    #[tokio::test]
+    async fn a_stage_over_distinct_urls_gets_only_origin_replies_and_sends_no_key() {
+        let log = Log::default();
+        let (server, _mock) = host(&log, |_| 200, |_| "{}".to_owned()).await;
+        let base = server.url();
+        let targets: Vec<Target> = ids(12)
+            .iter()
+            .map(|id| Route::Market.target(&base, id))
+            .collect();
+        let http = http_client().unwrap();
+
+        let replies = drive(&http, targets, None, 20.0, 5, 2).await;
+
+        assert_eq!(replies.len(), 12);
+        assert!(replies.iter().all(|(_, reply)| *reply == Reply::Ok));
+        let seen = log.all();
+        let mut paths: Vec<&str> = seen
+            .iter()
+            .map(|request| request.path_and_query.as_str())
+            .collect();
+        paths.sort_unstable();
+        paths.dedup();
+        assert_eq!(paths.len(), 12, "a URL went out twice: {paths:?}");
+        assert!(paths
+            .iter()
+            .all(|path| path.starts_with("/trade-api/v2/markets/T")));
+        // An unsigned drive carries none of Kalshi's headers.
+        assert!(seen
+            .iter()
+            .all(|request| request.key.is_none() && request.signature.is_none()));
+    }
+
+    #[tokio::test]
+    async fn the_first_429_ends_the_stage_and_is_its_verdict() {
+        let log = Log::default();
+        // Kalshi's documented 429 body.
+        let (server, _mock) = host(
+            &log,
+            |n| if n < 3 { 200 } else { 429 },
+            |_| r#"{"error":"too many requests"}"#.to_owned(),
+        )
+        .await;
+        let base = server.url();
+        let targets: Vec<Target> = ids(20)
+            .iter()
+            .map(|id| Route::Market.target(&base, id))
+            .collect();
+        let http = http_client().unwrap();
+
+        // One worker, so nothing is in flight behind the 429 when the stage ends.
+        let replies = drive(&http, targets, None, 50.0, 5, 1).await;
+
+        assert_eq!(replies.len(), 4);
+        match judge(&replies, 50.0, 5) {
+            Verdict::Throttled { code, .. } => assert_eq!(code, "too many requests"),
+            other => panic!("expected a throttled stage, got {other:?}"),
+        }
+        assert!(first_throttle(&replies).is_some());
+    }
+
+    #[tokio::test]
+    async fn a_signed_drive_sends_the_three_headers_for_the_path_it_was_given() {
+        let log = Log::default();
+        let (server, _mock) = host(&log, |_| 200, |_| "{}".to_owned()).await;
+        let target = Route::Market.target(&server.url(), "KXA-1");
+        let http = http_client().unwrap();
+
+        let replies = drive(
+            &http,
+            vec![target],
+            Some(Arc::new(throwaway_key())),
+            10.0,
+            5,
+            1,
+        )
+        .await;
+
+        assert_eq!(replies.len(), 1);
+        let seen = log.all();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].path_and_query, "/trade-api/v2/markets/KXA-1");
+        assert_eq!(seen[0].key.as_deref(), Some("test-key"));
+        let timestamp = seen[0].timestamp.as_deref().expect("a timestamp was sent");
+        assert!(
+            timestamp.len() == 13 && timestamp.bytes().all(|byte| byte.is_ascii_digit()),
+            "{timestamp}"
+        );
+        assert!(seen[0]
+            .signature
+            .as_deref()
+            .is_some_and(|signature| !signature.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn a_probe_names_the_route_that_does_not_answer_2xx() {
+        let log = Log::default();
+        let (missing, _missing_mock) = host(
+            &log,
+            |_| 404,
+            |_| r#"{"error":{"code":"not_found","message":"not found"}}"#.to_owned(),
+        )
+        .await;
+        let (found, _found_mock) = host(&log, |_| 200, |_| "{}".to_owned()).await;
+        let http = http_client().unwrap();
+
+        let refusal = probe(
+            &http,
+            "event",
+            &Route::Event.target(&missing.url(), "KXA"),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            refusal.contains("probe event")
+                && refusal.contains("/trade-api/v2/events/KXA")
+                && refusal.contains("Error(404)"),
+            "{refusal}"
+        );
+        probe(
+            &http,
+            "event",
+            &Route::Event.target(&found.url(), "KXA"),
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[test]
+    fn a_signed_phase_with_a_reply_that_is_neither_2xx_nor_429_is_not_a_finding() {
+        let ok = (Duration::from_secs(1), Reply::Ok);
+        let throttled = (
+            Duration::from_secs(2),
+            Reply::Throttled {
+                code: "x".into(),
+                retry_after: None,
+            },
+        );
+        assert_eq!(check_accepted("control", &[ok.clone(), throttled]), Ok(()));
+
+        let rejected = (Duration::from_secs(3), Reply::Error(401));
+        let message = check_accepted("control", &[ok, rejected]).unwrap_err();
+        assert!(
+            message
+                .contains("control: 1 replies were neither 2xx nor 429, the first with status 401"),
+            "{message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listing_walk_pages_until_the_cursor_ends_and_leaves_the_combinations_out() {
+        let log = Log::default();
+        let first = fixtures!("predictions").text("markets_page");
+        let mut last: serde_json::Value =
+            serde_json::from_str(&first).expect("the fixture is JSON");
+        let cursor = last["cursor"]
+            .as_str()
+            .expect("the fixture's page has a cursor")
+            .to_owned();
+        last["cursor"] = serde_json::json!("");
+        let last = last.to_string();
+        let (server, _mock) = host(
+            &log,
+            |_| 200,
+            move |request| {
+                let target = request.path_and_query();
+                if target.contains("endpoint_costs") {
+                    r#"{"default_cost":10,"endpoint_costs":[]}"#.to_owned()
+                } else if target.contains("cursor=") {
+                    last.clone()
+                } else {
+                    first.clone()
+                }
+            },
+        )
+        .await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .build()
+            .unwrap();
+
+        let listing = walk(&kalshi, 5).await.unwrap();
+
+        let walks: Vec<String> = log
+            .all()
+            .into_iter()
+            .map(|request| request.path_and_query)
+            .filter(|target| target.starts_with("/trade-api/v2/markets?"))
+            .collect();
+        assert_eq!(walks.len(), 2, "{walks:?}");
+        for pair in ["status=open", "mve_filter=exclude", "limit=1000"] {
+            assert!(walks[0].contains(pair), "{pair}: {walks:?}");
+        }
+        assert!(!walks[0].contains("cursor="), "{walks:?}");
+        assert!(walks[1].contains(&format!("cursor={cursor}")), "{walks:?}");
+        // The fixture's five markets, each once though both pages hold them.
+        assert_eq!(listing.tickers.len(), 5);
+        assert_eq!(listing.tickers[0], "KXUAEPLSPREAD-26OCT18KHFALW-ALW4");
+        assert_eq!(listing.events.len(), 5);
+        assert_eq!(listing.events[0], "KXUAEPLSPREAD-26OCT18KHFALW");
     }
 }
