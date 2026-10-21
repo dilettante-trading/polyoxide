@@ -1,0 +1,36 @@
+{
+  "competition_id": 3,
+  "status": "live",
+  "total": 412,
+  "offset": 0,
+  "entries": [
+    {
+      "rank": 1,
+      "account": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "score": "1264911.064067",
+      "pnl": "4000",
+      "realized_pnl": "3500",
+      "unrealized_pnl": "500",
+      "volume": "50000000",
+      "boosted_volume": "100000000",
+      "row_state": "live",
+      "prize": "10000"
+    },
+    {
+      "rank": 2,
+      "account": "0x1234567890abcdef1234567890abcdef12345678",
+      "score": "-1342.640614",
+      "pnl": "-60",
+      "realized_pnl": "-60",
+      "unrealized_pnl": "0",
+      "volume": "250000",
+      "boosted_volume": "500750",
+      "row_state": "paid",
+      "prize": "5000",
+      "paid_at": 1792627300000,
+      "payout_tx_hash": "0x9f3c1e2d4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0"
+    }
+  ],
+  "final_results": false,
+  "updated_at": 1792598400000
+}

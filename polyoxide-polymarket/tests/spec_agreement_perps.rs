@@ -9,10 +9,12 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
     pin::Pin,
+    sync::{Arc, Mutex},
 };
 
+use mockito::{Matcher, Server};
 use polyoxide_polymarket::perps::{
-    api::{exchange::*, health::*, market::*, public::*},
+    api::{competition::*, exchange::*, health::*, market::*, public::*},
     types::*,
     Perps, PerpsError,
 };
@@ -27,7 +29,32 @@ fn spec() -> Value {
 }
 
 fn schemas() -> Map<String, Value> {
-    openapi::schemas(&spec())
+    let mut schemas = Value::Object(openapi::schemas(&spec()));
+    with_numeric_placeholders(&mut schemas);
+    match schemas {
+        Value::Object(map) => map,
+        _ => unreachable!(),
+    }
+}
+
+/// Gives every string without an `example` or an `enum` the example `"1"`.
+/// The shared synthesiser falls back to `"x"` for such a string, which a
+/// decimal field rejects, and the settlement and competition schemas spell
+/// their numbers as strings with no example; `"1"` decodes as a `String` too.
+fn with_numeric_placeholders(node: &mut Value) {
+    match node {
+        Value::Object(map) => {
+            if map.get("type").and_then(Value::as_str) == Some("string")
+                && !map.contains_key("example")
+                && !map.contains_key("enum")
+            {
+                map.insert("example".into(), Value::from("1"));
+            }
+            map.values_mut().for_each(with_numeric_placeholders);
+        }
+        Value::Array(items) => items.iter_mut().for_each(with_numeric_placeholders),
+        _ => {}
+    }
 }
 
 fn ref_name(r: &str) -> &str {
@@ -37,13 +64,14 @@ fn ref_name(r: &str) -> &str {
 /// `(schema, field)` pairs on the wire but not in the spec. Each must be an
 /// `Option` on the type and have an entry in OBSERVED.md.
 const OBSERVED_EXTRA: &[(&str, &str)] = &[
-    ("Instrument", "display_symbol"),
-    ("Instrument", "close_only"),
     ("Instrument", "logo"),
-    ("TradeData", "settlement"),
     ("AccountTradeData", "builder_fee"),
-    ("AccountTradeData", "settlement"),
     ("AccountTradeData", "total_fee"),
+    ("LeaderboardEntry", "instruments_traded"),
+    ("LeaderboardEntry", "top_instrument_ids"),
+    ("LeaderboardAccount", "instruments_traded"),
+    ("LeaderboardAccount", "top_instrument_ids"),
+    ("CompetitionList", "live_competition_ids"),
     ("LimitTier", "connects_per_minute_limit"),
     ("LimitTier", "max_connections"),
     ("LimitTier", "ws_messages_burst_limit"),
@@ -103,6 +131,24 @@ agreement! {
     "LeaderboardEntry" => LeaderboardEntry,
     "LeaderboardAccount" => LeaderboardAccount,
     "InviteCheckResponse" => InviteCheck,
+    "InstrumentSettlement" => InstrumentSettlement,
+    "RegisteredResponse" => Registered,
+    "CompetitionList" => CompetitionList,
+    "CompetitionSummary" => CompetitionSummary,
+    "CompetitionDetail" => CompetitionDetail,
+    "CompetitionMarket" => CompetitionMarket,
+    "CompetitionPrizeTier" => CompetitionPrizeTier,
+    "CompetitionLeaderboard" => CompetitionLeaderboard,
+    "CompetitionEntry" => CompetitionEntry,
+    "CompetitionAccount" => CompetitionAccount,
+    "CompetitionLockedPosition" => CompetitionLockedPosition,
+    "CompetitionWidget" => CompetitionWidget,
+    "PositionSnapshots" => PositionSnapshots,
+    "PositionSnapshotResult" => PositionSnapshotResult,
+    "PositionCardSnapshot" => PositionCardSnapshot,
+    "PositionSnapshotChart" => PositionSnapshotChart,
+    "PositionSnapshotCandle" => PositionSnapshotCandle,
+    "PositionSnapshotMarker" => PositionSnapshotMarker,
 }
 
 /// Reachable object schemas deliberately not in the table, each with a reason.
@@ -383,7 +429,67 @@ const ROUTES: &[(&str, &str, Fire)] = &[
                 .map(|_| ())
         })
     }),
+    ("/v1/info/registered", "registered", |p| {
+        Box::pin(async move { p.public().registered("0xabc").send().await.map(|_| ()) })
+    }),
+    ("/v1/info/competitions", "competitions", |p| {
+        Box::pin(async move {
+            p.competitions()
+                .list()
+                .address("0xabc")
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
+    ("/v1/info/competition", "competition", |p| {
+        Box::pin(async move {
+            p.competitions()
+                .get(CompetitionId(3))
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
+    (
+        "/v1/info/competition/leaderboard",
+        "competition_leaderboard",
+        |p| {
+            Box::pin(async move {
+                p.competitions()
+                    .leaderboard(CompetitionId(3))
+                    .limit(2)
+                    .offset(0)
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        },
+    ),
+    ("/v1/info/competition/account", "competition_account", |p| {
+        Box::pin(async move {
+            p.competitions()
+                .account(CompetitionId(3), "0xabc")
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
+    ("/v1/info/competition/widget", "competition_widget", |p| {
+        Box::pin(async move {
+            p.competitions()
+                .widget()
+                .address("0xabc")
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
 ];
+
+/// Info routes that take a JSON body and no query, each checked by its own
+/// test below.
+const BODY_ROUTES: &[&str] = &["/v1/info/position-snapshots"];
 
 #[tokio::test]
 async fn every_builder_sends_exactly_the_documented_query_keys() {
@@ -408,7 +514,11 @@ async fn every_builder_sends_exactly_the_documented_query_keys() {
 #[test]
 fn every_info_route_has_a_builder_entry() {
     let spec = spec();
-    let routes: BTreeSet<&str> = ROUTES.iter().map(|(p, _, _)| *p).collect();
+    let routes: BTreeSet<&str> = ROUTES
+        .iter()
+        .map(|(p, _, _)| *p)
+        .chain(BODY_ROUTES.iter().copied())
+        .collect();
     let missing: Vec<&str> = spec["paths"]
         .as_object()
         .unwrap()
@@ -421,4 +531,110 @@ fn every_info_route_has_a_builder_entry() {
         missing.is_empty(),
         "info routes with no builder entry: {missing:?}"
     );
+}
+
+#[test]
+fn every_competition_and_snapshot_enum_matches_the_spec() {
+    let schemas = schemas();
+    fn wire<T: Serialize>(all: &[T]) -> BTreeSet<String> {
+        all.iter()
+            .map(|v| {
+                serde_json::to_value(v)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect()
+    }
+    fn listed(node: &Value) -> BTreeSet<String> {
+        node["enum"]
+            .as_array()
+            .expect("an enum")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    }
+    assert_eq!(
+        wire(CompetitionStatus::ALL),
+        listed(&schemas["competition_status"])
+    );
+    assert_eq!(
+        wire(CompetitionRowState::ALL),
+        listed(&schemas["competition_row_state"])
+    );
+    assert_eq!(
+        wire(PositionSnapshotStatus::ALL),
+        listed(&schemas["PositionSnapshotStatus"])
+    );
+    assert_eq!(
+        wire(SnapshotMarkerKind::ALL),
+        listed(&schemas["PositionSnapshotMarker"]["properties"]["kind"])
+    );
+    assert_eq!(
+        wire(Side::ALL),
+        listed(&schemas["PositionCardSnapshot"]["properties"]["side"])
+    );
+}
+
+/// Sends `POST /v1/info/position-snapshots` with both selections set and
+/// returns the body it carried, after requiring the fixture to decode.
+async fn position_snapshots_body_sent() -> Value {
+    let mut server = Server::new_async().await;
+    let seen = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let sink = Arc::clone(&seen);
+    let mock = server
+        .mock("POST", "/v1/info/position-snapshots")
+        .match_query(Matcher::Missing)
+        .match_header("content-type", "application/json")
+        .match_request(move |request| {
+            sink.lock().unwrap().push(request.body().unwrap().clone());
+            true
+        })
+        .with_body(fixtures!("perps").text("position_snapshots"))
+        .create_async()
+        .await;
+    let perps = Perps::builder().base_url(server.url()).build().unwrap();
+    perps
+        .public()
+        .position_snapshots("0xabc")
+        .active([InstrumentId(1), InstrumentId(2)])
+        .history([PositionSnapshotFill::new(
+            InstrumentId(2),
+            7,
+            1_792_000_000_000,
+        )])
+        .send()
+        .await
+        .expect("position_snapshots.json decodes");
+    mock.assert_async().await;
+    let seen = seen.lock().unwrap();
+    serde_json::from_slice(seen.last().unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn the_position_snapshots_body_is_the_documented_request() {
+    let schemas = schemas();
+    let request = &schemas["PositionSnapshotsRequest"];
+    let documented: BTreeSet<String> = request["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    let body = position_snapshots_body_sent().await;
+    let sent: BTreeSet<String> = body.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(sent, documented);
+
+    let fill = &body["history_fills"][0];
+    let fill_keys: BTreeSet<String> = fill.as_object().unwrap().keys().cloned().collect();
+    let fill_documented: BTreeSet<String> = schemas["PositionSnapshotFill"]["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(fill_keys, fill_documented);
+    assert_eq!(fill["trade_id"], "7", "trade_id is a decimal string");
+    assert_eq!(body["active_instrument_ids"], serde_json::json!([1, 2]));
 }

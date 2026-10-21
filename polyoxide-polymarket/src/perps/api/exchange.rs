@@ -27,7 +27,9 @@ impl ExchangeApi {
         fetch(&self.http_client, "/v1/info/assets")
     }
 
-    /// `GET /v1/info/instruments`: listed instruments, optionally filtered.
+    /// `GET /v1/info/instruments`: enabled instruments, optionally filtered.
+    /// Filtered by `instrument_id`, it also returns a permanently settled
+    /// instrument, with its [`InstrumentSettlement`].
     pub fn instruments(&self) -> ListInstruments {
         ListInstruments {
             request: Request::new(self.http_client.clone(), "/v1/info/instruments"),
@@ -104,8 +106,8 @@ pub struct Asset {
 
 /// A listed instrument.
 ///
-/// `display_symbol`, `close_only` and `logo` are on the wire and not in the
-/// published schema (`docs/specs/perps/OBSERVED.md`).
+/// `logo` is on the wire and not in the published schema
+/// (`docs/specs/perps/OBSERVED.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Instrument {
@@ -119,10 +121,13 @@ pub struct Instrument {
     pub isolated_only: bool,
     /// Symbol, e.g. `SP500-USD`.
     pub symbol: String,
-    /// Symbol first-party interfaces show, when it differs. Undocumented.
+    /// A label to show in place of `symbol`, such as `USA500-USD`, when it
+    /// differs. A label, not an identifier: trade and store by
+    /// `instrument_id`.
     pub display_symbol: Option<String>,
-    /// Whether new positions are refused. Undocumented.
-    pub close_only: Option<bool>,
+    /// Whether user orders must be reduce-only. Pricing, funding and risk
+    /// management continue until settlement.
+    pub close_only: bool,
     /// Base asset name.
     pub base_asset: String,
     /// Quote asset name.
@@ -157,9 +162,32 @@ pub struct Instrument {
     /// When first-party interfaces may show the instrument, Unix ms; null
     /// when not yet scheduled.
     pub ui_live_time: Option<u64>,
+    /// The permanent settlement record of a settled instrument, which is
+    /// delisted and cannot resume trading; absent otherwise.
+    pub settlement: Option<InstrumentSettlement>,
     /// Logo URLs, one per colour scheme. Undocumented, and absent on a few
     /// rows.
     pub logo: Option<InstrumentLogo>,
+}
+
+/// A settled instrument's settlement record. Funding not applied by its
+/// cutoff (`sequence`, `timestamp`) is waived; funding applied before it
+/// stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct InstrumentSettlement {
+    /// Engine sequence of the settlement event.
+    pub sequence: u64,
+    /// Settlement cutoff, Unix ms. The trailing 30-minute index average that
+    /// set `price` ends here.
+    pub timestamp: u64,
+    /// Final settlement price, at which every remaining position closed with
+    /// no fee.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub price: Decimal,
+    /// Quote-asset amount the insurance fund covered of settlement deficits.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub insurance_debit: Decimal,
 }
 
 /// An instrument's logo, one URL per colour scheme. On the wire and not in

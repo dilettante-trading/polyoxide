@@ -26,6 +26,23 @@ impl From<u64> for InstrumentId {
     }
 }
 
+/// A trading competition id, from 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CompetitionId(pub u64);
+
+impl fmt::Display for CompetitionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u64> for CompetitionId {
+    fn from(id: u64) -> Self {
+        Self(id)
+    }
+}
+
 polyoxide_venue::wire_enum! {
     /// Kline and mark-history bucket width. Also the `klines` channel suffix.
     pub enum Interval {
@@ -56,7 +73,44 @@ polyoxide_venue::wire_enum! {
 
 polyoxide_venue::wire_enum! {
     /// Leaderboard ranking key.
-    pub enum LeaderboardSort { Pnl => "pnl", Notional => "notional", AccountValue => "account_value" }
+    pub enum LeaderboardSort { Pnl => "pnl", Notional => "notional", AccountValue => "account_value", Roi => "roi" }
+}
+
+polyoxide_venue::open_enum! {
+    /// A trading competition's lifecycle: `upcoming` before it starts, `live`
+    /// while it runs, `in_review` from its end until every prize is paid
+    /// (ranks can still change), `ended` once results are final and paid.
+    pub enum CompetitionStatus {
+        Upcoming => "upcoming", Live => "live", InReview => "in_review", Ended => "ended",
+    }
+}
+
+polyoxide_venue::open_enum! {
+    /// How a competition leaderboard row is shown: `live` while the
+    /// competition runs (its prize is projected), `provisional` in review,
+    /// `disqualified` for a rule violation, `final` once results are final,
+    /// `paid` once its prize is paid.
+    pub enum CompetitionRowState {
+        Live => "live", Provisional => "provisional", Disqualified => "disqualified",
+        Final => "final", Paid => "paid",
+    }
+}
+
+polyoxide_venue::open_enum! {
+    /// The outcome of one position-snapshot selection. Only `ok` carries a
+    /// snapshot; `history_pending` and `temporarily_unavailable` are worth
+    /// retrying with backoff.
+    pub enum PositionSnapshotStatus {
+        Ok => "ok", NotFound => "not_found", HistoryPending => "history_pending",
+        HistoryLimit => "history_limit", ResourceLimit => "resource_limit",
+        TemporarilyUnavailable => "temporarily_unavailable", Unavailable => "unavailable",
+    }
+}
+
+polyoxide_venue::open_enum! {
+    /// Whether a position-snapshot chart marker added to the position or
+    /// reduced it.
+    pub enum SnapshotMarkerKind { Increase => "increase", Decrease => "decrease" }
 }
 
 polyoxide_venue::wire_enum! {
@@ -252,7 +306,10 @@ mod tests {
             &["equity", "commodity", "index", "crypto"],
         );
         check(LeaderboardWindow::ALL, &["day", "week", "month", "all"]);
-        check(LeaderboardSort::ALL, &["pnl", "notional", "account_value"]);
+        check(
+            LeaderboardSort::ALL,
+            &["pnl", "notional", "account_value", "roi"],
+        );
         check(SortOrder::ALL, &["desc", "asc"]);
     }
 

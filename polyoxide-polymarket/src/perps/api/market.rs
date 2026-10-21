@@ -441,9 +441,6 @@ pub struct Trades {
 }
 
 /// One public trade.
-///
-/// `settlement` is on the wire and not in the published schema
-/// (`docs/specs/perps/OBSERVED.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Trade {
@@ -459,8 +456,9 @@ pub struct Trade {
     /// Quantity in the base asset (one contract is one unit).
     #[serde(with = "rust_decimal::serde::str")]
     pub quantity: Decimal,
-    /// Whether this was a settlement trade. Undocumented.
-    pub settlement: Option<bool>,
+    /// Whether this fill closed a position at an instrument's permanent
+    /// settlement, at the settlement price with no fee. Not a market trade.
+    pub settlement: bool,
     /// Trade time, Unix ms.
     pub timestamp: u64,
     /// Transaction hash.

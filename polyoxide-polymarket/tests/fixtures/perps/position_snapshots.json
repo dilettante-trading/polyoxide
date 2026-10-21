@@ -1,0 +1,4712 @@
+{
+  "history_as_of_at": 1792598570337,
+  "active": [
+    {
+      "instrument_id": 2,
+      "status": "ok",
+      "snapshot": {
+        "position_cycle_id": "0x4f0a2df7b1882a56f76112d79b00882f5312cafc613bf7ed126602b7fd62e731",
+        "side": "short",
+        "started_at": 1788460500441,
+        "as_of_at": 1792598572780,
+        "is_closed": false,
+        "size_after": "447.00659",
+        "entry_price": "4285.5",
+        "as_of_price": "4133.5",
+        "pnl": "67965.057221",
+        "pnl_percent": null,
+        "leverage": null,
+        "chart": {
+          "candles": [
+            {
+              "position": 0.0,
+              "open": 4468.9,
+              "high": 4469.2,
+              "low": 4465.1,
+              "close": 4466.8
+            },
+            {
+              "position": 0.02202881680464322,
+              "open": 4466.8,
+              "high": 4488.2,
+              "low": 4405.1,
+              "close": 4452.2
+            },
+            {
+              "position": 0.07135613233556841,
+              "open": 4458.3,
+              "high": 4512.1,
+              "low": 4159.0,
+              "close": 4491.9
+            },
+            {
+              "position": 0.1206834478664936,
+              "open": 4491.6,
+              "high": 4492.4,
+              "low": 4373.4,
+              "close": 4436.1
+            },
+            {
+              "position": 0.17001076339741877,
+              "open": 4435.3,
+              "high": 4444.9,
+              "low": 4325.5,
+              "close": 4355.0
+            },
+            {
+              "position": 0.22168699871553088,
+              "open": 4352.8,
+              "high": 4436.1,
+              "low": 4294.1,
+              "close": 4362.0
+            },
+            {
+              "position": 0.2710143142464561,
+              "open": 4361.1,
+              "high": 4361.7,
+              "low": 4326.3,
+              "close": 4338.7
+            },
+            {
+              "position": 0.3203416297773813,
+              "open": 4339.7,
+              "high": 4365.7,
+              "low": 4122.0,
+              "close": 4275.8
+            },
+            {
+              "position": 0.36966894530830646,
+              "open": 4273.6,
+              "high": 4398.2,
+              "low": 4272.0,
+              "close": 4376.2
+            },
+            {
+              "position": 0.4189962608392317,
+              "open": 4376.1,
+              "high": 4390.0,
+              "low": 4319.9,
+              "close": 4325.0
+            },
+            {
+              "position": 0.47067249615734374,
+              "open": 4327.3,
+              "high": 4378.4,
+              "low": 4248.5,
+              "close": 4268.6
+            },
+            {
+              "position": 0.5199998116882689,
+              "open": 4267.3,
+              "high": 4316.6,
+              "low": 4259.1,
+              "close": 4285.7
+            },
+            {
+              "position": 0.5693271272191942,
+              "open": 4285.4,
+              "high": 4286.6,
+              "low": 4119.3,
+              "close": 4180.5
+            },
+            {
+              "position": 0.6186544427501194,
+              "open": 4183.5,
+              "high": 4225.3,
+              "low": 4131.0,
+              "close": 4142.3
+            },
+            {
+              "position": 0.6679817582810446,
+              "open": 4140.2,
+              "high": 4171.6,
+              "low": 4129.5,
+              "close": 4156.7
+            },
+            {
+              "position": 0.7196579935991567,
+              "open": 4157.9,
+              "high": 4180.5,
+              "low": 4072.5,
+              "close": 4125.9
+            },
+            {
+              "position": 0.7689853091300818,
+              "open": 4122.9,
+              "high": 4205.8,
+              "low": 4111.0,
+              "close": 4190.3
+            },
+            {
+              "position": 0.8183126246610071,
+              "open": 4190.4,
+              "high": 4216.0,
+              "low": 4152.9,
+              "close": 4189.0
+            },
+            {
+              "position": 0.8676399401919322,
+              "open": 4187.3,
+              "high": 4190.9,
+              "low": 4078.4,
+              "close": 4158.3
+            },
+            {
+              "position": 0.9169672557228574,
+              "open": 4155.6,
+              "high": 4198.0,
+              "low": 4150.2,
+              "close": 4154.8
+            },
+            {
+              "position": 0.9686434910409696,
+              "open": 4156.5,
+              "high": 4199.9,
+              "low": 4109.6,
+              "close": 4138.3
+            },
+            {
+              "position": 0.9968305284872124,
+              "open": 4140.1,
+              "high": 4141.7,
+              "low": 4125.4,
+              "close": 4134.6
+            }
+          ],
+          "markers": [
+            {
+              "position": 0.10000000025516889,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000225515073342,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000226574452499,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000226689252148,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000022732269633,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000227759360628,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000227759720469,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000228187873195,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000229264936565,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000022926557845,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000957716542914,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10001978433941698,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002276553532659,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002276554068147,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002276554497695,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10141873963720596,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10141990094048946,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10142594425558284,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10273718754760072,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10273959849684561,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10274532673736492,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11443773067316211,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11444789652678215,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18078399591838787,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18078427544561218,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18078427613844522,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1807842810015674,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1883897433249376,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.18845286218565244,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18845312276776402,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18850651428774565,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18850972004537575,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18850975695766672,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1885097694265605,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18850980921073388,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1885098092197509,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18850980922592334,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1885098100302857,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18923737138756627,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19094721159708064,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259237866432294,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259238992635067,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259239115687904,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259239281817386,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1925923940106874,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259239401353567,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259239601021427,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19259240407390607,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1993082432765196,
+              "kind": "increase"
+            },
+            {
+              "position": 0.21663899771377748,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.21663917628953347,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.23465865282172763,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23487121449877826,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23502322728948594,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23502339407486036,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23502369840115744,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23502370120970625,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23504980518117977,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23508454072924206,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23514438349811484,
+              "kind": "increase"
+            },
+            {
+              "position": 0.235256870436478,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23530758020398965,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23532292427359464,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23543853650353297,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23544646956963328,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2358105091763148,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23581051439506168,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23581052477271328,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23581052764951146,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23581054160456072,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2358495082746042,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586367781616302,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586370319251262,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586370765694895,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586371163136582,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586371404677656,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586373626322965,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586430887236828,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2358643088770894,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586430887984547,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586431246155296,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2358643124893072,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2358643181437961,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586431895373128,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586432692352086,
+              "kind": "increase"
+            },
+            {
+              "position": 0.23586432928819145,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2455321333641963,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24556321688277633,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24556326590222025,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2455632693826858,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24556327187494625,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24556328570425456,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24556795380909455,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24780472256794678,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24780472286358118,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24780474310611755,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2478047577112595,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24780476028560708,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24795485865723646,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24795486082926127,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24795486275359577,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2479548680554927,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24795486946249476,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24795487413175582,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2479548778842587,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24795489930903536,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2479653308011222,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24796533259849432,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24796533433402546,
+              "kind": "increase"
+            },
+            {
+              "position": 0.30022814081530297,
+              "kind": "increase"
+            },
+            {
+              "position": 0.30022815699442146,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31796064333880336,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31836057026359005,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3183605729382635,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3183610656622126,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3183611177191389,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31836111796758,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31836111818869794,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3183611206584194,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3183611206608684,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31836112128174815,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5471173203049694,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5576047503089354,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5576073010812242,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5630704279346961,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5641355954585904,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5641356025871811,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5641356057244247,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5677793485460899,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5679788308621505,
+              "kind": "increase"
+            },
+            {
+              "position": 0.567978845406082,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5744673395303191,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5829140044032286,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5850527690176148,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6125056753276974,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6302983619151559,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6335689044483949,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852397909073472,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852398071482044,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852404441440307,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852408943834666,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852415935569018,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852415954311495,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852416031655623,
+              "kind": "increase"
+            },
+            {
+              "position": 0.685241607599812,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852417042648129,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6852820019826842,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6857970128775921,
+              "kind": "increase"
+            },
+            {
+              "position": 0.685842803808898,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6858429946562452,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6858430781810485,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6858430784334449,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6858430786264131,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6858431772537686,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6858603433721017,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6867822637846993,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6868035003838775,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6868035720210709,
+              "kind": "increase"
+            },
+            {
+              "position": 0.686827230887203,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6868359596116866,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869194257142522,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869195103082266,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869195103115262,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869199016465677,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869213221920071,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869213861083516,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869216664822635,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869216673877002,
+              "kind": "increase"
+            },
+            {
+              "position": 0.686921668103936,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869216681070728,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869216690371959,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869216690406921,
+              "kind": "increase"
+            },
+            {
+              "position": 0.686925154944615,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869843175698643,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6869843180855271,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6953234659489536,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7058208581052027,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7063408421071514,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7063422997044762,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7063458609586287,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7063458910477286,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7063459177800708,
+              "kind": "increase"
+            },
+            {
+              "position": 0.8164294122429172,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8164773655812638,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8167581479872261,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8167582568797087,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8167586070447305,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8167603649269962,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9109606075459891,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9109607462187377,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9483038460983856,
+              "kind": "increase"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "history": [
+    {
+      "instrument_id": 2,
+      "trade_id": "2567214057346220",
+      "status": "ok",
+      "snapshot": {
+        "position_cycle_id": "0x4f0a2df7b1882a56f76112d79b00882f5312cafc613bf7ed126602b7fd62e731",
+        "side": "short",
+        "started_at": 1788460500441,
+        "as_of_at": 1792360881197,
+        "is_closed": false,
+        "size_after": "447.00659",
+        "entry_price": "4285.5",
+        "as_of_price": "4165.3",
+        "pnl": "53750.247659",
+        "pnl_percent": null,
+        "leverage": null,
+        "chart": {
+          "candles": [
+            {
+              "position": 0.0,
+              "open": 4471.5,
+              "high": 4475.4,
+              "low": 4470.5,
+              "close": 4475.4
+            },
+            {
+              "position": 0.024753398479808206,
+              "open": 4474.8,
+              "high": 4488.2,
+              "low": 4405.1,
+              "close": 4450.6
+            },
+            {
+              "position": 0.07210262192945796,
+              "open": 4446.2,
+              "high": 4512.1,
+              "low": 4159.0,
+              "close": 4491.9
+            },
+            {
+              "position": 0.12194390977119454,
+              "open": 4491.6,
+              "high": 4492.4,
+              "low": 4373.4,
+              "close": 4436.1
+            },
+            {
+              "position": 0.17178519761293112,
+              "open": 4435.3,
+              "high": 4444.9,
+              "low": 4385.6,
+              "close": 4392.5
+            },
+            {
+              "position": 0.2216264854546677,
+              "open": 4391.4,
+              "high": 4436.1,
+              "low": 4308.3,
+              "close": 4355.4
+            },
+            {
+              "position": 0.2714677732964043,
+              "open": 4358.5,
+              "high": 4402.2,
+              "low": 4294.1,
+              "close": 4352.5
+            },
+            {
+              "position": 0.3213090611381409,
+              "open": 4351.5,
+              "high": 4356.6,
+              "low": 4122.0,
+              "close": 4332.2
+            },
+            {
+              "position": 0.3711503489798775,
+              "open": 4330.1,
+              "high": 4398.2,
+              "low": 4240.7,
+              "close": 4397.9
+            },
+            {
+              "position": 0.42099163682161406,
+              "open": 4394.4,
+              "high": 4394.8,
+              "low": 4354.7,
+              "close": 4355.2
+            },
+            {
+              "position": 0.47083292466335064,
+              "open": 4355.2,
+              "high": 4378.4,
+              "low": 4280.7,
+              "close": 4296.1
+            },
+            {
+              "position": 0.5206742125050872,
+              "open": 4296.1,
+              "high": 4316.6,
+              "low": 4248.5,
+              "close": 4288.3
+            },
+            {
+              "position": 0.5705155003468239,
+              "open": 4288.2,
+              "high": 4288.6,
+              "low": 4119.3,
+              "close": 4145.0
+            },
+            {
+              "position": 0.6203567881885603,
+              "open": 4142.8,
+              "high": 4220.0,
+              "low": 4120.3,
+              "close": 4190.0
+            },
+            {
+              "position": 0.670198076030297,
+              "open": 4192.2,
+              "high": 4225.3,
+              "low": 4131.0,
+              "close": 4144.8
+            },
+            {
+              "position": 0.7200393638720335,
+              "open": 4145.5,
+              "high": 4171.6,
+              "low": 4107.4,
+              "close": 4120.1
+            },
+            {
+              "position": 0.7698806517137702,
+              "open": 4122.0,
+              "high": 4180.5,
+              "low": 4072.5,
+              "close": 4135.2
+            },
+            {
+              "position": 0.8197219395555067,
+              "open": 4136.1,
+              "high": 4205.8,
+              "low": 4125.5,
+              "close": 4190.4
+            },
+            {
+              "position": 0.8695632273972433,
+              "open": 4191.6,
+              "high": 4216.0,
+              "low": 4149.1,
+              "close": 4149.5
+            },
+            {
+              "position": 0.9194045152389798,
+              "open": 4151.1,
+              "high": 4184.1,
+              "low": 4078.4,
+              "close": 4174.3
+            },
+            {
+              "position": 0.9692458030807165,
+              "open": 4172.4,
+              "high": 4198.0,
+              "low": 4150.2,
+              "close": 4154.8
+            },
+            {
+              "position": 0.9966585113936716,
+              "open": 4156.5,
+              "high": 4166.0,
+              "low": 4150.0,
+              "close": 4164.9
+            }
+          ],
+          "markers": [
+            {
+              "position": 0.10000000024352788,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000023925538038,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000024037931875,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000240501114359,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000241173161017,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000241636435903,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000241636817674,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000242091062286,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000243233762555,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000243234443558,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10001016077654222,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002098998194024,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002415285374741,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002415285942862,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002415286398587,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10150519846907481,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10150643054288892,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1015128421412911,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10290399339951005,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10290655127347284,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10291262859646416,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11531757476160856,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11532836012855037,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18570702188853094,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18570731845031485,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18570731918536956,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18570732434485338,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19377626818227894,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.19384323354487434,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19384351000701883,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1939001552388021,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19390355635725803,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19390359551900652,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1939036087477623,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19390365095640746,
+              "kind": "increase"
+            },
+            {
+              "position": 0.193903650965974,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1939036509725226,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19390365182590327,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19467555121617947,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19648959013122994,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19823501468326132,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1982350266316039,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19823502793712142,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1982350296996566,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1982350309648426,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19823503096786446,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19823503308622187,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19823504164131994,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20536014818225362,
+              "kind": "increase"
+            },
+            {
+              "position": 0.22374704936835801,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.22374723882662953,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.24286483325232286,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24309034856765618,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24325162511057213,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24325180205994903,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24325212493207632,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2432521279117798,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24327982267520087,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24331667502875412,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2433801646524719,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24349950661348688,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24355330666516853,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24356958581173663,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24369224352150207,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24370066003349047,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2440868844359026,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2440868899726831,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24408690098275512,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24408690403486713,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2440869188403456,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24412826016303502,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2441432932051012,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414332012790102,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414332486440282,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2441433290810231,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414333164363045,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414335521396774,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414396271825664,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414396272326544,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414396272618946,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2441439665261684,
+              "kind": "increase"
+            },
+            {
+              "position": 0.244143966555614,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414397255469092,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414397341398403,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24414398186945743,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2441439843782325,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25440095033292665,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2544339281000929,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2544339801068116,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2544339837993789,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2544339864435192,
+              "kind": "increase"
+            },
+            {
+              "position": 0.254434001115594,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25443895369759095,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2568120325092534,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25681203282290394,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2568120542990328,
+              "kind": "increase"
+            },
+            {
+              "position": 0.256812069794221,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2568120725254509,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25697131798342193,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569713202878113,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569713223294159,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25697132795441363,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569713294471593,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569713344009679,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25697133838215064,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25697136111256624,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569824283061451,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569824302130502,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2569824320543456,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31243016584796984,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3124301830130537,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33124329789379764,
+              "kind": "increase"
+            },
+            {
+              "position": 0.331667596609375,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33166759944704466,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3316681221978919,
+              "kind": "increase"
+            },
+            {
+              "position": 0.331668177427199,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3316681776907803,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3316681779253733,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3316681805456011,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3316681805481993,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3316681812069159,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5743649225620664,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5854914629488228,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5854941691667312,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5912902223036905,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5924203017863464,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5924203093493577,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5924203126777869,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5962861074100406,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5964977463001455,
+              "kind": "increase"
+            },
+            {
+              "position": 0.596497761730393,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6033816686451715,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6123430784287204,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6146121806635612,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6437380838331139,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6626150675964755,
+              "kind": "increase"
+            },
+            {
+              "position": 0.666084918987038,
+              "kind": "increase"
+            },
+            {
+              "position": 0.720904660791048,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209046780216329,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209053538363736,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209058315136754,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209065732951662,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209065752836317,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209065834893843,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209065881938599,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209066907496849,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7209494442350688,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7214958402081191,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7215444216667156,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7215446241444167,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7215447127592723,
+              "kind": "increase"
+            },
+            {
+              "position": 0.72154471302705,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7215447132317777,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7215448178695445,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7215630301016017,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7225411329066039,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7225636636770923,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7225637396799001,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7225888403317684,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7225981009900475,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226866535678258,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226867433170086,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226867433205093,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226871585037469,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226886656180921,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226887334295377,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226890308896068,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226890318502215,
+              "kind": "increase"
+            },
+            {
+              "position": 0.722689032610105,
+              "kind": "increase"
+            },
+            {
+              "position": 0.722689032613433,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226890336002384,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226890336039477,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7226927319409823,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7227554999727093,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7227555005197968,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7316028411417089,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7427399507803867,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7432916229246548,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7432931693488498,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7432969476280031,
+              "kind": "increase"
+            },
+            {
+              "position": 0.743296979550751,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7432970079121786,
+              "kind": "increase"
+            },
+            {
+              "position": 0.8600890576891924,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8601399333332341,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8604378267903203,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8604379423187772,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.860438313823069,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8604401788317525,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9603810417072254,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9603811888307758,
+              "kind": "decrease"
+            },
+            {
+              "position": 1.0,
+              "kind": "increase"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "instrument_id": 2,
+      "trade_id": "322977361449535",
+      "status": "ok",
+      "snapshot": {
+        "position_cycle_id": "0x4f0a2df7b1882a56f76112d79b00882f5312cafc613bf7ed126602b7fd62e731",
+        "side": "short",
+        "started_at": 1788460500441,
+        "as_of_at": 1792316100035,
+        "is_closed": false,
+        "size_after": "446.98255",
+        "entry_price": "4285.6",
+        "as_of_price": "4160.6",
+        "pnl": "55851.065644",
+        "pnl_percent": null,
+        "leverage": null,
+        "chart": {
+          "candles": [
+            {
+              "position": 0.0,
+              "open": 4471.5,
+              "high": 4475.4,
+              "low": 4470.5,
+              "close": 4475.4
+            },
+            {
+              "position": 0.023879440884170402,
+              "open": 4474.8,
+              "high": 4488.2,
+              "low": 4405.1,
+              "close": 4450.6
+            },
+            {
+              "position": 0.07177860558041488,
+              "open": 4446.2,
+              "high": 4512.1,
+              "low": 4159.0,
+              "close": 4491.9
+            },
+            {
+              "position": 0.12219877894488274,
+              "open": 4491.6,
+              "high": 4492.4,
+              "low": 4373.4,
+              "close": 4436.1
+            },
+            {
+              "position": 0.1726189523093506,
+              "open": 4435.3,
+              "high": 4444.9,
+              "low": 4385.6,
+              "close": 4392.5
+            },
+            {
+              "position": 0.22303912567381845,
+              "open": 4391.4,
+              "high": 4436.1,
+              "low": 4308.3,
+              "close": 4355.4
+            },
+            {
+              "position": 0.2734592990382863,
+              "open": 4358.5,
+              "high": 4402.2,
+              "low": 4294.1,
+              "close": 4352.5
+            },
+            {
+              "position": 0.3213584637345308,
+              "open": 4351.5,
+              "high": 4356.6,
+              "low": 4122.0,
+              "close": 4286.7
+            },
+            {
+              "position": 0.36925762843077525,
+              "open": 4283.9,
+              "high": 4398.2,
+              "low": 4240.7,
+              "close": 4374.5
+            },
+            {
+              "position": 0.4196778017952431,
+              "open": 4375.6,
+              "high": 4397.9,
+              "low": 4348.4,
+              "close": 4377.2
+            },
+            {
+              "position": 0.47009797515971097,
+              "open": 4372.5,
+              "high": 4380.9,
+              "low": 4302.1,
+              "close": 4311.0
+            },
+            {
+              "position": 0.5205181485241789,
+              "open": 4315.3,
+              "high": 4321.8,
+              "low": 4248.5,
+              "close": 4290.3
+            },
+            {
+              "position": 0.5709383218886467,
+              "open": 4290.6,
+              "high": 4291.5,
+              "low": 4149.0,
+              "close": 4157.7
+            },
+            {
+              "position": 0.6213584952531146,
+              "open": 4155.6,
+              "high": 4220.0,
+              "low": 4119.3,
+              "close": 4159.0
+            },
+            {
+              "position": 0.6692576599493589,
+              "open": 4152.1,
+              "high": 4225.3,
+              "low": 4131.0,
+              "close": 4145.9
+            },
+            {
+              "position": 0.7171568246456035,
+              "open": 4146.7,
+              "high": 4171.6,
+              "low": 4128.0,
+              "close": 4137.0
+            },
+            {
+              "position": 0.7675769980100714,
+              "open": 4138.8,
+              "high": 4180.5,
+              "low": 4072.5,
+              "close": 4125.9
+            },
+            {
+              "position": 0.8179971713745392,
+              "open": 4122.9,
+              "high": 4205.8,
+              "low": 4111.0,
+              "close": 4190.3
+            },
+            {
+              "position": 0.8684173447390071,
+              "open": 4190.4,
+              "high": 4216.0,
+              "low": 4152.9,
+              "close": 4192.9
+            },
+            {
+              "position": 0.9188375181034749,
+              "open": 4190.7,
+              "high": 4190.9,
+              "low": 4078.4,
+              "close": 4155.2
+            },
+            {
+              "position": 0.9692576914679428,
+              "open": 4159.3,
+              "high": 4198.0,
+              "low": 4150.2,
+              "close": 4160.8
+            },
+            {
+              "position": 0.9969887868184001,
+              "open": 4160.3,
+              "high": 4161.9,
+              "low": 4157.9,
+              "close": 4160.6
+            }
+          ],
+          "markers": [
+            {
+              "position": 0.10000000016949463,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000242026544473,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000243163536912,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000243286747126,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000243966599322,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000024443525495,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000244435641155,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000244895161628,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000246051133878,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000024605182279,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10001027871281166,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002123369485992,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002443330208823,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002443330783543,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002443331244561,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10152268063716133,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10152392702099279,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10153041308740439,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10293772198035119,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1029403095629405,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10294645747147343,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11549548185080974,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11550639248523661,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18670247269819581,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18670277270441968,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18670277344801173,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18670277866742077,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19486543988201463,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.1949331830190338,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1949334626921694,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1949907658344127,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19499420645542404,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1949942460720197,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1949942594544219,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19499430215330266,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1949943021629803,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19499430216960495,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1949943030328973,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19577516770881087,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19761027592024324,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19937597284178882,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19937598492890635,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1993759862495869,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19937598803259318,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1993759893124738,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19937598931553074,
+              "kind": "increase"
+            },
+            {
+              "position": 0.199375991458492,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19937600011295392,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20658386175920435,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2251843190423808,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.22518451070113016,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.24452414791748378,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2447522824980258,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24491543219992085,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24491561120449007,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24491593782664087,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24491594084095233,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24494395726736196,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24498123764544816,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24504546467434957,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24516619274187337,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24522061765844896,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24523708588043383,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2453611682077304,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24536968247395338,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24576039270979325,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24576039831088112,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24576040944883049,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2457604125363915,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24576042751382934,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24580224899853365,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581745664303872,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2458174838785355,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2458174886700498,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2458174929356443,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581749552801527,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581751937211208,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2458181339323069,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581813393737387,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581813394033186,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581813778444594,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581813781423353,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2458181438829872,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581814475226063,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2458181533059408,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24581815584385425,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2561942521291525,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25622761291916607,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2562276655299209,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25622766926537577,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25622767194022666,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2562276867827114,
+              "kind": "increase"
+            },
+            {
+              "position": 0.256232696886858,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2586333380073583,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25863333832465174,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25863336005021687,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2586333757253751,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25863337848832707,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25879447351508283,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25879447584623666,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25879447791155363,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25879448360188334,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2587944851119666,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2587944901233117,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25879449415073413,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25879451714515395,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25880571287951526,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25880571480856823,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2588057166712496,
+              "kind": "increase"
+            },
+            {
+              "position": 0.31489745249113177,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3148974698555808,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3339290911255763,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33435831789165954,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33435832076228755,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3343588495846652,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33435890545543745,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3343589057220801,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3343589059593978,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33435890861005846,
+              "kind": "increase"
+            },
+            {
+              "position": 0.33435890861268686,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3343589092790541,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5798744708547148,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5911302413120992,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5911329789615865,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5969963508095033,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5981395556883993,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5981395633392519,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5981395667063393,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6020502610128469,
+              "kind": "increase"
+            },
+            {
+              "position": 0.602264357999338,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6022643736088013,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6092282341970372,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6182937269730526,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6205891838726748,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6500533721149342,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6691496040776629,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6726597563276736,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281162062960267,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281162237267377,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281169073907813,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281173906161033,
+              "kind": "increase"
+            },
+            {
+              "position": 0.728118141013073,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281181430246337,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281181513256927,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281181560848088,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281182598317765,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7281615098808489,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287142520125194,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287633977242537,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287636025536477,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287636921977276,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287636924686154,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287636926757209,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287637985288111,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7287822222882573,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7297716853445306,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7297944778004091,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7297945546859573,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7298199468713035,
+              "kind": "increase"
+            },
+            {
+              "position": 0.72982931508822,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299188961668155,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299189869583972,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299189869619385,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299194069673542,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299209315861964,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299210001852433,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299213011001856,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299213020719574,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299213028406666,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299213028440333,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299213038423,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299213038460524,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299250451377108,
+              "kind": "increase"
+            },
+            {
+              "position": 0.729988542193635,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7299885427470767,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7389386414962861,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7502051039629921,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7507631835463823,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7507647479316416,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7507685700939126,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7507686023874298,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7507686310782634,
+              "kind": "increase"
+            },
+            {
+              "position": 0.8689171712212708,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8689686377644459,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8692699911283099,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8692701079985812,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8692704838177385,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8692723704877108,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9703740043053709,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9703741531376994,
+              "kind": "decrease"
+            },
+            {
+              "position": 1.0,
+              "kind": "decrease"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "instrument_id": 2,
+      "trade_id": "5353753338467265",
+      "status": "ok",
+      "snapshot": {
+        "position_cycle_id": "0x4f0a2df7b1882a56f76112d79b00882f5312cafc613bf7ed126602b7fd62e731",
+        "side": "short",
+        "started_at": 1788460500441,
+        "as_of_at": 1792189183221,
+        "is_closed": false,
+        "size_after": "447.00659",
+        "entry_price": "4285.6",
+        "as_of_price": "4168.8",
+        "pnl": "52188.615436",
+        "pnl_percent": null,
+        "leverage": null,
+        "chart": {
+          "candles": [
+            {
+              "position": 0.0,
+              "open": 4471.5,
+              "high": 4475.4,
+              "low": 4470.5,
+              "close": 4475.4
+            },
+            {
+              "position": 0.021288451193691164,
+              "open": 4474.8,
+              "high": 4488.2,
+              "low": 4405.1,
+              "close": 4450.6
+            },
+            {
+              "position": 0.07081800649435561,
+              "open": 4446.2,
+              "high": 4512.1,
+              "low": 4159.0,
+              "close": 4491.9
+            },
+            {
+              "position": 0.12034756179502007,
+              "open": 4491.6,
+              "high": 4492.4,
+              "low": 4373.4,
+              "close": 4435.9
+            },
+            {
+              "position": 0.16987711709568454,
+              "open": 4435.9,
+              "high": 4444.9,
+              "low": 4386.3,
+              "close": 4402.4
+            },
+            {
+              "position": 0.21940667239634898,
+              "open": 4402.6,
+              "high": 4436.1,
+              "low": 4325.5,
+              "close": 4357.3
+            },
+            {
+              "position": 0.2689362276970134,
+              "open": 4356.8,
+              "high": 4402.2,
+              "low": 4294.1,
+              "close": 4355.7
+            },
+            {
+              "position": 0.31846578299767786,
+              "open": 4354.8,
+              "high": 4356.6,
+              "low": 4122.0,
+              "close": 4287.2
+            },
+            {
+              "position": 0.3679953382983423,
+              "open": 4287.2,
+              "high": 4380.3,
+              "low": 4240.7,
+              "close": 4348.5
+            },
+            {
+              "position": 0.4175248935990068,
+              "open": 4345.4,
+              "high": 4398.2,
+              "low": 4336.5,
+              "close": 4372.6
+            },
+            {
+              "position": 0.46705444889967124,
+              "open": 4371.6,
+              "high": 4390.0,
+              "low": 4306.7,
+              "close": 4345.4
+            },
+            {
+              "position": 0.5191908229003707,
+              "open": 4359.9,
+              "high": 4372.3,
+              "low": 4248.5,
+              "close": 4277.5
+            },
+            {
+              "position": 0.5687203782010352,
+              "open": 4269.8,
+              "high": 4316.6,
+              "low": 4259.1,
+              "close": 4285.7
+            },
+            {
+              "position": 0.6182499335016995,
+              "open": 4285.4,
+              "high": 4286.6,
+              "low": 4119.3,
+              "close": 4186.7
+            },
+            {
+              "position": 0.667779488802364,
+              "open": 4187.1,
+              "high": 4220.0,
+              "low": 4138.2,
+              "close": 4189.1
+            },
+            {
+              "position": 0.7173090441030284,
+              "open": 4197.7,
+              "high": 4225.3,
+              "low": 4131.0,
+              "close": 4141.8
+            },
+            {
+              "position": 0.7668385994036929,
+              "open": 4141.8,
+              "high": 4180.5,
+              "low": 4107.4,
+              "close": 4167.4
+            },
+            {
+              "position": 0.8163681547043573,
+              "open": 4166.1,
+              "high": 4205.8,
+              "low": 4072.5,
+              "close": 4182.9
+            },
+            {
+              "position": 0.8658977100050218,
+              "open": 4184.9,
+              "high": 4205.8,
+              "low": 4170.4,
+              "close": 4204.5
+            },
+            {
+              "position": 0.9154272653056863,
+              "open": 4201.9,
+              "high": 4216.0,
+              "low": 4146.9,
+              "close": 4151.7
+            },
+            {
+              "position": 0.9675636393063857,
+              "open": 4157.2,
+              "high": 4198.0,
+              "low": 4078.4,
+              "close": 4165.4
+            },
+            {
+              "position": 0.9962386450067704,
+              "open": 4168.5,
+              "high": 4170.6,
+              "low": 4158.0,
+              "close": 4168.8
+            }
+          ],
+          "markers": [
+            {
+              "position": 0.10000000022693718,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000250269805445,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000251445498806,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000251572902846,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000252275895834,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000025276050355,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000252760902902,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000253236064521,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000254431383726,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000254432096088,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10001062863106197,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002195649852308,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000252650139045,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002526501984732,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002526502461442,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10157450965537514,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10157579846358918,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10158250530257174,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10303771614143195,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1030403918000946,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10304674897098882,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11602291673732269,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11603419874765915,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1896536494094947,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18965395962732312,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18965396039622553,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1896539657932927,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19809446747203102,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.19816451644830255,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19816480564094552,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822405926615255,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822761699893832,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822765796400268,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822767180191478,
+              "kind": "increase"
+            },
+            {
+              "position": 0.198227715954179,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822771596418606,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1982277159710362,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822771686371327,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19903516059249773,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2009327321726545,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275852984312542,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275854234166393,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275854370729782,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275854555099398,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275854687443914,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275854687760017,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275854909350347,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855804254578,
+              "kind": "increase"
+            },
+            {
+              "position": 0.21021176070842626,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2294453399047868,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.22944553808721202,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.24944345740535995,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24967935722521287,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984806021269795,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984824531022037,
+              "kind": "increase"
+            },
+            {
+              "position": 0.249848583049928,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984858616684053,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24987755621569172,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24991610554238167,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2499825187293327,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2501073561358863,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25016363356645027,
+              "kind": "increase"
+            },
+            {
+              "position": 0.250180662333375,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25030896817191406,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2503177722465239,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507217814678806,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507217872596182,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25072179877668077,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25072180196933613,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507218174565756,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25076506245996044,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078078774189977,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078081590443774,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078082085904546,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078082526983214,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078082795044215,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078085260614374,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078148808472356,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078148808996303,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507814880930217,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078149206798167,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078149209878314,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507814983741049,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078149927296667,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078150811779676,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078151074209565,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26151078834070884,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2615452846644825,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26154533906600097,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26154534292860315,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26154534569450055,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26154536104219345,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26155054168014324,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26403289576478955,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26403289609288305,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26403291855794236,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2640329347666513,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2640329376236486,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26419951599901187,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995184095135,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995205451297,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995264291467,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995279906301,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26419953317255124,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26419953733705903,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995611141623,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26421113792865786,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2642111399233719,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26421114184945516,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3222121268106593,
+              "kind": "increase"
+            },
+            {
+              "position": 0.32221214476615906,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3418915638986486,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233540067496954,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423354036433079,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233595046572884,
+              "kind": "increase"
+            },
+            {
+              "position": 0.342336008238229,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233600851394763,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233600875934317,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233601150022697,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423360115029448,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233601219199383,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5962084264887885,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6078473205875893,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6078501514211233,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6139131005775733,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6150952178363678,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6150952257476399,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6150952292293361,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6191390356536546,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6193604200681713,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6193604362089491,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6265613325147293,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6359353963136465,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6383089859194594,
+              "kind": "increase"
+            },
+            {
+              "position": 0.668776075485399,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6885223045278116,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6921519352548436,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494960105201359,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494960285441531,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494967354787367,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494972351520706,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980110910342,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980131710643,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980217546745,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980266757812,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494981339540857,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7495428561472779,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501144125021996,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501652310344761,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501654428358481,
+              "kind": "increase"
+            },
+            {
+              "position": 0.750165535531231,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501655358113393,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501655360254943,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501656454816095,
+              "kind": "increase"
+            },
+            {
+              "position": 0.750184696348532,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512078387242799,
+              "kind": "increase"
+            },
+            {
+              "position": 0.751231406989218,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512314864917946,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512577429757287,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512674300677851,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513600603049578,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513601541869012,
+              "kind": "increase"
+            },
+            {
+              "position": 0.751360154190563,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513605884921128,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513621650058943,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513622359399138,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513625470973916,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513625481022405,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513625488971151,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513625489005964,
+              "kind": "increase"
+            },
+            {
+              "position": 0.751362549932842,
+              "kind": "increase"
+            },
+            {
+              "position": 0.751362549936722,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513664185743751,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7514320769415465,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7514320775138261,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7606868195068558,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7723367695493317,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729138450320251,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729154626657919,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729194149267296,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729194483194527,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729194779868641,
+              "kind": "increase"
+            },
+            {
+              "position": 0.8950895552693322,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8951427736294538,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.895454384451797,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954545053000956,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954548939113763,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954568447997753,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9999997735734777,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.9999999274717573,
+              "kind": "decrease"
+            },
+            {
+              "position": 1.0,
+              "kind": "decrease"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "instrument_id": 2,
+      "trade_id": "2520467105731526",
+      "status": "ok",
+      "snapshot": {
+        "position_cycle_id": "0x4f0a2df7b1882a56f76112d79b00882f5312cafc613bf7ed126602b7fd62e731",
+        "side": "short",
+        "started_at": 1788460500441,
+        "as_of_at": 1792189182921,
+        "is_closed": false,
+        "size_after": "447.00663",
+        "entry_price": "4285.6",
+        "as_of_price": "4168.8",
+        "pnl": "52188.620106",
+        "pnl_percent": null,
+        "leverage": null,
+        "chart": {
+          "candles": [
+            {
+              "position": 0.0,
+              "open": 4471.5,
+              "high": 4475.4,
+              "low": 4470.5,
+              "close": 4475.4
+            },
+            {
+              "position": 0.021288444941993716,
+              "open": 4474.8,
+              "high": 4488.2,
+              "low": 4405.1,
+              "close": 4450.6
+            },
+            {
+              "position": 0.07081800422946684,
+              "open": 4446.2,
+              "high": 4512.1,
+              "low": 4159.0,
+              "close": 4491.9
+            },
+            {
+              "position": 0.12034756351693997,
+              "open": 4491.6,
+              "high": 4492.4,
+              "low": 4373.4,
+              "close": 4435.9
+            },
+            {
+              "position": 0.16987712280441308,
+              "open": 4435.9,
+              "high": 4444.9,
+              "low": 4386.3,
+              "close": 4402.4
+            },
+            {
+              "position": 0.21940668209188624,
+              "open": 4402.6,
+              "high": 4436.1,
+              "low": 4325.5,
+              "close": 4357.3
+            },
+            {
+              "position": 0.26893624137935934,
+              "open": 4356.8,
+              "high": 4402.2,
+              "low": 4294.1,
+              "close": 4355.7
+            },
+            {
+              "position": 0.3184658006668325,
+              "open": 4354.8,
+              "high": 4356.6,
+              "low": 4122.0,
+              "close": 4287.2
+            },
+            {
+              "position": 0.3679953599543056,
+              "open": 4287.2,
+              "high": 4380.3,
+              "low": 4240.7,
+              "close": 4348.5
+            },
+            {
+              "position": 0.4175249192417787,
+              "open": 4345.4,
+              "high": 4398.2,
+              "low": 4336.5,
+              "close": 4372.6
+            },
+            {
+              "position": 0.46705447852925186,
+              "open": 4371.6,
+              "high": 4390.0,
+              "low": 4306.7,
+              "close": 4345.4
+            },
+            {
+              "position": 0.5191908567265919,
+              "open": 4359.9,
+              "high": 4372.3,
+              "low": 4248.5,
+              "close": 4277.5
+            },
+            {
+              "position": 0.5687204160140651,
+              "open": 4269.8,
+              "high": 4316.6,
+              "low": 4259.1,
+              "close": 4285.7
+            },
+            {
+              "position": 0.6182499753015382,
+              "open": 4285.4,
+              "high": 4286.6,
+              "low": 4119.3,
+              "close": 4186.7
+            },
+            {
+              "position": 0.6677795345890114,
+              "open": 4187.1,
+              "high": 4220.0,
+              "low": 4138.2,
+              "close": 4189.1
+            },
+            {
+              "position": 0.7173090938764846,
+              "open": 4197.7,
+              "high": 4225.3,
+              "low": 4131.0,
+              "close": 4141.8
+            },
+            {
+              "position": 0.7668386531639577,
+              "open": 4141.8,
+              "high": 4180.5,
+              "low": 4107.4,
+              "close": 4167.4
+            },
+            {
+              "position": 0.8163682124514307,
+              "open": 4166.1,
+              "high": 4205.8,
+              "low": 4072.5,
+              "close": 4182.9
+            },
+            {
+              "position": 0.8658977717389038,
+              "open": 4184.9,
+              "high": 4205.8,
+              "low": 4170.4,
+              "close": 4204.5
+            },
+            {
+              "position": 0.915427331026377,
+              "open": 4201.9,
+              "high": 4216.0,
+              "low": 4146.9,
+              "close": 4151.7
+            },
+            {
+              "position": 0.967563709223717,
+              "open": 4157.2,
+              "high": 4198.0,
+              "low": 4078.4,
+              "close": 4165.4
+            },
+            {
+              "position": 0.9962387172322542,
+              "open": 4168.5,
+              "high": 4170.6,
+              "low": 4158.0,
+              "close": 4168.8
+            }
+          ],
+          "markers": [
+            {
+              "position": 0.10000000031101006,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000250278232875,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000251453926332,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000251581330381,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000252284323426,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000252768931182,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000252769330532,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1000025324449219,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000254439811491,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10000254440523854,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10001062871599037,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002195658436329,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002526510001103,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002526510595385,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10002526511072095,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10157450986618582,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10157579867450361,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10158250551402603,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1030377164700213,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1030403921288993,
+              "kind": "increase"
+            },
+            {
+              "position": 0.10304674930030526,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11602291811113664,
+              "kind": "increase"
+            },
+            {
+              "position": 0.11603420012238125,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18965365671010614,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18965396692795955,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18965396769686202,
+              "kind": "increase"
+            },
+            {
+              "position": 0.18965397309392962,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1980944754520737,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.1981645244339837,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19816481362664998,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822406725662653,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822762498969865,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822766595476635,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822767979267952,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822772394494734,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822772395495436,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822772396180452,
+              "kind": "increase"
+            },
+            {
+              "position": 0.19822772485448165,
+              "kind": "increase"
+            },
+            {
+              "position": 0.1990351686482601,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20093274038115913,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275853819859493,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855069713447,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855206276844,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855390646477,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855522991004,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855523307104,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275855744897453,
+              "kind": "increase"
+            },
+            {
+              "position": 0.20275856639801754,
+              "kind": "increase"
+            },
+            {
+              "position": 0.21021176966383262,
+              "kind": "increase"
+            },
+            {
+              "position": 0.22944535040837183,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.229445548590813,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.249443469518664,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24967936935750534,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984807235856993,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984825745610723,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984859519584204,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24984859831275483,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24987756836393793,
+              "kind": "increase"
+            },
+            {
+              "position": 0.24991611769373084,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2499825308860277,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2501073683026299,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2501636457377238,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2501806745060193,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25030898035488613,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25031778443020464,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507217936840815,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507217994758195,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25072181099288304,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507218141855386,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507218296727794,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25076507467964515,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078079996285024,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507808281253905,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507808330799986,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078083749078567,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507808401713959,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507808648270995,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078150030573043,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507815003109699,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078150031402857,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507815042889888,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078150431979035,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2507815105951126,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078151149397443,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078152033880524,
+              "kind": "increase"
+            },
+            {
+              "position": 0.25078152296310435,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26151080142535493,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2615452977519054,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26154535215342817,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2615453560160307,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2615453587819283,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2615453741296224,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2615505547679893,
+              "kind": "increase"
+            },
+            {
+              "position": 0.264032909052449,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2640329093805425,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26403293184560367,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2640329480543139,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2640329509113114,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26419952930008317,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26419953171058497,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995338462013,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995397302188,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26419954129170237,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995464736239,
+              "kind": "increase"
+            },
+            {
+              "position": 0.264199550638132,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2641995744152372,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2642111512306647,
+              "kind": "increase"
+            },
+            {
+              "position": 0.26421115322537886,
+              "kind": "increase"
+            },
+            {
+              "position": 0.2642111551514622,
+              "kind": "increase"
+            },
+            {
+              "position": 0.32221214478137034,
+              "kind": "increase"
+            },
+            {
+              "position": 0.32221216273687153,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34189158345342696,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233542026547387,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423354232338125,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423359700562774,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423360278287823,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423360281045009,
+              "kind": "increase"
+            },
+            {
+              "position": 0.34233602834989646,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423360310907805,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423360310934983,
+              "kind": "increase"
+            },
+            {
+              "position": 0.3423360317825474,
+              "kind": "increase"
+            },
+            {
+              "position": 0.5962084665144285,
+              "kind": "increase"
+            },
+            {
+              "position": 0.607847361550085,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6078501923838467,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6139131420283249,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6150952593822723,
+              "kind": "increase"
+            },
+            {
+              "position": 0.615095267293545,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6150952707752415,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6191390775250601,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6193604619573969,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6193604780981761,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6265613749835819,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6359354395370505,
+              "kind": "increase"
+            },
+            {
+              "position": 0.638309029333922,
+              "kind": "increase"
+            },
+            {
+              "position": 0.668776121352265,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6885223519841214,
+              "kind": "increase"
+            },
+            {
+              "position": 0.6921519830033153,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494960628844345,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494960809084531,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494967878430936,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494972875164676,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980634554937,
+              "kind": "increase"
+            },
+            {
+              "position": 0.749498065535524,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980741191349,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494980790402421,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7494981863185552,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7495429085153472,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501144649162754,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501652834526426,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501654952540316,
+              "kind": "increase"
+            },
+            {
+              "position": 0.750165587949422,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501655882295303,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501655884436853,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501656978998092,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7501847487682654,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512078912263696,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512314594932047,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512315389957878,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512577954818354,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7512674825746715,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513601128193003,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513602067012511,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513602067049131,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513606410064979,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513622175204061,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513622884544314,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513625996119342,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513626006167833,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513626014116579,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513626014151391,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513626024473848,
+              "kind": "increase"
+            },
+            {
+              "position": 0.751362602451265,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7513664710892294,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7514321294616858,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7514321300339656,
+              "kind": "increase"
+            },
+            {
+              "position": 0.760686872771942,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7723368237521635,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729138992813077,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729155169152048,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729194691764606,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729195025691864,
+              "kind": "increase"
+            },
+            {
+              "position": 0.7729195322366001,
+              "kind": "increase"
+            },
+            {
+              "position": 0.8950896193529689,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8951428377173742,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954544485648,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954545694131084,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954549580244204,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.8954569089129764,
+              "kind": "decrease"
+            },
+            {
+              "position": 0.999999846101708,
+              "kind": "decrease"
+            },
+            {
+              "position": 1.0,
+              "kind": "decrease"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ Base URL: `https://api.perpetuals.polymarket.com`
 
 Perpetual futures trading: account state, order placement, and market info.
 
-> **Partially implemented.** `polyoxide-polymarket`'s `perps` module covers the 21 public
+> **Partially implemented.** `polyoxide-polymarket`'s `perps` module covers the 28 public
 > `/v1/info/*` routes and, under its `perps-ws` feature, the six public WebSocket
 > channels (`bbo`, `book`, `trades`, `klines`, `tickers`, `statistics`; see
 > [asyncapi.json](asyncapi.json)). Credentials (`POST /v1/account/proxy`), the
@@ -32,13 +32,13 @@ retrieved via `GET /v1/account/credentials`.
 
 ## Endpoints
 
-61 endpoints across four groups.
+68 endpoints across four groups.
 
 | Group | Endpoints |
 |-------|-----------|
 | `/v1/account/*` | auto-cancel, backstops, balances, config, credentials, deposits, equity, fills, funding, internal-transfer(s), invite, limits, notifications(/read), open-orders, orders, pnl, portfolio, proxy, referral, rewards, stats, withdraw, withdrawals |
 | `/v1/blp/*` | enroll, enrollment, liquidations |
-| `/v1/info/*` | assets, bbo, book, exchange, exchange-stats, fees, funding, index, instruments, invite, klines, leaderboard, limit-tiers, mark-history, ping, portfolio, position-fills, statistics, tickers, time, trades |
+| `/v1/info/*` | assets, bbo, book, competition(/account, /leaderboard, /widget), competitions, exchange, exchange-stats, fees, funding, index, instruments, invite, klines, leaderboard, limit-tiers, mark-history, ping, portfolio, position-fills, position-snapshots (`POST`), registered, statistics, tickers, time, trades |
 | `/v1/trade/*` | auto-cancel, leverage(/batch), margin, orders (place, modify via `PATCH`, cancel), orders-coid (modify via `PATCH`, cancel), orders/all |
 
 Real-time updates are documented separately in

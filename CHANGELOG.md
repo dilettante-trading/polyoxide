@@ -15,6 +15,28 @@
   `DEPOSIT` or `WITHDRAWAL` alone returns an empty page unless
   `exclude_deposits_withdrawals(false)` is sent; `ListActivity::types` now says both.
 
+- **Perps spec drift (#56).** Seven public routes, documented fields and `roi` (DRIFT R17).
+  The changed types make this release raise the 0.x minor for perps too.
+  - `Instrument::close_only` (`perps::api::exchange`), `Trade::settlement` (`perps::api::market`)
+    and `PositionFill::settlement` (`perps::api::public`) are `bool` where they were
+    `Option<bool>`: the spec now requires all three, and the host sent them on every row. Replace
+    `Some(x)` with `x`. `perps::venue`'s `InstrumentExt::close_only` and `TradeExt::settlement`
+    stay `Option<bool>` and are now always `Some`.
+  - `LeaderboardEntry` and `LeaderboardAccount` gain a required `roi`, return over the window as a
+    fraction, and the undocumented `instruments_traded` and `top_instrument_ids`, both `Option`.
+    `LeaderboardSort` gains `Roi`, which breaks an exhaustive `match` on it.
+  - `Instrument` gains `settlement: Option<InstrumentSettlement>`. `GET /v1/info/instruments` lists
+    enabled instruments only, but filtered by `instrument_id` it also returns a settled one, with
+    `close_only` set and its settlement record; `perps::venue`'s `instrument` now reports such an
+    instrument with `tradable: Some(false)` and the record in `InstrumentExt::settlement`.
+  - New routes: `perps.public().registered(address)`; `perps.public().position_snapshots(address)`,
+    a `POST` with `.active(instrument_ids)` (at most 20) and `.history(fills)` (at most 4,
+    `PositionSnapshotFill`, which converts from a `PositionFill`), refused before sending when it
+    names neither, too many or one twice; and the namespace `perps.competitions()`: `list()`,
+    `get(id)`, `leaderboard(id)`, `account(id, address)` and `widget()`, with `CompetitionId`,
+    `CompetitionStatus` and `CompetitionRowState` in `perps::types`. No competition has existed
+    yet, so the competition types are modelled from the spec alone.
+
 ## [0.41.1] - 2026-10-19
 
 Three upstream drifts adopted, each additive: nothing is removed or renamed, no signature

@@ -3,8 +3,8 @@
 Rust client for the Polymarket Perps API (perpetual futures), the `perps` module of `polyoxide-polymarket`.
 
 Public market data: exchange and instrument reference data, tickers, order
-books, klines, trades, funding, fees and leaderboards. No authentication
-required for anything in this module.
+books, klines, trades, funding, fees, leaderboards, trading competitions and
+position share cards. No authentication required for anything in this module.
 
 More information about this module can be found in the [crate documentation](https://docs.rs/polyoxide-polymarket/latest/polyoxide_polymarket/perps/).
 
@@ -28,6 +28,43 @@ let instruments = perps.exchange().instruments().send().await?;
 for instrument in &instruments {
     println!("{} {}", instrument.instrument_id, instrument.symbol);
 }
+# Ok(())
+# }
+```
+
+## Competitions and position snapshots
+
+`perps.competitions()` reads the trading competitions: the list, one competition's
+settings and prize table, its leaderboard, an account's standing and the live widget.
+`perps.public().position_snapshots(address)` posts a selection of open positions and
+past fills and returns share-card numbers and a small chart for each; without the
+account's credentials `leverage` and `pnl_percent` come back `None`.
+
+```no_run
+use polyoxide_polymarket::perps::{api::public::PositionSnapshotFill, Perps};
+
+# async fn example() -> Result<(), polyoxide_polymarket::perps::PerpsError> {
+let perps = Perps::new()?;
+let address = "0xE0Ebcff994a0f3A644634927aE1B68913ad58A39";
+if !perps.public().registered(address).send().await?.registered {
+    return Ok(());
+}
+let fills = perps
+    .public()
+    .position_fills(address, 2.into())
+    .send()
+    .await?;
+let cards = perps
+    .public()
+    .position_snapshots(address)
+    .history(fills.data.iter().take(4).map(PositionSnapshotFill::from))
+    .send()
+    .await?;
+for result in &cards.history {
+    println!("{:?} {:?}", result.trade_id, result.status);
+}
+let competitions = perps.competitions().list().send().await?;
+println!("{} competitions", competitions.competitions.len());
 # Ok(())
 # }
 ```

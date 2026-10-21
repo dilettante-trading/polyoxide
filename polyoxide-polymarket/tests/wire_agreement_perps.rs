@@ -20,7 +20,9 @@
 
 use std::collections::BTreeSet;
 
-use polyoxide_polymarket::perps::api::{exchange::*, health::*, market::*, public::*};
+use polyoxide_polymarket::perps::api::{
+    competition::*, exchange::*, health::*, market::*, public::*,
+};
 use polyoxide_test_support::{
     agreement::{self, Arrays, Ledger},
     fixtures,
@@ -43,15 +45,47 @@ const EXPECTED_ABSENT: &[(&str, &str, &str)] = &[
         "/cursor",
         "sent only when another page exists",
     ),
+    (
+        "instruments",
+        "[]/settlement",
+        "sent only for a settled instrument, which the listing leaves out",
+    ),
+    (
+        "instrument_settled",
+        "[]/display_symbol",
+        "sent only when the label differs from the symbol",
+    ),
+    (
+        "position_snapshots",
+        "/active[]/trade_id",
+        "a result for an open position names no fill",
+    ),
+    (
+        "competitions",
+        "/live_competition_id",
+        "the host sends live_competition_ids instead",
+    ),
+    (
+        "competitions",
+        "/landing_competition_id",
+        "sent only when a competition exists",
+    ),
 ];
 
 /// `(fixture, path, reason)` a capture is known to lack, so the type behind
 /// the path has never been checked against the wire.
-const NEVER_ON_WIRE: &[(&str, &str, &str)] = &[(
-    "index",
-    "/constituents[]",
-    "every index answered with [] on 2026-09-30; check IndexConstituent by hand on the first capture that carries one",
-)];
+const NEVER_ON_WIRE: &[(&str, &str, &str)] = &[
+    (
+        "index",
+        "/constituents[]",
+        "every index answered with [] on 2026-09-30; check IndexConstituent by hand on the first capture that carries one",
+    ),
+    (
+        "competitions",
+        "/competitions[]",
+        "no competition existed on 2026-10-21, so competition.json, competition_leaderboard.json, competition_account.json and competition_widget.json were written by hand from the spec; capture them on the first run that finds one",
+    ),
+];
 
 fn key_paths(value: &Value, prefix: &str, out: &mut BTreeSet<String>) {
     agreement::key_paths(value, prefix, out)
@@ -118,6 +152,14 @@ fn every_fixture_agrees_with_its_type() {
     check::<Leaderboard>("leaderboard", &mut used);
     check::<Leaderboard>("leaderboard_account", &mut used);
     check::<InviteCheck>("invite", &mut used);
+    check::<Vec<Instrument>>("instrument_settled", &mut used);
+    check::<Registered>("registered", &mut used);
+    check::<PositionSnapshots>("position_snapshots", &mut used);
+    check::<CompetitionList>("competitions", &mut used);
+    check::<CompetitionDetail>("competition", &mut used);
+    check::<CompetitionLeaderboard>("competition_leaderboard", &mut used);
+    check::<CompetitionAccount>("competition_account", &mut used);
+    check::<CompetitionWidget>("competition_widget", &mut used);
 
     let stale: Vec<_> = used.stale().into_iter().map(|(f, p, _)| (f, p)).collect();
     assert!(

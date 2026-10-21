@@ -1,15 +1,26 @@
 //! Public-by-address lookups and the invite check:
-//! `/v1/info/{portfolio,position-fills,leaderboard,invite}`.
+//! `/v1/info/{portfolio,position-fills,leaderboard,invite,registered,position-snapshots}`.
 
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use std::collections::BTreeSet;
+
+use polyoxide_core::{reqwest::Method, ApiError, HttpClient, QueryBuilder, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::perps::{
     api::Fetch,
     error::PerpsError,
-    types::{InstrumentId, LeaderboardSort, LeaderboardWindow, Side, SortOrder},
+    types::{
+        InstrumentId, LeaderboardSort, LeaderboardWindow, PositionSnapshotStatus, Side,
+        SnapshotMarkerKind, SortOrder,
+    },
 };
+
+/// Most active instruments one `POST /v1/info/position-snapshots` takes.
+pub const MAX_SNAPSHOT_ACTIVE: usize = 20;
+
+/// Most historical fills one `POST /v1/info/position-snapshots` takes.
+pub const MAX_SNAPSHOT_HISTORY: usize = 4;
 
 /// Public namespace.
 #[derive(Clone)]
@@ -52,6 +63,32 @@ impl PublicApi {
         CheckInvite {
             request: Request::new(self.http_client.clone(), "/v1/info/invite")
                 .query("code", code.into()),
+        }
+    }
+
+    /// `GET /v1/info/registered`: whether an address has a Perps account.
+    pub fn registered(&self, address: impl Into<String>) -> Fetch<Registered> {
+        Fetch {
+            request: Request::new(self.http_client.clone(), "/v1/info/registered")
+                .query("address", address.into()),
+        }
+    }
+
+    /// `POST /v1/info/position-snapshots`: share-card numbers, candles and
+    /// trade markers for a registered account's open positions
+    /// ([`GetPositionSnapshots::active`]) and the positions behind past fills
+    /// ([`GetPositionSnapshots::history`]). Name at least one of either.
+    ///
+    /// The request is unauthenticated, so `leverage` and `pnl_percent` come
+    /// back `None`: the host reveals them only to the account's owner.
+    pub fn position_snapshots(&self, address: impl Into<String>) -> GetPositionSnapshots {
+        GetPositionSnapshots {
+            http_client: self.http_client.clone(),
+            body: PositionSnapshotsRequest {
+                address: address.into(),
+                active_instrument_ids: Vec::new(),
+                history_fills: Vec::new(),
+            },
         }
     }
 }
@@ -117,6 +154,238 @@ impl CheckInvite {
     }
 }
 
+/// Request builder for `POST /v1/info/position-snapshots`.
+pub struct GetPositionSnapshots {
+    http_client: HttpClient,
+    body: PositionSnapshotsRequest,
+}
+
+impl GetPositionSnapshots {
+    /// Open positions to snapshot, by instrument, in the order the answer's
+    /// `active` keeps. At most [`MAX_SNAPSHOT_ACTIVE`].
+    pub fn active(mut self, instrument_ids: impl IntoIterator<Item = InstrumentId>) -> Self {
+        self.body.active_instrument_ids = instrument_ids.into_iter().collect();
+        self
+    }
+
+    /// Past fills whose positions to snapshot, in the order the answer's
+    /// `history` keeps: each a fill from [`PublicApi::position_fills`] or the
+    /// public trades, keyed by its instrument, trade id and time. At most
+    /// [`MAX_SNAPSHOT_HISTORY`].
+    pub fn history(mut self, fills: impl IntoIterator<Item = PositionSnapshotFill>) -> Self {
+        self.body.history_fills = fills.into_iter().collect();
+        self
+    }
+
+    /// Execute the request.
+    ///
+    /// # Errors
+    ///
+    /// `ApiError::Validation`, with nothing sent, when the request names no
+    /// instrument and no fill, more than [`MAX_SNAPSHOT_ACTIVE`] instruments or
+    /// [`MAX_SNAPSHOT_HISTORY`] fills, or one of either twice: the host refuses
+    /// each with a `400`.
+    pub async fn send(self) -> Result<PositionSnapshots, PerpsError> {
+        self.body.validate()?;
+        Request::new(self.http_client, "/v1/info/position-snapshots")
+            .method(Method::POST)
+            .body(&self.body)?
+            .send()
+            .await
+    }
+}
+
+/// The body of `POST /v1/info/position-snapshots`. An empty list is left
+/// out, since the host refuses an explicit `null`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct PositionSnapshotsRequest {
+    address: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    active_instrument_ids: Vec<InstrumentId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    history_fills: Vec<PositionSnapshotFill>,
+}
+
+impl PositionSnapshotsRequest {
+    fn validate(&self) -> Result<(), ApiError> {
+        let refuse = |why: &str| Err(ApiError::Validation(format!("position snapshots: {why}")));
+        if self.active_instrument_ids.is_empty() && self.history_fills.is_empty() {
+            return refuse("name at least one active instrument or historical fill");
+        }
+        if self.active_instrument_ids.len() > MAX_SNAPSHOT_ACTIVE {
+            return refuse(&format!(
+                "{} active instruments, more than {MAX_SNAPSHOT_ACTIVE}",
+                self.active_instrument_ids.len()
+            ));
+        }
+        if self.history_fills.len() > MAX_SNAPSHOT_HISTORY {
+            return refuse(&format!(
+                "{} historical fills, more than {MAX_SNAPSHOT_HISTORY}",
+                self.history_fills.len()
+            ));
+        }
+        let ids: BTreeSet<_> = self.active_instrument_ids.iter().collect();
+        if ids.len() < self.active_instrument_ids.len() {
+            return refuse("an active instrument is named twice");
+        }
+        let fills: BTreeSet<_> = self
+            .history_fills
+            .iter()
+            .map(|f| (f.instrument_id, f.trade_id))
+            .collect();
+        if fills.len() < self.history_fills.len() {
+            return refuse("a historical fill is named twice");
+        }
+        Ok(())
+    }
+}
+
+/// One past fill to snapshot the position behind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct PositionSnapshotFill {
+    /// Instrument id.
+    pub instrument_id: InstrumentId,
+    /// Trade id. Sent as a decimal string, as the host requires.
+    #[serde(serialize_with = "u64_as_str")]
+    pub trade_id: u64,
+    /// The fill's public timestamp, Unix ms.
+    pub timestamp: u64,
+}
+
+impl PositionSnapshotFill {
+    /// A fill by its instrument, trade id and public timestamp.
+    pub fn new(instrument_id: InstrumentId, trade_id: u64, timestamp: u64) -> Self {
+        Self {
+            instrument_id,
+            trade_id,
+            timestamp,
+        }
+    }
+}
+
+impl From<&PositionFill> for PositionSnapshotFill {
+    fn from(fill: &PositionFill) -> Self {
+        Self::new(fill.instrument_id, fill.trade_id, fill.timestamp)
+    }
+}
+
+fn u64_as_str<S: serde::Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(value)
+}
+
+/// `GET /v1/info/registered`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Registered {
+    /// Whether the address has a Perps account.
+    pub registered: bool,
+}
+
+/// `POST /v1/info/position-snapshots`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositionSnapshots {
+    /// One result per requested active instrument, in request order.
+    pub active: Vec<PositionSnapshotResult>,
+    /// One result per requested fill, in request order.
+    pub history: Vec<PositionSnapshotResult>,
+    /// The serving gateway's history horizon, Unix ms: a fill after it is
+    /// `not_found`. Gateways can differ.
+    pub history_as_of_at: u64,
+}
+
+/// The result for one selection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositionSnapshotResult {
+    /// Whether a snapshot was built, and if not, why.
+    pub status: PositionSnapshotStatus,
+    /// The selection's instrument.
+    pub instrument_id: Option<InstrumentId>,
+    /// The selection's trade id, for a historical fill, without leading
+    /// zeroes.
+    pub trade_id: Option<String>,
+    /// The snapshot, present only when `status` is `ok`.
+    pub snapshot: Option<PositionCardSnapshot>,
+}
+
+/// One position's share card.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositionCardSnapshot {
+    /// Opaque, stable id of the position's cycle; a flip starts a new one.
+    pub position_cycle_id: String,
+    /// Side.
+    pub side: Side,
+    /// When the cycle opened, Unix ms.
+    pub started_at: u64,
+    /// The captured state's time for an open position, the selected fill's
+    /// for history, Unix ms.
+    pub as_of_at: u64,
+    /// Whether the cycle is closed.
+    pub is_closed: bool,
+    /// Remaining quantity, unsigned; `side` gives its direction.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub size_after: Decimal,
+    /// Weighted entry price of what remains; the last entry when flat.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub entry_price: Decimal,
+    /// The captured mark for an open position, the selected fill's price for
+    /// history.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub as_of_price: Decimal,
+    /// Gross PnL: unrealised on what remains while open, realised over the
+    /// cycle once closed. Fees, funding and earlier cycles are left out.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub pnl: Decimal,
+    /// PnL times leverage over entry notional, as a percentage. Only the
+    /// authenticated owner sees it; `None` otherwise.
+    #[serde(default, with = "rust_decimal::serde::str_option")]
+    pub pnl_percent: Option<Decimal>,
+    /// Leverage. Only the authenticated owner sees it, and not when it was
+    /// never captured; `None` otherwise.
+    pub leverage: Option<u32>,
+    /// The card's chart.
+    pub chart: PositionSnapshotChart,
+}
+
+/// A share card's chart: at most 22 candles and 256 markers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositionSnapshotChart {
+    /// Candles, left to right.
+    pub candles: Vec<PositionSnapshotCandle>,
+    /// Trade markers.
+    pub markers: Vec<PositionSnapshotMarker>,
+}
+
+/// One chart candle. Prices are plain JSON numbers here, for drawing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositionSnapshotCandle {
+    /// Horizontal position, 0 to 1.
+    pub position: f64,
+    /// Open price.
+    pub open: f64,
+    /// High price.
+    pub high: f64,
+    /// Low price.
+    pub low: f64,
+    /// Close price.
+    pub close: f64,
+}
+
+/// One chart marker: a fill that grew or shrank the position.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PositionSnapshotMarker {
+    /// Horizontal position, 0 to 1.
+    pub position: f64,
+    /// Whether the fill increased or decreased the position.
+    pub kind: SnapshotMarkerKind,
+}
+
 /// `GET /v1/info/portfolio`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -167,8 +436,8 @@ pub struct PositionFills {
 
 /// One fill behind a current position.
 ///
-/// `builder_fee`, `settlement` and `total_fee` are on the wire and not in the
-/// published schema (`docs/specs/perps/OBSERVED.md`).
+/// `builder_fee` and `total_fee` are on the wire and not in the published
+/// schema (`docs/specs/perps/OBSERVED.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PositionFill {
@@ -199,8 +468,10 @@ pub struct PositionFill {
     /// `fee` plus `builder_fee`. Undocumented.
     #[serde(default, with = "rust_decimal::serde::str_option")]
     pub total_fee: Option<Decimal>,
-    /// Whether this was a settlement fill. Undocumented.
-    pub settlement: Option<bool>,
+    /// Whether this fill closed the position at an instrument's permanent
+    /// settlement, at the settlement price with no fee or liquidation
+    /// penalty. Neither a market trade nor auto-deleveraging.
+    pub settlement: bool,
     /// Position size before the fill.
     #[serde(with = "rust_decimal::serde::str")]
     pub previous_size: Decimal,
@@ -255,6 +526,15 @@ pub struct LeaderboardEntry {
     /// Account value.
     #[serde(with = "rust_decimal::serde::str")]
     pub account_value: Decimal,
+    /// Return over the window as a fraction (`0.4527` is 45.27%): `pnl` over
+    /// the larger of 100 and the starting equity plus the window's peak net
+    /// deposits.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub roi: Decimal,
+    /// Instruments the account traded over the window. Undocumented.
+    pub instruments_traded: Option<u64>,
+    /// The instruments it traded most. Undocumented.
+    pub top_instrument_ids: Option<Vec<InstrumentId>>,
 }
 
 /// The requesting account's own standing.
@@ -274,6 +554,15 @@ pub struct LeaderboardAccount {
     /// Account value.
     #[serde(with = "rust_decimal::serde::str")]
     pub account_value: Decimal,
+    /// Return over the window as a fraction (`0.4527` is 45.27%): `pnl` over
+    /// the larger of 100 and the starting equity plus the window's peak net
+    /// deposits.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub roi: Decimal,
+    /// Instruments the account traded over the window. Undocumented.
+    pub instruments_traded: Option<u64>,
+    /// The instruments it traded most. Undocumented.
+    pub top_instrument_ids: Option<Vec<InstrumentId>>,
 }
 
 /// `GET /v1/info/invite`.

@@ -9,8 +9,11 @@
 use std::time::Duration;
 
 use polyoxide_polymarket::perps::{
-    api::exchange::Instrument,
-    types::{BookDepth, InstrumentId, Interval, LeaderboardWindow},
+    api::{exchange::Instrument, public::PositionSnapshotFill},
+    types::{
+        BookDepth, InstrumentId, Interval, LeaderboardSort, LeaderboardWindow,
+        PositionSnapshotStatus,
+    },
     Perps,
 };
 use polyoxide_test_support::{environmental, fail, ResultExt};
@@ -221,4 +224,132 @@ async fn live_public_lookups() {
         .await
         .or_fail("invite");
     assert!(!invite.valid);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_roi_registration_snapshots_and_competitions() {
+    let perps = client();
+    let by_roi = perps
+        .public()
+        .leaderboard()
+        .window(LeaderboardWindow::Week)
+        .sort_by(LeaderboardSort::Roi)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("leaderboard by roi");
+    assert_eq!(by_roi.sort_by, LeaderboardSort::Roi);
+    assert!(
+        by_roi.entries.windows(2).all(|w| w[0].roi >= w[1].roi),
+        "ranked by roi, highest first"
+    );
+
+    let board = perps
+        .public()
+        .leaderboard()
+        .window(LeaderboardWindow::Week)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("leaderboard");
+    let Some(top) = board.entries.first() else {
+        environmental("the weekly leaderboard is empty");
+    };
+    let address = top.account.clone();
+    let registered = perps
+        .public()
+        .registered(&address)
+        .send()
+        .await
+        .or_fail("registered");
+    assert!(registered.registered, "a ranked account has an account");
+    let stranger = perps
+        .public()
+        .registered("0x0000000000000000000000000000000000000001")
+        .send()
+        .await
+        .or_fail("registered, unknown address");
+    assert!(!stranger.registered);
+
+    let portfolio = perps
+        .public()
+        .portfolio(&address)
+        .send()
+        .await
+        .or_fail("portfolio");
+    let active: Vec<InstrumentId> = portfolio
+        .positions
+        .iter()
+        .map(|p| p.instrument_id)
+        .take(20)
+        .collect();
+    let fills = perps
+        .public()
+        .position_fills(&address, active.first().copied().unwrap_or(InstrumentId(1)))
+        .send()
+        .await
+        .or_fail("position fills");
+    let history: Vec<PositionSnapshotFill> = fills.data.iter().take(4).map(Into::into).collect();
+    if active.is_empty() && history.is_empty() {
+        environmental("the top account holds no position and has no fill to snapshot");
+    }
+    let snapshots = perps
+        .public()
+        .position_snapshots(&address)
+        .active(active.clone())
+        .history(history.clone())
+        .send()
+        .await
+        .or_fail("position snapshots");
+    assert_eq!(snapshots.active.len(), active.len());
+    assert_eq!(snapshots.history.len(), history.len());
+    for result in snapshots.active.iter().chain(&snapshots.history) {
+        let ok = result.status == PositionSnapshotStatus::Ok;
+        assert_eq!(result.snapshot.is_some(), ok, "only ok carries a snapshot");
+        if let Some(card) = &result.snapshot {
+            assert_eq!(card.leverage, None, "an anonymous caller sees no leverage");
+            assert!(card.chart.candles.len() <= 22 && card.chart.markers.len() <= 256);
+        }
+    }
+
+    let competitions = perps
+        .competitions()
+        .list()
+        .send()
+        .await
+        .or_fail("competitions");
+    let widget = perps
+        .competitions()
+        .widget()
+        .address(&address)
+        .send()
+        .await
+        .or_fail("competition widget");
+    assert!(widget.timestamp > 0);
+    if let Some(newest) = competitions.competitions.first() {
+        let id = newest.competition_id;
+        let detail = perps
+            .competitions()
+            .get(id)
+            .send()
+            .await
+            .or_fail("competition");
+        assert_eq!(detail.competition_id, id);
+        let page = perps
+            .competitions()
+            .leaderboard(id)
+            .limit(3)
+            .send()
+            .await
+            .or_fail("competition leaderboard");
+        assert!(page.entries.len() <= 3);
+        let standing = perps
+            .competitions()
+            .account(id, &address)
+            .send()
+            .await
+            .or_fail("competition account");
+        assert_eq!(standing.competition_id, id);
+    }
 }

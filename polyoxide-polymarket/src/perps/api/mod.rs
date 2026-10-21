@@ -1,5 +1,6 @@
 //! API namespaces, one module per group of routes.
 
+pub mod competition;
 pub mod exchange;
 pub mod health;
 pub mod market;

@@ -8,23 +8,27 @@ Each entry names its evidence. Re-check before relying on an old one.
 
 ## Fields on the wire that the schema omits
 
-Captured 2026-09-30 (`polyoxide-polymarket/tests/fixtures/perps/`, see `PROVENANCE.md`
-there). Each is modelled as an `Option` and allowed through `OBSERVED_EXTRA`
-in `polyoxide-polymarket/tests/spec_agreement_perps.rs`.
+Captured 2026-09-30, the leaderboard and competition rows 2026-10-21
+(`polyoxide-polymarket/tests/fixtures/perps/`, see `PROVENANCE.md` there). Each is
+modelled as an `Option` and allowed through `OBSERVED_EXTRA` in
+`polyoxide-polymarket/tests/spec_agreement_perps.rs`.
 
 | Schema | Field | Seen as | Note |
 |--------|-------|---------|------|
-| `Instrument` | `display_symbol` | `"USA500-USD"` | on 2 of 88 rows |
-| `Instrument` | `close_only` | `false` | on every row |
 | `Instrument` | `logo` | `{"light": URL, "dark": URL}` | on 84 of 88 rows; an object, one SVG per colour scheme, never a bare URL |
-| `TradeData` | `settlement` | `false` | on every row |
 | `AccountTradeData` | `builder_fee` | `"0"` | on every row |
 | `AccountTradeData` | `total_fee` | decimal string | on every row; equal to `fee` when `builder_fee` is `0` |
-| `AccountTradeData` | `settlement` | `false` | on every row |
 | `LimitTier` | `connects_per_minute_limit` | `4294967295` on every tier | WebSocket budget name |
 | `LimitTier` | `max_connections` | `4294967295` on every tier | WebSocket budget name |
 | `LimitTier` | `ws_messages_burst_limit` | `4294967295` on every tier | WebSocket budget name |
 | `LimitTier` | `ws_messages_per_minute_limit` | `4294967295` on every tier | WebSocket budget name |
+| `LeaderboardEntry`, `LeaderboardAccount` | `instruments_traded` | `1` | on every row, `0` for an address with no activity |
+| `LeaderboardEntry`, `LeaderboardAccount` | `top_instrument_ids` | `[6]` | on every row, `[]` for an address with no activity |
+| `CompetitionList` | `live_competition_ids` | `[]` | sent where the schema names `live_competition_id`, which was absent |
+
+Until the 2026-10-21 adoption (#56) the table also held `Instrument`'s `display_symbol`
+and `close_only` and both trade schemas' `settlement`, which the spec now documents;
+`close_only` and `settlement` were on every row, so they became plain `bool`s.
 
 The four `LimitTier` extras are `u32::MAX` on all four tiers in
 `limit_tiers.json`: a sentinel (unset or unlimited), not a budget. They must
@@ -95,6 +99,37 @@ fractional places and `/v1/info/exchange-stats` sends `open_interest` with 18.
 A longer fraction would be rounded on decode, since the module's string serde
 uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement_perps.rs` compares
 values as well as key paths, so a rounded or overflowed value fails it.
+
+## No competition has existed yet
+
+On 2026-10-21 `GET /v1/info/competitions` answered `{"timestamp", "live_competition_ids": [],
+"competitions": []}`, with and without an `address`, `/v1/info/competition/widget` only
+`{"timestamp"}`, and `/v1/info/competition`, `/competition/leaderboard` and
+`/competition/account` a `404` `not_found` for ids 1 to 3. So no competition shape has been
+seen on the wire. `competition.json`, `competition_leaderboard.json`,
+`competition_account.json` and `competition_widget.json` were written by hand from the
+spec, `wire_agreement_perps.rs`'s `NEVER_ON_WIRE` names `competitions[]`, and
+`scripts/capture_polymarket_perps.py` captures all four on its first run that finds a
+competition. The list's `live_competition_ids` suggests a plural that the spec's
+`live_competition_id` may be replaced by; both are modelled.
+
+## A settled instrument is served only by id
+
+`GET /v1/info/instruments` left out instrument 51 (`KIOXIA-USD`), and
+`?instrument_id=51` returned it with `close_only: true` and a `settlement` record
+(2026-10-21, `instrument_settled.json`), as the route's description now says.
+`perps::venue` reports such an instrument as not tradable. Every listed row carried
+`close_only: false` and no `settlement`.
+
+## `position-snapshots` answers anonymously
+
+`POST /v1/info/position-snapshots` with no credentials returned `ok` cards for a
+leaderboard account's open position and four of its fills, with `pnl_percent` and
+`leverage` `null` (2026-10-21, `position_snapshots.json`). An active result carries
+no `trade_id`. The module sends no Perps credentials, so it never sees the two
+owner-only fields. Its request weight is `max(10, active + 7 × history)`; the client's
+`/v1/info` catch-all row counts it as one request, and none of the seven new routes
+was soaked.
 
 ## Leaderboard `account` is request-dependent
 

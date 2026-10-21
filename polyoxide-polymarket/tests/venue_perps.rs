@@ -215,7 +215,7 @@ async fn instrument_carries_the_rows_rules_and_its_categorys_fee_tiers() {
     assert_eq!(instrument.min_notional, Some(row.min_notional));
     assert_eq!(
         instrument.tradable,
-        row.close_only.map(|close_only| !close_only)
+        Some(!row.close_only && row.settlement.is_none())
     );
     let ext = instrument.extensions.get::<InstrumentExt>().unwrap();
     assert_eq!(ext.price_bounds, Some(row.price_bounds));
@@ -339,7 +339,7 @@ async fn trades_are_the_native_trades_oldest_first() {
         );
         let ext = trade.extensions.get::<TradeExt>().unwrap();
         assert_eq!(ext.hash.as_deref(), Some(row.hash.as_str()));
-        assert_eq!(ext.settlement, row.settlement);
+        assert_eq!(ext.settlement, Some(row.settlement));
     }
     assert!(
         trades.windows(2).all(|w| w[0].time <= w[1].time),
@@ -872,4 +872,30 @@ async fn candles_with_no_end_send_no_end_timestamp() {
         assert_eq!(candle.open_time, UnixMillis(row.open_time));
         assert_eq!(candle.close, row.close);
     }
+}
+
+#[tokio::test]
+async fn a_settled_instrument_is_not_tradable_and_carries_its_settlement() {
+    let mut server = Server::new_async().await;
+    let settled = fixture("instrument_settled");
+    let rows = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=51",
+        &settled,
+        1,
+    )
+    .await;
+    let fees = route(&mut server, "/v1/info/fees", "", &fixture("fees"), 1).await;
+    let native: Vec<polyoxide_polymarket::perps::api::exchange::Instrument> =
+        serde_json::from_str(&settled).unwrap();
+    let venue: Arc<DynMarketData<'static>> = DynMarketData::new_arc(client(&server));
+    let instrument = venue.instrument(&key(51)).await.unwrap();
+    rows.assert_async().await;
+    fees.assert_async().await;
+    assert_eq!(instrument.tradable, Some(false));
+    let ext = instrument.extensions.get::<InstrumentExt>().unwrap();
+    assert_eq!(ext.close_only, Some(true));
+    assert_eq!(ext.settlement, native[0].settlement);
+    assert!(ext.settlement.is_some());
 }
