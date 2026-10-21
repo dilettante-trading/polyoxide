@@ -8,8 +8,8 @@
 //! the highest rate Kalshi's unsigned reads were measured to serve clean. A client with a key
 //! sizes the key's bucket from the account's own limits when it first sends (until then it holds
 //! Basic's sizing), and sends its public reads from a second bucket sized as an unsigned
-//! client's, because a signed public read does not draw on the key's. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
-//! them.
+//! client's, because a signed public read does not draw on the key's. The hosts are
+//! [`PRODUCTION`] and [`DEMO`], and keys do not cross between them.
 //!
 //! With the `predictions-ws` feature the module also has `ws`, the socket: it streams the order
 //! book (a snapshot, then deltas, in YES pricing), the `ticker` and the `trade` channels. Its
