@@ -1,28 +1,31 @@
 ---
 status: proposed
-date: 2026-10-18
+date: 2026-10-21
 ---
 
 # Product classes are a tag on the product and a bundle over one capability core
 
 ## Context and Problem Statement
 
-polyoxide is becoming a multi-venue SDK. Binance USDⓈ-M has shipped beside Polymarket, and Kalshi
-is next (Epic 8). The long-term aim is generic interfaces for two kinds of market: prediction markets
+polyoxide is a multi-venue SDK. Binance USDⓈ-M and Kalshi have shipped beside Polymarket, and
+Kalshi's crate is published and re-exported by the umbrella as `polyoxide::kalshi` (Epic 9, A9-1).
+The long-term aim is generic interfaces for two kinds of market: prediction markets
 (Polymarket, Kalshi) and asset exchanges (Binance, Bybit). The question is where that split
 belongs: between venues, between two trait trees, or somewhere else. The current design has one
-base trait, `MarketData`, and optional capability traits (AD-6, A6-1), and it has no notion of a
-market's kind. The spec's glossary already names two **product classes**: event contracts
+base trait, `MarketData`, and optional capability traits (AD-6, A6-1, A9-2), and it has no notion
+of a market's kind. The spec's glossary already names two **product classes**: event contracts
 (Polymarket CLOB, Kalshi) and perpetual futures (Polymarket perps, Binance USDⓈ-M, Kalshi margin).
 
 ## Decision Drivers
 
 * **Venues straddle classes.** Polymarket has `clob` (event contracts) and `perps` (perpetual
-  futures) in one crate. Kalshi lists event contracts and a margin perps product
-  (`venue-landscape.md`). Only Binance, in its current scope, has one class.
+  futures) in one crate. Kalshi lists event contracts, which `polyoxide-kalshi`'s `predictions`
+  implements, and a margin perps product that no crate implements yet (`venue-landscape.md`). Only
+  Binance, in its current scope, has one class.
 * **Most of the surface is shared.** `MarketData`, `Instruments`, `Trades`, `Candles` and `Trading`
   have the same signatures for both classes. `examples/venue_neutral.rs` reads the best bid and
-  ask of the CLOB, perps and USDⓈ-M through one `best_bid_ask(&DynMarketData, &MarketKey)`. AD-6
+  ask of the CLOB, perps, USDⓈ-M and Kalshi's `predictions` through one
+  `best_bid_ask(&DynMarketData, &MarketKey)`. AD-6
   exists to prevent "a generic function that cannot take both product classes".
 * **The classes do differ in meaning:**
   * An event-contract price is bounded by 0 and 1, and a share pays one unit if its outcome
@@ -72,23 +75,27 @@ The decision has four parts:
    contracts, or mark price and open interest for perpetuals. No trait tree is forked.
 3. **A class bundle names what defines the class.** It holds `MarketData` plus the capabilities that
    every product of the class offers and that mean nothing outside it. Shared optional abilities
-   (`Instruments`, `Trades`, `Candles`) stay out, so a bundle never has to shrink. Bundles are
+   (`Instruments`, `Trades`, `Candles`) stay out, so a bundle never has to shrink. `Candles` shows
+   why: every product that offers it now serves a different set of widths, read from
+   `Candles::intervals()` (A9-2), so even a shared capability is not uniform. Bundles are
    generic-only, like `Protocol` (AD-5), each with a blanket impl:
 
    ```rust
    // polyoxide-venue, feature `market`
+   // Polymarket perps and Binance USDⓈ-M
    pub trait PerpetualMarket: MarketData + Funding {}
    impl<T: MarketData + Funding> PerpetualMarket for T {}
 
-   // when Kalshi's EventGroups lands (Epic 8), the second implementer
+   // the Polymarket CLOB (with `gamma`) and Kalshi's `predictions`
    pub trait EventContractMarket: MarketData + EventGroups {}
    impl<T: MarketData + EventGroups> EventContractMarket for T {}
    ```
 
 4. **Promotion needs two products of the class.** A class fact joins a shared record, a capability
    trait or a bundle only when two products of that class supply it. Until then it rides in the
-   product's `<Record>Ext` (AD-19). Perpetuals have two today (Polymarket perps and Binance
-   USDⓈ-M, which agree on `Funding`). Event contracts get their second when Kalshi lands.
+   product's `<Record>Ext` (AD-19). Both classes have two today: Polymarket perps and Binance
+   USDⓈ-M agree on `Funding`, and the Polymarket CLOB and Kalshi's `predictions` agree on
+   `EventGroups`.
 
 ### Consequences
 
@@ -111,8 +118,8 @@ The decision has four parts:
   that mixes classes must read `class()` before it interprets a value.
 * Bad, because adding a capability to a bundle is a public API change that the semver and removals
   gates will see. A defining capability should join its bundle in the same release that adds it.
-* Neutral, because `EventContractMarket` waits for Kalshi. Until then event contracts have the tag
-  and no bundle.
+* Neutral, because both bundles have their two implementers today, so they can land together in
+  one release.
 
 ### Confirmation
 
@@ -120,10 +127,12 @@ The decision has four parts:
   `[package.metadata.polyoxide]`, as it does today for venue and product ids.
 * A `const _` beside each crate's `Classify` assertions pins every product of a class to its bundle,
   gated as the impls are: `Perps: PerpetualMarket` under `perps`, `Usdm: PerpetualMarket` under
-  `usdm`, and `Clob: EventContractMarket` under `all(clob, gamma)`. Kalshi's is under its own
-  product feature. A product that drops a defining capability then fails the build.
-* A test in `polyoxide-venue` checks that `MarketKey::class()` equals the constructing
-  `KeySpace::CLASS` for every product the umbrella's `full` feature builds.
+  `usdm`, `Clob: EventContractMarket` under `all(clob, gamma)`, and
+  `Predictions: EventContractMarket` under Kalshi's `predictions`. A product that drops a defining
+  capability then fails the build.
+* A test in the umbrella, beside `tests/parse_key.rs`, checks that `MarketKey::class()` equals the
+  constructing `KeySpace::CLASS` for every product its `full` feature builds: `polymarket.clob`, `polymarket.perps`,
+  `binance.usdm` and `kalshi.predictions`.
 * In review, a new field on a shared record, or a new member of a bundle, cites the two products of
   the class that supply it. Otherwise it goes in `<Record>Ext` (AD-19).
 
@@ -168,7 +177,7 @@ Described under Decision Outcome.
 
 ### Capabilities only, with no product class (the status quo)
 
-* Good, because it adds nothing new, and it already works for three products.
+* Good, because it adds nothing new, and it already works for four products.
 * Bad, because no key or record says what it is. `SizeUnit` (one `instrument` request away)
   identifies event contracts only.
 * Bad, because there is no name for what every product of a class offers. Consumers write their
@@ -181,7 +190,10 @@ Described under Decision Outcome.
 **Relation to the spine.** If accepted, this ADR becomes an amendment to AD-6 (product classes and
 bundles) and AD-4/AD-13 (the class is registered with the product). It enters the spine as a
 `spine-amendments/` entry merged through `bmad-architecture`, and `docs/ARCHITECTURE.md` is
-regenerated with `python3 scripts/gen_registry.py --write`.
+regenerated with `python3 scripts/gen_registry.py --write`. Epic 9's A9-2 also amends AD-6
+(`Candles::intervals()` and the refusal of an unserved width), and A8-1..A8-11 and A9-1..A9-5 are
+still awaiting their spine merge. This amendment is written against AD-6 as A9-2 leaves it, and
+merges after those.
 
 **Facts the event-contract class must hold**, from `venue-landscape.md` and
 `kalshi-trading-mapping.md`:
@@ -198,9 +210,12 @@ regenerated with `python3 scripts/gen_registry.py --write`.
 
 **Candidate capabilities, not decided here.** Each would be added under the promotion rule:
 
-* Settlement for event contracts: market status, the winning outcome and its payout. Polymarket
-  has Gamma's resolution fields and the market channel's `market_resolved`; Kalshi settles markets
-  through its own API.
+* Settlement for event contracts: market status, the winning outcome and its payout. Both
+  products now read it natively: Polymarket through Gamma's resolution fields and the market
+  channel's `market_resolved`, and Kalshi through its `Market`'s `settled` status, `result`,
+  `settlement_value_dollars` and `settlement_timer_seconds`
+  (`polyoxide-kalshi/src/predictions/types/markets.rs`). So it meets the promotion rule's
+  two-product bar, but its shared shape is not decided here.
 * Mark and index price for perpetuals. These already qualify: both perpetual products carry
   `mark_price` and `index_price` in their `FundingExt` (`polyoxide-polymarket/src/perps/venue.rs`,
   `polyoxide-binance/src/usdm/venue.rs`). Open interest does not yet: only Polymarket perps'
@@ -208,7 +223,9 @@ regenerated with `python3 scripts/gen_registry.py --write`.
 * Margin, leverage and liquidation on perpetual positions. This is deferred with perpetual
   trading, since neither perps product has signed routes yet (spine, Deferred).
 
-**Related:** AD-4 (canonical keys), AD-5 (trait shape), AD-6 and A6-1 (one base, many
-capabilities), AD-7 (an event-contract key names an outcome), AD-13 (registration in Cargo
-metadata), AD-19 (typed extensions), and the Epic 8 Kalshi walking-skeleton design (product id
-`predictions`).
+**Related:** AD-4 (canonical keys), AD-5 (trait shape), AD-6, A6-1 and A9-2 (one base, many
+capabilities, and the widths a `Candles` product serves), AD-7 (an event-contract key names an
+outcome), AD-13 (registration in Cargo metadata), AD-19 (typed extensions), A9-1 (Kalshi
+published and in the umbrella), the Epic 8 Kalshi walking-skeleton design (product id
+`predictions`), and the Epic 9 design
+(`docs/superpowers/specs/2026-10-19-epic-9-kalshi-published-design.md`).
