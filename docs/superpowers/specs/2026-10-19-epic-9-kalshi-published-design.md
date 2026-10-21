@@ -179,8 +179,8 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
   A frame that carries a follow-up's id is decoded as a push, never as an answer to a membership
   command. `get_snapshot` is also public: `PredictionsMembership::snapshot(tickers)` asks for
   snapshots of tickers already in the membership (a ticker outside it is refused as
-  `InvalidRequest`, nothing sent), answered `Ok` once the command is accepted; the snapshots arrive
-  on the stream. It needs the `OrderbookDelta` channel and is refused as `InvalidRequest` without
+  `InvalidRequest`, nothing sent), answered `Ok` once the command is sent (Kalshi sends no
+  acknowledgement of `get_snapshot`, only the snapshots); the snapshots arrive on the stream. It needs the `OrderbookDelta` channel and is refused as `InvalidRequest` without
   it. It goes through the membership handle as `Change::Snapshot(Vec<Ticker>)`; one made during an
   outage is answered `Ok` at once and not recorded, since the replay brings a fresh snapshot of
   every ticker. It never changes the membership.
