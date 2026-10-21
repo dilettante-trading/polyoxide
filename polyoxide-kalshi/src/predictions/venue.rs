@@ -343,15 +343,23 @@ pub struct CandleExt {
 }
 
 /// The wire width of a served interval.
-fn wire_period(interval: CandleInterval) -> Result<PeriodInterval, ClassifiedError> {
-    match interval {
+///
+/// A width outside [`SERVED`] is refused as `ensure_served` refuses it, with the same
+/// `UnservedInterval`, so the fallback arm reads as one refusal however it is reached.
+/// `Candles::candles` has already run `ensure_served`, so the arm is not reached from there;
+/// reaching its second error would mean `SERVED` lists a width this match does not map.
+fn wire_period(query: &CandleQuery) -> Result<PeriodInterval, ClassifiedError> {
+    match query.interval {
         CandleInterval::Minute1 => Ok(PeriodInterval::Minute1),
         CandleInterval::Hour1 => Ok(PeriodInterval::Hour1),
         CandleInterval::Day1 => Ok(PeriodInterval::Day1),
-        other => Err(ClassifiedError::new(
-            Class::InvalidRequest,
-            format!("{other:?} candles are not served"),
-        )),
+        other => {
+            query.ensure_served(SERVED)?;
+            Err(ClassifiedError::new(
+                Class::InvalidRequest,
+                format!("{other:?} is in SERVED but has no wire width"),
+            ))
+        }
     }
 }
 
@@ -454,7 +462,7 @@ impl Candles for Predictions {
     ) -> Result<Vec<Candle>, ClassifiedError> {
         let id = key::outcome(key)?;
         query.ensure_served(self.intervals())?;
-        let period = wire_period(query.interval)?;
+        let period = wire_period(query)?;
         let width = period.seconds();
         let end = query.end.unwrap_or_else(UnixMillis::now);
         let start_ts = seconds_up(query.start).saturating_add(width);
