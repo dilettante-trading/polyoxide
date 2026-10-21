@@ -621,6 +621,7 @@ class Epic9:
     outside_deltas: int
     after_outside: int
     unknown: list[Seen]
+    outside_seconds: float
 
 
 async def run_epic9(tickers: tuple[str, str, str, str], seconds: float) -> Epic9:
@@ -733,15 +734,21 @@ async def run_epic9(tickers: tuple[str, str, str, str], seconds: float) -> Epic9
             "params": {"sid": book, "action": "get_snapshot", "market_tickers": [outside]},
         }
         refused_frames = await exchange(tape, command)
-        if not any(
-            seen.frame.get("id") == command["id"] and seen.frame.get("type") == "orderbook_snapshot" for seen in refused_frames
-        ):
+        outside_snapshot = next(
+            (
+                seen
+                for seen in refused_frames
+                if seen.frame.get("type") == "orderbook_snapshot" and seen.frame.get("id") == command["id"]
+            ),
+            None,
+        )
+        if outside_snapshot is None:
             raise SystemExit(
                 f"get_snapshot for {outside}, a ticker outside the subscription, was answered with {outcome(refused_frames)}, "
                 "not an orderbook_snapshot carrying the command's id: this contradicts the owner's Q3 record "
                 "(spec 3, 2026-10-21). Nothing was written; report it to the owner"
             )
-        outside_snapshot = next(s for s in refused_frames if s.frame.get("id") == command["id"])
+        outside_started = time.monotonic()
         unknown = await exchange_on_sid(
             tape,
             {
@@ -753,8 +760,6 @@ async def run_epic9(tickers: tuple[str, str, str, str], seconds: float) -> Epic9
         )
         if not unknown:
             raise SystemExit(f"get_snapshot for the unknown ticker {UNKNOWN_TICKER} got no answer: nothing was written")
-        # The owner's decision of 2026-10-21 (spec 3): the demo host does not refuse an outside ticker, so
-        # whatever it answers is written as snapshot_outside.json and recorded; it is not an exit.
 
         on_ticker_sid = await exchange_on_sid(
             tape,
@@ -813,6 +818,7 @@ async def run_epic9(tickers: tuple[str, str, str, str], seconds: float) -> Epic9
             for seen in tape.log
             if seen.frame.get("type") == "error" and (seen.frame.get("msg") or {}).get("code") == 27
         )
+        outside_seconds = time.monotonic() - outside_started
         # Deltas for `outside` after its snapshot, to the end of the session (the unsubscribe's answer included).
         later = tape.log[next(i for i, seen in enumerate(tape.log) if seen is outside_snapshot) + 1 :]
         outside_deltas = sum(
@@ -826,6 +832,7 @@ async def run_epic9(tickers: tuple[str, str, str, str], seconds: float) -> Epic9
             any(seen is answer for seen in answer_frames), between, deltas_after, multi,
             third_snapshot, refused_frames, on_ticker_sid, on_trade_sid, empty_answers, empty_tickers,
             len(seen_on_fresh), final, too_fast, adds, deletes, outside_deltas, after_outside, unknown,
+            outside_seconds,
         )
 
 
@@ -870,6 +877,16 @@ def membership_rows(c: Epic9) -> list[tuple[str, str]]:
                 )
             )
     return rows
+
+
+def third_added_by(c: Epic9) -> str:
+    """How `third` came to be subscribed, from the answers: the two-`sid` update when the host took it,
+    otherwise the one-`sid` `add_markets` the host answered without an error."""
+    if c.multi and not any(seen.frame.get("type") == "error" for seen in c.multi):
+        return "added by the two-`sid` update"
+    if any(frames and not any(seen.frame.get("type") == "error" for seen in frames) for _channel, frames, _snapshot in c.adds):
+        return "added by the one-`sid` `add_markets` (the host refused the two-`sid` update)"
+    return "not added: the host refused the two-`sid` update and every one-`sid` `add_markets`"
 
 
 def section9(c: Epic9, stamp: str) -> str:
@@ -934,12 +951,22 @@ def section9(c: Epic9, stamp: str) -> str:
         ),
         (
             "`orderbook_delta` frames for `outside` after its snapshot, to the end of the session (does the snapshot subscribe it?)",
-            f"{c.outside_deltas} of the {c.after_outside} `orderbook_delta` frames after it: "
-            + ("the snapshot does not subscribe it" if c.outside_deltas == 0 else "**the snapshot SUBSCRIBES it: report this to the owner (D9)**"),
+            (
+                f"0 of the {c.after_outside} `orderbook_delta` frames after it in {c.outside_seconds:.0f} s: consistent with the "
+                "snapshot not subscribing it (a quiet market shows the same)"
+                if c.outside_deltas == 0
+                else f"{c.outside_deltas} of the {c.after_outside} `orderbook_delta` frames after it, in {c.outside_seconds:.0f} s, "
+                "were for `outside`: **the snapshot SUBSCRIBED it. Report this to the owner (D9)**"
+            ),
         ),
         (
             f"`get_snapshot` on the order-book `sid` for a ticker that does not exist (`{UNKNOWN_TICKER}`)",
-            f"{detail(c.unknown)}; `market_id` {(c.unknown[0].frame.get('msg') or {}).get('market_id')!r}",
+            f"{detail(c.unknown)}; `market_id` {(c.unknown[0].frame.get('msg') or {}).get('market_id')!r}; "
+            + (
+                "no levels"
+                if set(c.unknown[0].frame.get("msg") or {}) == {"market_ticker", "market_id"}
+                else f"`msg` keys: {', '.join(f'`{key}`' for key in sorted(c.unknown[0].frame.get('msg') or {}))}"
+            ),
         ),
         ("`get_snapshot` on the `ticker` channel's `sid`", detail(c.on_ticker_sid)),
         ("`get_snapshot` on the `trade` channel's `sid`", detail(c.on_trade_sid)),
@@ -954,7 +981,7 @@ def section9(c: Epic9, stamp: str) -> str:
         "### The multi-channel socket, as the demo host answers it",
         "",
         f"Captured {stamp} by `scripts/capture_kalshi_predictions_ws.py --epic9` from `{WS}`. `first` `{first}` and "
-        f"`second` `{second}` were subscribed, `third` `{third}` added by the two-`sid` update, and `outside` `{outside}` "
+        f"`second` `{second}` were subscribed, `third` `{third}` {third_added_by(c)}, and `outside` `{outside}` "
         "never subscribed. Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.",
         "",
         *capture_common.provenance_table(("Question", "Observed"), rows),
@@ -992,7 +1019,7 @@ def write_epic9(c: Epic9, stamp: str, seconds: float) -> None:
             [seen.frame for seen in c.deltas_after],
             f"{len(c.deltas_after)} `orderbook_delta` frames on that `sid` after it, as an array, in wire order (every market of the `sid`, not only `first`)",
         ),
-        ("snapshot_outside.json", next(s for s in c.outside if s.frame.get("id") is not None).frame, f"the answer to `get_snapshot` for `{outside}`, a ticker outside the subscription: an `orderbook_snapshot` carrying the command's `id`, as the host sent it"),
+        ("snapshot_outside.json", next(s for s in c.outside if s.frame.get("type") == "orderbook_snapshot" and s.frame.get("id") is not None).frame, f"the answer to `get_snapshot` for `{outside}`, a ticker outside the subscription: an `orderbook_snapshot` carrying the command's `id`, as the host sent it"),
         ("error_snapshot_ticker_sid.json", next(s for s in c.on_ticker_sid if s.frame.get("type") == "error").frame, "the `error` answering `get_snapshot` on the `ticker` channel's `sid`"),
         ("error_snapshot_trade_sid.json", next(s for s in c.on_trade_sid if s.frame.get("type") == "error").frame, "the `error` answering `get_snapshot` on the `trade` channel's `sid`, which carries no `id`"),
         ("multi_sid_answer.json", multi, "the answer to one `update_subscription` naming two `sids` (an array when there is more than one frame)"),
@@ -1020,7 +1047,7 @@ def write_epic9(c: Epic9, stamp: str, seconds: float) -> None:
         f"Captured {stamp} by `scripts/capture_kalshi_predictions_ws.py --epic9` from `{WS}` (the demo host), the "
         "handshake signed as above. A `subscribe` for `orderbook_delta`, `ticker` and `trade` on "
         f"`{first}` and `{second}` (`use_yes_price: true`), up to {seconds:.0f} s for a `ticker` and a `trade` "
-        f"frame, then the commands of spec §3 in order. `{third}` was added by the two-`sid` update and `{outside}` "
+        f"frame, then the commands of spec §3 in order. `{third}` was {third_added_by(c)} and `{outside}` "
         "was never subscribed.",
         "",
         *capture_common.provenance_table(
@@ -1203,6 +1230,10 @@ def check_epic9() -> None:
             problems.append(f"snapshot_unknown.json: expected `msg.market_id` to be the empty string, got {msg.get('market_id')!r}")
         if not msg.get("market_ticker") or msg.get("market_ticker") in subscribed_tickers:
             problems.append("snapshot_unknown.json: expected a `msg.market_ticker` that is not a subscribed one")
+        if set(msg) != {"market_ticker", "market_id"}:
+            problems.append(
+                f"snapshot_unknown.json: expected `msg` to carry no levels, only `market_ticker` and `market_id`, got {sorted(msg)}"
+            )
     for channel in ("ticker", "trade"):
         name = f"error_snapshot_{channel}_sid.json"
         refusal = load(name)

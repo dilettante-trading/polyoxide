@@ -141,7 +141,7 @@ Captured 2026-10-21T09:32:12Z by `scripts/capture_kalshi_predictions.py --candle
 <!-- kalshi-ws-epic9:begin -->
 ### The multi-channel socket, as the demo host answers it
 
-Captured 2026-10-21T11:08:11Z by `scripts/capture_kalshi_predictions_ws.py --epic9` from `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2`. `first` `KXRAINSHARD2-26OCT22-NYC` and `second` `KXQUICKSETTLE-21OCT26H0710-3` were subscribed, `third` `KXQUICKSETTLE-21OCT26H0710-2` added by the two-`sid` update, and `outside` `KXCS2GAME-26OCT210415EVOEXMETA-EVOE` never subscribed. Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.
+Captured 2026-10-21T11:08:11Z by `scripts/capture_kalshi_predictions_ws.py --epic9` from `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2`. `first` `KXRAINSHARD2-26OCT22-NYC` and `second` `KXQUICKSETTLE-21OCT26H0710-3` were subscribed, `third` `KXQUICKSETTLE-21OCT26H0710-2` added by the one-`sid` `add_markets` (the host refused the two-`sid` update), and `outside` `KXCS2GAME-26OCT210415EVOEXMETA-EVOE` never subscribed. Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.
 
 | Question | Observed |
 |----------|----------|
@@ -160,8 +160,8 @@ Captured 2026-10-21T11:08:11Z by `scripts/capture_kalshi_predictions_ws.py --epi
 | One-`sid` `update_subscription` `delete_markets` for `third` on the `ticker` `sid` (2) | `ok`, `id` 7, `sid` 2, `seq` absent; a snapshot of `third` followed on the order-book `sid`: no |
 | One-`sid` `update_subscription` `delete_markets` for `third` on the `trade` `sid` (3) | `ok`, `id` 8, `sid` 3, `seq` 5; a snapshot of `third` followed on the order-book `sid`: no |
 | `get_snapshot` for a ticker outside the subscription (the owner took the host's answer in place of an error fixture, spec 3) | `orderbook_snapshot`; the frame carrying the command's `id`: `orderbook_snapshot` for `KXCS2GAME-26OCT210415EVOEXMETA-EVOE`, `sid` 1, `seq` 909 (the last before it 908) |
-| `orderbook_delta` frames for `outside` after its snapshot, to the end of the session (does the snapshot subscribe it?) | 0 of the 450 `orderbook_delta` frames after it: the snapshot does not subscribe it |
-| `get_snapshot` on the order-book `sid` for a ticker that does not exist (`KXNOSUCHMARKET-99XXX-T1`) | `orderbook_snapshot`, `id` 10, `sid` 1, `seq` 962; `market_id` '' |
+| `orderbook_delta` frames for `outside` after its snapshot, to the end of the session (does the snapshot subscribe it?) | 0 of the 450 `orderbook_delta` frames after it, in a window this capture did not time: consistent with the snapshot not subscribing it (a quiet market shows the same) |
+| `get_snapshot` on the order-book `sid` for a ticker that does not exist (`KXNOSUCHMARKET-99XXX-T1`) | `orderbook_snapshot`, `id` 10, `sid` 1, `seq` 962; `market_id` ''; no levels |
 | `get_snapshot` on the `ticker` channel's `sid` | `error` code 13 ('Unsupported action'), `id` 11, `sid` 2, `seq` absent |
 | `get_snapshot` on the `trade` channel's `sid` | `error` code 13 ('Unsupported action'), `id` absent, `sid` 3, `seq` 6 |
 | A `subscribe` for `ticker` and `trade` naming no market | refused (code 14, 'Market Ticker required'); no `sid` |
@@ -171,7 +171,7 @@ Captured 2026-10-21T11:08:11Z by `scripts/capture_kalshi_predictions_ws.py --epi
 
 ### The batch candlestick route leaves out whole periods (production, unsigned, 2026-10-21)
 
-Found in review of Story 1, from the committed fixtures `batch_1.json`, `batch_60.json` and `batch_1440.json` in `polyoxide-kalshi/tests/fixtures/predictions/candlesticks/` (market `KXUCLGAME-26OCT21RMARBL-RMA`). A period with no activity is not an empty row: the answer holds no row for it at all, and the next row's `end_period_ts` jumps by more than the width. Counting the periods between the first and last row of each file:
+Found in review of Story 1, from the committed fixtures `batch_1.json`, `batch_60.json` and `batch_1440.json` in `polyoxide-kalshi/tests/fixtures/predictions/candlesticks/` (market `KXUCLGAME-26OCT21RMARBL-RMA`). Some periods have no row: untraded rows do exist, but for some periods the answer holds no row at all, and the next row's `end_period_ts` jumps by more than the width. Counting the periods between the first and last row of each file:
 
 | Width (min) | Rows | Periods from the first to the last row's `end_period_ts` | Periods with no row | Gaps |
 |-------------|------|-----------------------------------------------------------|---------------------|------|
@@ -179,6 +179,6 @@ Found in review of Story 1, from the committed fixtures `batch_1.json`, `batch_6
 | 60 | 167 | 168 | 1 | 1 |
 | 1440 | 15 | 15 | 0 | 0 |
 
-At width 1 the gaps are one to three periods long: the first is `end_period_ts` 1792568160 (07:36Z) to 1792568340 (07:39Z), two periods (07:37Z and 07:38Z) with no row. At width 60 the one gap is the hour ending 2026-10-15 09:00Z (`end_period_ts` 1792054800), between rows ending 1792051200 and 1792058400. So the rows' `end_period_ts` do not run at every multiple of the width, which `describe()`'s offset column (the remainder, constant at 0) does not show. This does not contradict D6: a period absent from the answer yields no candle (D6's mapping, as Story 3 implements it), so `Candles::candles` may skip periods, and a caller that needs a regular grid fills the gaps itself.
+At width 1 the gaps are one to three periods long: the first is `end_period_ts` 1792568160 (07:36Z) to 1792568340 (07:39Z), two periods (07:37Z and 07:38Z) with no row. At width 60 the one gap is the hour ending 2026-10-15 09:00Z (`end_period_ts` 1792054800), between rows ending 1792051200 and 1792058400. So the rows' `end_period_ts` do not run at every multiple of the width, which `describe()`'s offset column (the remainder of `end_period_ts` by the width, 0 at widths 1 and 60, and 14400 at width 1440, whose periods end at 04:00Z) does not show. This does not contradict D6: a period absent from the answer yields no candle (D6's mapping, as Story 3 implements it), so `Candles::candles` may skip periods, and a caller that needs a regular grid fills the gaps itself.
 
 <!-- epic 9 findings go above this line -->

@@ -16,7 +16,7 @@ Market `KXBTCD-26OCT2317-T81999.99`; `KXTRUMPAPPROVE-26OCT19-E39.1` was added to
 <!-- epic9:begin -->
 ## Epic 9 captures
 
-Captured 2026-10-21T11:08:11Z by `scripts/capture_kalshi_predictions_ws.py --epic9` from `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` (the demo host), the handshake signed as above. A `subscribe` for `orderbook_delta`, `ticker` and `trade` on `KXRAINSHARD2-26OCT22-NYC` and `KXQUICKSETTLE-21OCT26H0710-3` (`use_yes_price: true`), up to 180 s for a `ticker` and a `trade` frame, then the commands of spec §3 in order. `KXQUICKSETTLE-21OCT26H0710-2` was added by the two-`sid` update and `KXCS2GAME-26OCT210415EVOEXMETA-EVOE` was never subscribed.
+Captured 2026-10-21T11:08:11Z by `scripts/capture_kalshi_predictions_ws.py --epic9` from `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` (the demo host), the handshake signed as above. A `subscribe` for `orderbook_delta`, `ticker` and `trade` on `KXRAINSHARD2-26OCT22-NYC` and `KXQUICKSETTLE-21OCT26H0710-3` (`use_yes_price: true`), up to 180 s for a `ticker` and a `trade` frame, then the commands of spec §3 in order. `KXQUICKSETTLE-21OCT26H0710-2` was added by the one-`sid` `add_markets` (the host refused the two-`sid` update) and `KXCS2GAME-26OCT210415EVOEXMETA-EVOE` was never subscribed.
 
 | Fixture | What it is |
 |---------|------------|
