@@ -1,15 +1,15 @@
 //! # Predictions
 //!
 //! Client for Kalshi's Predictions exchange (`external-api.kalshi.com`), behind the `predictions`
-//! feature, which is on by default. The module is a walking skeleton: it grows a part at a time,
-//! and what it offers today is in its namespaces.
+//! feature, which is on by default. What the module offers is in its namespaces.
 //!
 //! Every request runs on core's send loop and costs tokens from a Read throttle. The throttle
 //! starts at the size Kalshi gives its Basic tier, and a client confirms the account's own size
 //! when it first sends. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
 //! them.
 //!
-//! With the `predictions-ws` feature the module also has `ws`, the order-book socket. Its
+//! With the `predictions-ws` feature the module also has `ws`, the socket: it streams the order
+//! book (a snapshot, then deltas, in YES pricing), the `ticker` and the `trade` channels. Its
 //! handshake needs `Credentials` even for public data, which the REST reads do not.
 
 pub mod api;

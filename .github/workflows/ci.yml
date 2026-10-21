@@ -133,9 +133,10 @@ jobs:
       # The same pins with the umbrella's `full` beside each venue crate, so
       # every feature any venue's module turns on is unified into the pinned
       # build, and a header one venue adds through the umbrella fails another's
-      # literal (AD-18's third build). `polyoxide-kalshi` is `publish = false`, so
-      # the umbrella does not include it: its pin runs beside `polyoxide/full` all
-      # the same, with no umbrella feature of its own to turn on.
+      # literal (AD-18's third build). `polyoxide-kalshi` is published and the
+      # umbrella includes it, so its pin runs beside `polyoxide/full` like the
+      # others, and `full` turns on `kalshi`, `kalshi-predictions` and
+      # `kalshi-predictions-ws` in the pinned build.
       - name: Header pins, umbrella full build
         run: |
           cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_clob

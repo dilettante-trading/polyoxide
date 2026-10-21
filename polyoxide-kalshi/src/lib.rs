@@ -1,21 +1,27 @@
 //! # polyoxide-kalshi
 //!
 //! Rust client library for Kalshi's APIs, one feature per module: `predictions` (event-contract
-//! market data, with its order-book stream under `predictions-ws`).
+//! market data, with its streams under `predictions-ws`).
 //!
-//! The crate is a walking skeleton and it is not published. It is the workspace's third venue,
-//! built by the architecture guide's recipe to show that a venue lands by editing its own files
-//! and the few places the recipe names.
+//! It is the workspace's third venue, built by the architecture guide's recipe, and the umbrella
+//! crate `polyoxide` re-exports it as `polyoxide::kalshi`, under its `kalshi`,
+//! `kalshi-predictions` and `kalshi-predictions-ws` features.
 //!
 //! `predictions` (feature `predictions`, on by default) reads Kalshi's Predictions exchange
 //! (`external-api.kalshi.com`, and the demo host `external-api.demo.kalshi.co`). Public REST reads
-//! need no credentials. The module's own docs carry its example.
+//! need no credentials. It implements `polyoxide-venue`'s `MarketData`, `Trades`, `Candles` and
+//! `EventGroups`, its candles at one minute, one hour and one day. The module's own docs carry its
+//! example.
 //!
 //! `predictions-ws` (feature `predictions-ws`, off by default, and it turns on `predictions`) adds
-//! the module's order-book socket, `predictions::ws`, on the socket kit: a snapshot of each
-//! subscribed market's book and then its changes, in YES pricing, reconnecting after a drop, a
-//! stall or a gap. Kalshi refuses a socket handshake that carries no API-key headers, public data
-//! included, so the socket needs `Credentials` where the REST reads of public data need none.
+//! the module's sockets, `predictions::ws`, on the socket kit: the order-book channel, a snapshot
+//! of each subscribed market's book and then its changes in YES pricing, and the `ticker` and
+//! `trade` channels, chosen with `PredictionsWsBuilder::channels`. A local book, `Books`, folds the
+//! order-book events into each market's ladders. The stream reconnects after a drop or a stall,
+//! and repairs a gap in the order-book subscription's sequence in place with a fresh snapshot,
+//! falling back to a reconnect. Kalshi refuses a socket handshake that carries no API-key
+//! headers, public data included, so the socket needs `Credentials` where the REST reads of
+//! public data need none.
 
 // The crate README is compiled as a doctest, so a code fence that is ever added
 // to it cannot rot. `doctest` keeps this out of normal builds and `cargo doc`.
