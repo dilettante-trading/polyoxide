@@ -115,11 +115,26 @@ pub trait Candles: Send + Sync {
     /// give the bound), so an empty answer before `query.end` does not mean
     /// there are none later: read on from the end of the span the venue
     /// covered.
+    ///
+    /// A query whose `interval` is not in [`intervals`](Self::intervals) is
+    /// refused as an [`InvalidRequest`](crate::Class::InvalidRequest) with
+    /// nothing sent. An implementation calls
+    /// [`CandleQuery::ensure_served`](crate::CandleQuery::ensure_served) with
+    /// `self.intervals()` before its first request and converts the
+    /// [`UnservedInterval`](crate::UnservedInterval) with `?`.
     fn candles(
         &self,
         key: &MarketKey,
         query: &CandleQuery,
     ) -> impl Future<Output = Result<Vec<Candle>, ClassifiedError>> + Send;
+
+    /// The candle widths this product serves, shortest first. Every width
+    /// ([`CandleInterval::ALL`](crate::CandleInterval::ALL)) unless the
+    /// implementation says otherwise; a product that serves only some
+    /// overrides it, and its module's docs list them.
+    fn intervals(&self) -> &'static [crate::CandleInterval] {
+        crate::CandleInterval::ALL
+    }
 }
 
 /// A perpetual's funding.
