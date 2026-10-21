@@ -282,9 +282,18 @@ impl Markets {
             .await
     }
 
-    /// Get prices for multiple tokens
-    pub async fn prices(&self, params: &[BookParams]) -> Result<Vec<PriceResponse>, ClobError> {
-        Request::<Vec<PriceResponse>, ClobError>::new(
+    /// Get the best price on each side asked for, for many tokens (`POST /prices`).
+    ///
+    /// The answer maps each token id to its sides and each side to its price.
+    /// A side with no orders is priced `0` (BUY) or `1` (SELL), and a token with
+    /// no order book is absent. The CLOB sends the prices as strings and its
+    /// spec types them as numbers; both decode. It refuses more than 500 params
+    /// in one call (`docs/specs/clob/OBSERVED.md`).
+    pub async fn prices(
+        &self,
+        params: &[BookParams],
+    ) -> Result<HashMap<String, HashMap<OrderSide, Decimal>>, ClobError> {
+        Request::<HashMap<String, HashMap<OrderSide, Decimal>>, ClobError>::new(
             self.http_client.clone(),
             "/prices".to_string(),
         )
@@ -294,12 +303,15 @@ impl Markets {
         .await
     }
 
-    /// Get midpoints for multiple tokens
+    /// Get the midpoint of many tokens (`POST /midpoints`), keyed by token id.
+    ///
+    /// A token with no order book is absent. Each value decodes from a string,
+    /// as the CLOB sends it, or a number.
     pub async fn midpoints(
         &self,
         params: &[BookParams],
-    ) -> Result<Vec<MidpointResponse>, ClobError> {
-        Request::<Vec<MidpointResponse>, ClobError>::new(
+    ) -> Result<HashMap<String, Decimal>, ClobError> {
+        Request::<HashMap<String, Decimal>, ClobError>::new(
             self.http_client.clone(),
             "/midpoints".to_string(),
         )
@@ -309,9 +321,15 @@ impl Markets {
         .await
     }
 
-    /// Get spreads for multiple tokens
-    pub async fn spreads(&self, params: &[BookParams]) -> Result<Vec<SpreadResponse>, ClobError> {
-        Request::<Vec<SpreadResponse>, ClobError>::new(
+    /// Get the bid-ask spread of many tokens (`POST /spreads`), keyed by token id.
+    ///
+    /// A token with no order book is absent. Each value decodes from a string,
+    /// as the CLOB sends it, or a number.
+    pub async fn spreads(
+        &self,
+        params: &[BookParams],
+    ) -> Result<HashMap<String, Decimal>, ClobError> {
+        Request::<HashMap<String, Decimal>, ClobError>::new(
             self.http_client.clone(),
             "/spreads".to_string(),
         )

@@ -14,7 +14,8 @@ use polyoxide_test_support::{environmental, fail, load_env, ResultExt};
 
 use polyoxide_core::QueryBuilder;
 use polyoxide_polymarket::clob::{
-    Account, Clob, ClobBuilder, CreateOrderParams, Credentials, OrderKind, OrderSide, SignatureType,
+    Account, BookParams, Clob, ClobBuilder, CreateOrderParams, Credentials, OrderKind, OrderSide,
+    SignatureType,
 };
 use polyoxide_polymarket::gamma::Gamma;
 use polyoxide_venue::Classify;
@@ -637,6 +638,81 @@ async fn live_spread() {
 
     let spread: f64 = resp.spread.parse().expect("spread should be a number"); // live-unwraps: parses the response's field
     assert!(spread >= 0.0, "spread {spread} should be non-negative");
+}
+
+// ── Markets: batch prices, midpoints and spreads ───────────────
+
+/// The batch reads answer a map keyed by token id, which 0.41.1 decoded as a
+/// list and so failed on every call (#70); these hold the decode to the host.
+#[tokio::test]
+#[ignore]
+async fn live_prices() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let params = [OrderSide::Buy, OrderSide::Sell].map(|side| BookParams {
+        token_id: token_id.clone(),
+        side: Some(side),
+    });
+    let prices = client
+        .markets()
+        .prices(&params)
+        .await
+        .or_fail("prices should succeed");
+
+    let sides = prices.get(&token_id);
+    assert!(sides.is_some(), "prices should key the token {token_id}");
+    for side in [OrderSide::Buy, OrderSide::Sell] {
+        let price = sides.and_then(|sides| sides.get(&side));
+        assert!(
+            price.is_some_and(|p| (Decimal::ZERO..=Decimal::ONE).contains(p)),
+            "{side:?} price {price:?} should be between 0 and 1"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_midpoints() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let mids = client
+        .markets()
+        .midpoints(&[BookParams {
+            token_id: token_id.clone(),
+            side: None,
+        }])
+        .await
+        .or_fail("midpoints should succeed");
+
+    let mid = mids.get(&token_id);
+    assert!(
+        mid.is_some_and(|m| (Decimal::ZERO..=Decimal::ONE).contains(m)),
+        "midpoint {mid:?} of {token_id} should be between 0 and 1"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_spreads() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let spreads = client
+        .markets()
+        .spreads(&[BookParams {
+            token_id: token_id.clone(),
+            side: None,
+        }])
+        .await
+        .or_fail("spreads should succeed");
+
+    let spread = spreads.get(&token_id);
+    assert!(
+        spread.is_some_and(|s| *s >= Decimal::ZERO),
+        "spread {spread:?} of {token_id} should be non-negative"
+    );
 }
 
 // ── Markets: last trade price ──────────────────────────────────
