@@ -527,8 +527,11 @@ async fn a_sequence_gap_resnapshots_in_place() {
     let server = KalshiServer::start(vec![Script {
         // The snapshot is seq 1; a delta at 3 skips 2.
         pushes: vec![delta(1, 3, A).to_string()],
-        // The snapshot that answers the request is number 10, and the delta after it 11:
-        // had the subscription not re-anchored on 10, that delta would be a gap.
+        // The snapshot that answers the request is number 10, and the delta after it 11.
+        // This pins that the delta after the snapshot is delivered. That the numbering is
+        // re-anchored on 10, and checked from there, is pinned by the second-gap tests:
+        // `a_second_gap_during_a_resnapshot_reconnects` here, which expects 11, and
+        // `a_second_gap_while_snapshots_are_awaited_reconnects` in `protocol.rs`.
         snapshot_seq: Some(10),
         after_snapshot: vec![delta(1, 11, A).to_string()],
         ..Default::default()
@@ -1469,6 +1472,7 @@ async fn a_snapshot_during_an_outage_is_answered_ok_and_sends_nothing() {
         .await
         .expect("answered at once during the outage");
     assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
     let requests = server.requests();
     assert_eq!(requests.len(), 2, "{requests:?}");
     assert!(

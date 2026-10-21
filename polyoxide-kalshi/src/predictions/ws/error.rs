@@ -1,4 +1,4 @@
-//! The order-book socket's error, and its classes.
+//! The supervised socket's error, and its classes.
 
 use std::time::Duration;
 
@@ -10,7 +10,8 @@ use crate::predictions::CredentialsError;
 
 polyoxide_venue::impl_ws_classification!();
 
-/// The error of the supervised order-book socket and of its membership calls.
+/// The error of the supervised socket, whatever channels it carries, and of its membership
+/// calls.
 ///
 /// Every socket failure arrives as the kit's [`WsError`](polyoxide_ws::WsError) first,
 /// and is classed by the one socket table. Kalshi's error frames are classed by code.

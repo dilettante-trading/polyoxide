@@ -277,32 +277,48 @@ async fn live_a_requested_snapshot_arrives() {
         .await
         .or_fail("connect to the demo socket");
     let membership = feed.membership();
+    // The subscription's own snapshot comes first.
     let deadline = Instant::now() + LISTEN;
-    let mut snapshots = 0usize;
-    let mut asked = false;
-    while snapshots < 2 {
+    loop {
         let Ok(next) = tokio::time::timeout_at(deadline, feed.next()).await else {
-            break;
+            transient("no snapshot of the subscription within 30 s");
         };
         let event = next
             .unwrap_or_else(|| transient("the server ended the stream before a snapshot"))
             .or_fail("the supervised demo feed");
         if let Event::Snapshot(book) = event {
             assert_eq!(book.market_ticker, ticker.as_str());
-            snapshots += 1;
-            if !asked {
-                // The first snapshot is the subscription's own; ask for a second.
-                asked = true;
-                membership
-                    .snapshot([ticker.clone()])
-                    .await
-                    .or_fail("ask for a snapshot");
-            }
+            break;
         }
     }
-    if snapshots < 2 {
-        transient("no snapshot answered the request within 30 s");
+    membership
+        .snapshot([ticker.clone()])
+        .await
+        .or_fail("ask for a snapshot");
+    // Only the request can answer now: a snapshot that follows a reconnect or a re-snapshot
+    // is the replay's or the gap's, and proves nothing about the request.
+    let deadline = Instant::now() + LISTEN;
+    let mut answered = false;
+    while !answered {
+        let Ok(next) = tokio::time::timeout_at(deadline, feed.next()).await else {
+            break;
+        };
+        let event = next
+            .unwrap_or_else(|| transient("the server ended the stream before the answer"))
+            .or_fail("the supervised demo feed");
+        match event {
+            Event::Snapshot(book) => {
+                assert_eq!(book.market_ticker, ticker.as_str());
+                answered = true;
+            }
+            Event::Disconnected { .. } | Event::Reconnected | Event::Resyncing { .. } => {
+                transient("the connection was interrupted before the requested snapshot came");
+            }
+            _ => {}
+        }
     }
+    // Kalshi answers every request, so a missing answer is a fault and not a quiet feed.
+    assert!(answered, "no snapshot answered the request within 30 s");
     feed.close().await.or_fail("close the demo feed");
 }
 

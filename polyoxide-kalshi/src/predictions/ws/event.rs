@@ -11,7 +11,8 @@ use crate::predictions::{
     ws::PredictionsWsError,
 };
 
-/// What a supervised order-book socket yields.
+/// What a supervised Kalshi socket yields: the order book's snapshots and deltas, and the
+/// `ticker` and `trade` channels' updates when the socket carries them.
 ///
 /// Every price is in YES pricing, so a book is one ladder: the bids are YES offers to buy
 /// and the asks are the NO bids, priced as the YES offers to sell they are.
