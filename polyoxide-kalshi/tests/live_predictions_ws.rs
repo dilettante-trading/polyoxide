@@ -34,12 +34,15 @@ use futures_util::StreamExt;
 use polyoxide_kalshi::predictions::{
     key::Ticker,
     ws::{
-        frames::{Delta, Rejected, Snapshot, Subscribed, Unsubscribed, Updated},
-        signed_request, Event, PredictionsWsBuilder, PredictionsWsError, DEMO_WS,
+        frames::{
+            Delta, Rejected, Snapshot, Subscribed, TickerFrame, TradeFrame, Unsubscribed, Updated,
+        },
+        signed_request, Channel, Event, PredictionsMembership, PredictionsWsBuilder,
+        PredictionsWsError, DEMO_WS,
     },
     Credentials, Predictions, DEMO,
 };
-use polyoxide_test_support::{agreement, load_env, transient, ResultExt};
+use polyoxide_test_support::{agreement, environmental, load_env, transient, ResultExt};
 use polyoxide_ws::{tungstenite::Message, Connection, Mode, DEFAULT_CONNECT_TIMEOUT};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -189,6 +192,154 @@ async fn live_frames_carry_no_unmodelled_keys() {
         };
         frames += 1;
         if let Some(found) = unmodelled_keys(text.as_str()) {
+            unmodelled.extend(found);
+        }
+    }
+    assert!(frames > 0, "no frame arrived within 30 s");
+    assert!(
+        unmodelled.is_empty(),
+        "the wire sent keys no frame type models: {unmodelled:?}"
+    );
+}
+
+/// As `unmodelled_keys`, for every channel the socket carries: the two it does not read are
+/// `ticker` and `trade`.
+fn unmodelled_keys_on_any_channel(text: &str) -> Option<Vec<String>> {
+    if let Some(found) = unmodelled_keys(text) {
+        return Some(found);
+    }
+    let kind = serde_json::from_str::<Value>(text)
+        .ok()?
+        .get("type")?
+        .as_str()?
+        .to_owned();
+    let found = match kind.as_str() {
+        "ticker" => agreement::compare::<TickerFrame>(&kind, text),
+        "trade" => agreement::compare::<TradeFrame>(&kind, text),
+        _ => return None,
+    };
+    Some(
+        found
+            .unmodelled
+            .into_iter()
+            .map(|path| format!("{kind}: {path}"))
+            .collect(),
+    )
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_three_channels_deliver_a_ticker_frame() {
+    let credentials = credentials();
+    let ticker = open_demo_ticker().await;
+    let mut feed = PredictionsWsBuilder::new()
+        .url(DEMO_WS)
+        .or_fail("the demo socket URL")
+        .channels(Channel::ALL.iter().copied())
+        .connect(credentials, [ticker.clone()])
+        .await
+        .or_fail("connect to the demo socket on every channel");
+    let deadline = Instant::now() + LISTEN;
+    let mut update = None;
+    while update.is_none() {
+        let Ok(next) = tokio::time::timeout_at(deadline, feed.next()).await else {
+            break;
+        };
+        let event = next
+            .unwrap_or_else(|| transient("the server ended the stream before a ticker frame"))
+            .or_fail("the supervised demo feed");
+        if let Event::Ticker(found) = event {
+            update = Some(found);
+        }
+    }
+    let Some(update) = update else {
+        environmental("no ticker frame within 30 s: the market was quiet");
+    };
+    assert_eq!(update.market_ticker, ticker.as_str());
+    assert!(
+        update.yes_bid <= update.yes_ask,
+        "the ticker's bid {} is above its ask {}",
+        update.yes_bid,
+        update.yes_ask
+    );
+    feed.close().await.or_fail("close the demo feed");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_a_requested_snapshot_arrives() {
+    let credentials = credentials();
+    let ticker = open_demo_ticker().await;
+    let mut feed = PredictionsWsBuilder::new()
+        .url(DEMO_WS)
+        .or_fail("the demo socket URL")
+        .connect(credentials, [ticker.clone()])
+        .await
+        .or_fail("connect to the demo socket");
+    let membership = feed.membership();
+    let deadline = Instant::now() + LISTEN;
+    let mut snapshots = 0usize;
+    let mut asked = false;
+    while snapshots < 2 {
+        let Ok(next) = tokio::time::timeout_at(deadline, feed.next()).await else {
+            break;
+        };
+        let event = next
+            .unwrap_or_else(|| transient("the server ended the stream before a snapshot"))
+            .or_fail("the supervised demo feed");
+        if let Event::Snapshot(book) = event {
+            assert_eq!(book.market_ticker, ticker.as_str());
+            snapshots += 1;
+            if !asked {
+                // The first snapshot is the subscription's own; ask for a second.
+                asked = true;
+                membership
+                    .snapshot([ticker.clone()])
+                    .await
+                    .or_fail("ask for a snapshot");
+            }
+        }
+    }
+    if snapshots < 2 {
+        transient("no snapshot answered the request within 30 s");
+    }
+    feed.close().await.or_fail("close the demo feed");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_frames_of_every_channel_carry_no_unmodelled_keys() {
+    let credentials = credentials();
+    let ticker = open_demo_ticker().await;
+    let request = signed_request(&credentials, DEMO_WS).or_fail("sign the handshake");
+    let socket = polyoxide_ws::connect(request, DEFAULT_CONNECT_TIMEOUT)
+        .await
+        .map_err(PredictionsWsError::from)
+        .or_fail("connect a raw socket through the kit");
+    let mut connection = Connection::new(socket, Mode::Data);
+    let subscribe = json!({"id": 1, "cmd": "subscribe", "params": {
+        "channels": ["orderbook_delta", "ticker", "trade"],
+        "market_tickers": [ticker.as_str()],
+        "use_yes_price": true,
+    }});
+    connection
+        .send(Message::Text(subscribe.to_string().into()))
+        .await
+        .map_err(PredictionsWsError::from)
+        .or_fail("send the subscribe");
+    let deadline = Instant::now() + LISTEN;
+    let mut frames = 0usize;
+    let mut unmodelled = BTreeSet::new();
+    while let Ok(next) = tokio::time::timeout_at(deadline, connection.next()).await {
+        let message = next
+            .unwrap_or_else(|| transient("the server ended the connection"))
+            .map_err(PredictionsWsError::from)
+            .or_fail("read a frame");
+        let Message::Text(text) = message else {
+            continue;
+        };
+        frames += 1;
+        if let Some(found) = unmodelled_keys_on_any_channel(text.as_str()) {
             unmodelled.extend(found);
         }
     }
