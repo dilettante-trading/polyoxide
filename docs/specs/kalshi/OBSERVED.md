@@ -243,4 +243,8 @@ At Basic's sizing the host refused about 0.3% of calls in both runs, spread over
 
 One capture's daily candles ended at 04:00 UTC (the 1440 row of the candlestick capture above: `end_period_ts` mod the width was 14,400 s). That is midnight Eastern time while daylight saving is in force. If Kalshi's day follows Eastern midnight, the day of 2026-11-01, when the clocks go back, runs from 04:00 UTC to 05:00 UTC on 2026-11-02 and is 25 hours long, and the client's `open_time` (`end_period_ts` less the width, 86,400 seconds) is an hour late for that candle (and an hour early for the 23-hour day when the clocks go forward). This was not observed: no capture crosses a clock change, and the reading that the day follows Eastern time rests on one end time. A recapture of a daily candle across 2026-11-01 settles it (`uv run scripts/capture_kalshi_predictions.py --candlesticks <dir> --ticker T`, with a `--ticker` that was open before the change, since the script chooses no aged market by default).
 
+### The client's re-snapshot command ids are accepted (demo, 2026-10-21)
+
+polyoxide-kalshi numbers a gap's `get_snapshot` from `FOLLOW_UP_ID_BASE`, 1,000,000,000, so it never meets a membership command's id. On the demo host, with `orderbook_delta` subscribed on `KXITFMATCH-26OCT22BANSAH-SAH` (sid 1), `get_snapshot` sent with ids 1,000,000,000, 1,000,000,001 and 2,147,483,653 (past 2^31) was each answered with an `orderbook_snapshot` echoing that id, on sid 1's next `seq` (3, 4, 5). Kalshi raised no error for any of them. The probe was a one-off script, not committed; it settles the final review's M7.
+
 <!-- epic 9 findings go above this line -->
