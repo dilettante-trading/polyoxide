@@ -55,7 +55,8 @@ SOCKET_KIT = "polyoxide-ws"
 # that wraps it classifies it.
 EXEMPT = frozenset({(VOCABULARY, "ClassifiedError"), (SOCKET_KIT, "WsError")})
 # Public error types whose names do not end in `Error`.
-AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "BurstCapacityExceeded"})
+AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "BurstCapacityExceeded",
+                       "UnservedInterval"})
 
 ITEM = re.compile(r"^\s*pub (?:enum|struct) (\w+)")
 # Any type, of any visibility, for the `WsError` fence.
@@ -524,3 +525,35 @@ def test_sources_are_read_as_utf8(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(Path, "read_text", lambda self, encoding=None, errors=None:
                         real(self, encoding=encoding or "ascii", errors=errors))
     assert unlisted(tmp_path) == []
+
+
+@pytest.mark.parametrize(("crate", "names"), [
+    ("polyoxide-kalshi", {"PredictionsError", "VenueError", "InvalidTicker", "CredentialsError",
+                          "PredictionsWsError"}),
+    (VOCABULARY, {"UnservedInterval"}),
+])
+def test_the_sweep_finds_kalshis_types_and_the_candle_refusal(crate: str, names: set[str]) -> None:
+    # A sweep that read nothing of Kalshi's crate, or missed a refusal that is not named
+    # `...Error`, would pass the sweep above vacuously.
+    assert names <= set(error_types(REPO / crate / "src"))
+
+
+def test_kalshis_assertion_names_every_error_type_the_crate_has() -> None:
+    listed = asserted(REPO / "polyoxide-kalshi" / "src" / "lib.rs")
+    assert listed is not None, "polyoxide-kalshi/src/lib.rs has no Classify assertion"
+    assert {"PredictionsError", "VenueError", "InvalidTicker", "CredentialsError",
+            "PredictionsWsError"} <= listed
+
+
+def test_the_candle_refusal_is_in_the_vocabulary_crates_assertion() -> None:
+    listed = asserted(REPO / VOCABULARY / "src" / "lib.rs")
+    assert listed is not None, "polyoxide-venue/src/lib.rs has no Classify assertion"
+    assert "UnservedInterval" in listed
+
+
+def test_the_ws_sweep_finds_kalshis_socket_error() -> None:
+    # The fences above would pass vacuously if the sweep never found this wrapper.
+    [path] = [path for found, path in ws_wrappers(REPO / "polyoxide-kalshi" / "src")
+              if found == "PredictionsWsError"]
+    assert expands_the_table(path)
+    assert uncalled(path) == []
