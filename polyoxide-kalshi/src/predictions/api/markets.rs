@@ -59,6 +59,7 @@ impl MarketsApi {
     /// by one width. Kalshi refuses a request over 10,000 candlesticks across the markets asked
     /// for with a `400` rather than truncating it, so a caller keeps its span within 10,000
     /// periods.
+    ///
     /// A market that settled before Kalshi's historical cutoff has candlesticks only on
     /// `GET /historical/markets/{ticker}/candlesticks`, which this client does not call.
     pub fn candlesticks(

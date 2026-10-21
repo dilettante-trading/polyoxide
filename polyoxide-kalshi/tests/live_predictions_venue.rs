@@ -17,8 +17,6 @@
 #[allow(dead_code)]
 mod common;
 
-use std::{cmp::Reverse, collections::HashMap};
-
 use polyoxide_kalshi::predictions::{
     key::{self, Outcome, Ticker},
     Predictions,
@@ -188,22 +186,13 @@ const CANDIDATES: usize = 100;
 /// `ESTABLISHED_DAYS` ago. With none among the busiest `CANDIDATES`, the test is an
 /// `environmental` skip.
 async fn busiest_established_market(client: &Predictions) -> Ticker {
-    let page = client
-        .markets()
-        .trades()
-        .limit(1000)
-        .send()
-        .await
-        .or_fail("recent trades");
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for trade in &page.trades {
-        *counts.entry(trade.ticker.as_str()).or_default() += 1;
-    }
-    let mut busiest: Vec<(&str, usize)> = counts.into_iter().collect();
-    busiest.sort_by_key(|(ticker, count)| (Reverse(*count), *ticker));
     let latest_open = chrono::Utc::now() - chrono::Duration::days(ESTABLISHED_DAYS);
-    for (name, _) in busiest.into_iter().take(CANDIDATES) {
-        let ticker = Ticker::new(name).or_fail("name a recently traded market");
+    for name in common::tickers_by_trades(client)
+        .await
+        .into_iter()
+        .take(CANDIDATES)
+    {
+        let ticker = Ticker::new(&name).or_fail("name a recently traded market");
         let market = client
             .markets()
             .get(&ticker)
@@ -211,10 +200,15 @@ async fn busiest_established_market(client: &Predictions) -> Ticker {
             .await
             .or_fail("read a recently traded market")
             .market;
-        if let Ok(opened) = chrono::DateTime::parse_from_rfc3339(&market.open_time) {
-            if opened <= latest_open {
-                return ticker;
-            }
+        // An open time that does not parse is a decode fault, not a market that did not qualify.
+        let opened = chrono::DateTime::parse_from_rfc3339(&market.open_time);
+        assert!(
+            opened.is_ok(),
+            "{ticker}: the open time {:?} is not RFC 3339",
+            market.open_time
+        );
+        if opened.is_ok_and(|opened| opened <= latest_open) {
+            return ticker;
         }
     }
     environmental(&format!(
@@ -303,9 +297,20 @@ async fn live_candles_at_each_served_width_are_ordered_aligned_and_mirror_each_o
             if own.open_time.0 + 2 * step + 60_000 >= now.0 {
                 continue;
             }
-            let Some(other) = others.iter().find(|c| c.open_time == own.open_time) else {
-                continue;
-            };
+            // Both outcomes read the same rows, so a completed candle with no match at its open
+            // time is a mapping fault, not a quiet market.
+            let matching: Vec<_> = others
+                .iter()
+                .filter(|c| c.open_time == own.open_time)
+                .collect();
+            assert_eq!(
+                matching.len(),
+                1,
+                "{ticker}: the NO read holds {} {width:?} candles at {:?}, where YES has one",
+                matching.len(),
+                own.open_time
+            );
+            let other = matching[0];
             assert_eq!(
                 own.close + other.close,
                 Decimal::ONE,
