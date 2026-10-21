@@ -32,9 +32,9 @@ signing stack, only with `clob` or `relay`; and `keyring` only with `keychain`.
 `tungstenite`, the socket stack, only with `usdm-ws`, so its `@usdm` file is the
 REST client alone. `rustls` is not on that rule: core's HTTP client builds it
 for TLS. The `polyoxide` umbrella is held as Polymarket is, on its own feature
-names: the HTTP stack only with an HTTP module of either venue
-(`polymarket-clob`, `-gamma`, `-data`, `-relay` or `-perps`, or
-`binance-usdm`), so its `@polymarket-rtds` and `@polymarket-sports` files are
+names: the HTTP stack only with an HTTP module of any venue
+(`polymarket-clob`, `-gamma`, `-data`, `-relay` or `-perps`, `binance-usdm`
+or `kalshi-predictions`), so its `@polymarket-rtds` and `@polymarket-sports` files are
 the socket-only tree; the signing stack only with `polymarket-clob` or
 `polymarket-relay`; and `keyring` only with `keychain`. Polymarket's `@perps`
 file must hold `reqwest`, its `@clob` and `@relay` files `alloy`, and its
@@ -48,7 +48,8 @@ because nothing it admits is ever built.
 `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with `predictions-ws`;
 and `alloy*`, `hmac` and `keyring` never, since Kalshi signs with `ring`. Its
 `@predictions` file must exist, and its `@predictions-ws` file, once written, must
-hold `polyoxide-ws`.
+hold `polyoxide-ws`. The umbrella's `@kalshi-predictions` file must hold `reqwest` and
+no socket crate, and its `@kalshi-predictions-ws` file `polyoxide-ws`.
 
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
@@ -129,7 +130,8 @@ PER_FEATURE = {
     "polyoxide": (
         Rule(frozenset({"reqwest", "polyoxide-core", "governor", "sha2"}), (),
              frozenset({"polymarket-clob", "polymarket-gamma", "polymarket-data",
-                        "polymarket-relay", "polymarket-perps", "binance-usdm"}),
+                        "polymarket-relay", "polymarket-perps", "binance-usdm",
+                        "kalshi-predictions"}),
              "reqwest, polyoxide-core, governor and sha2 only with an HTTP module"),
         Rule(frozenset({"hmac"}), ("alloy",), frozenset({"polymarket-clob", "polymarket-relay"}),
              "alloy* and hmac only with polymarket-clob or polymarket-relay"),
@@ -149,6 +151,8 @@ MUST_BUILD = {
     "polyoxide@polymarket-clob.txt": "alloy",
     "polyoxide@polymarket-clob,keychain.txt": "keyring",
     "polyoxide-kalshi@predictions.txt": "reqwest",
+    "polyoxide@kalshi-predictions.txt": "reqwest",
+    "polyoxide@kalshi-predictions-ws.txt": "polyoxide-ws",
 }
 
 HEADER = """\
@@ -544,6 +548,40 @@ def test_enabled_follows_features_and_not_dependencies() -> None:
     assert enabled(("perps-ws",), TABLE) == {"perps-ws", "perps"}
     assert enabled(("keychain",), TABLE) == {"keychain"}
     assert enabled((), TABLE) == set()
+
+
+UMBRELLA_KALSHI_FILES = (
+    "polyoxide@kalshi-predictions.txt",
+    "polyoxide@kalshi-predictions-ws.txt",
+)
+
+
+def test_the_umbrellas_kalshi_files_exist() -> None:
+    # A glob that matched neither would leave the two Kalshi features unpinned.
+    names = {p.name for p in allowlists()}
+    assert set(UMBRELLA_KALSHI_FILES) <= names, names
+
+
+def test_the_umbrellas_kalshi_features_admit_the_http_stack_and_never_the_signing_stack() -> None:
+    table = feature_table(UMBRELLA)
+    for features in (("kalshi",), ("kalshi-predictions",), ("kalshi-predictions-ws",)):
+        assert denied(UMBRELLA, HTTP_STACK, features, table) == [], features
+        assert denied(UMBRELLA, ["alloy", "hmac", "keyring"], features, table) == [
+            f"alloy ({UMBRELLA_SIGNING})", f"hmac ({UMBRELLA_SIGNING})",
+            f"keyring ({KEYCHAIN})"], features
+
+
+def test_only_the_umbrellas_kalshi_stream_feature_builds_the_socket_kit() -> None:
+    # The real table: a `kalshi` or `kalshi-predictions` that came to imply the stream would
+    # put the kit in the REST file, and the file would pass listing it.
+    table = feature_table(UMBRELLA)
+    assert "kalshi-predictions-ws" not in enabled(("kalshi",), table)
+    assert "kalshi-predictions-ws" not in enabled(("kalshi-predictions",), table)
+    assert "kalshi-predictions" in enabled(("kalshi-predictions-ws",), table)
+    rest = read_allowlist(ALLOWLISTS / "polyoxide@kalshi-predictions.txt")
+    assert [n for n in SOCKET_STACK if n in rest] == [], rest
+    stream = read_allowlist(ALLOWLISTS / "polyoxide@kalshi-predictions-ws.txt")
+    assert [n for n in SOCKET_STACK if n not in stream] == [], stream
 
 
 if __name__ == "__main__":
