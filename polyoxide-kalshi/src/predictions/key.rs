@@ -235,6 +235,11 @@ mod tests {
                 .any(|product| product == PRODUCT.as_str()),
             "{declared:?}"
         );
+        assert_eq!(
+            declared.classes.get(PRODUCT.as_str()).map(String::as_str),
+            Some(PredictionsKeys::CLASS.as_str()),
+            "{declared:?}"
+        );
     }
 
     #[test]

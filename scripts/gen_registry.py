@@ -25,6 +25,10 @@ The crate table:
                               # `products` may be omitted on the venue's own
                               # crate, `polyoxide-<venue>`
     products = ["clob"]       # each (venue, product) pair is the workspace's only one
+    classes = { clob = "event-contract" }
+                              # with `products`: the class of each product that has
+                              # a KeySpace, an id; the crate's registration test
+                              # holds each KeySpace::CLASS to it
     mirrors = ["clob"]        # docs/specs/ directories the crate covers
     notes = ["..."]           # annotations for CLAUDE.md's crate list that
                               # nothing else can derive
@@ -112,8 +116,8 @@ NUMBERS = ("zero one two three four five six seven eight nine ten eleven twelve 
            "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty").split()
 
 WORKSPACE_KEYS = {"stage", "mirrors"}
-CRATE_KEYS = {"readme", "venue", "products", "mirrors", "notes", "live", "identifiers",
-              "gate_exceptions"}
+CRATE_KEYS = {"readme", "venue", "products", "classes", "mirrors", "notes", "live",
+              "identifiers", "gate_exceptions"}
 EXCEPTION_KEYS = {"path", "term", "reason"}
 # The crates that may name no venue beyond the exceptions each venue declares
 # (CAP-7), which scripts/venue_gate.py reads.
@@ -205,6 +209,8 @@ class Crate:
     features: tuple[tuple[str, tuple[str, ...]], ...] = ()
     identifiers: tuple[str, ...] = ()
     gate_exceptions: tuple[GateException, ...] = ()
+    # (product, class) pairs, sorted by product.
+    classes: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -357,6 +363,19 @@ def _id(where: str, value) -> str:
     return value
 
 
+def _classes(where: str, value, products: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        raise RegistryError(f"{where} must be a table of product = class, not {value!r}")
+    for product, class_ in value.items():
+        if product not in products:
+            raise RegistryError(f"{where} names {product!r}, which is not one of the crate's "
+                                f"products ({', '.join(products) or 'none'})")
+        _id(f"{where} {product}", class_)
+    return tuple(sorted(value.items()))
+
+
 def _crate(root: Path, package: dict, manifest: dict, workspace: set[str]) -> Crate:
     name = package["name"]
     where = f"{name}: [package.metadata.polyoxide]"
@@ -375,6 +394,7 @@ def _crate(root: Path, package: dict, manifest: dict, workspace: set[str]) -> Cr
         _id(f"{where} venue", venue)
     for product in products:
         _id(f"{where} product", product)
+    classes = _classes(f"{where} classes", meta.get("classes"), products)
     identifiers = _strings(f"{where} identifiers", meta.get("identifiers"))
     exceptions = _gate_exceptions(f"{where} gate_exceptions", meta.get("gate_exceptions"))
     for key, value in (("identifiers", identifiers), ("gate_exceptions", exceptions)):
@@ -401,6 +421,7 @@ def _crate(root: Path, package: dict, manifest: dict, workspace: set[str]) -> Cr
         features=features,
         identifiers=identifiers,
         gate_exceptions=exceptions,
+        classes=classes,
     )
 
 

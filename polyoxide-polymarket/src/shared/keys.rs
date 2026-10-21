@@ -233,6 +233,18 @@ mod tests {
                 .any(|product| product == PERPS.as_str()),
             "{declared:?}"
         );
+        #[cfg(any(feature = "clob", feature = "gamma", feature = "data"))]
+        assert_eq!(
+            declared.classes.get(CLOB.as_str()).map(String::as_str),
+            Some(ClobKeys::CLASS.as_str()),
+            "{declared:?}"
+        );
+        #[cfg(feature = "perps")]
+        assert_eq!(
+            declared.classes.get(PERPS.as_str()).map(String::as_str),
+            Some(PerpsKeys::CLASS.as_str()),
+            "{declared:?}"
+        );
     }
 
     #[cfg(any(feature = "clob", feature = "gamma", feature = "data"))]
