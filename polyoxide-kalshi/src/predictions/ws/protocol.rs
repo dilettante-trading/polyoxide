@@ -179,11 +179,13 @@ impl Refusal {
 ///   against the last of its subscription. A gap on the `trade` subscription reconnects. A
 ///   gap on the order book's does not: the protocol yields `Event::Resyncing`, queues one
 ///   `get_snapshot` for the whole membership through the kit's `follow_up`, leaves the
-///   subscription's frames unchecked until the first snapshot answering it, re-anchors the
-///   numbering on each such snapshot, and withholds each market's deltas until its snapshot
-///   has arrived. It reconnects when the snapshots are not all in by the staleness window
-///   after the command was queued (checked on each decoded frame), when an error frame
-///   answers the command, and on a second gap while one is being repaired.
+///   subscription's frames unchecked until the first snapshot answering it, or until no
+///   market's snapshot is awaited any more (the markets awaited were all removed), when the
+///   next frame starts the count afresh, re-anchors the numbering on each such snapshot, and
+///   withholds each market's deltas until its snapshot has arrived. It reconnects when the
+///   snapshots are not all in by the staleness window after the command was queued (checked
+///   on each decoded frame), when an error frame answers the command, and on a second gap
+///   while one is being repaired.
 ///
 /// Its queue holds 1024 events.
 pub struct PredictionsProtocol {
@@ -318,10 +320,12 @@ impl PredictionsProtocol {
             let (id, sid) = (resync.id, resync.sid);
             self.sequences.follow_ups.remove(&id);
             self.resync = None;
-            // Nothing is awaited any more, so nothing will re-anchor the numbering: the next
-            // frame of the subscription starts the count afresh.
-            self.sequences.unanchored.remove(&sid);
-            self.sequences.last.remove(&sid);
+            // Nothing is awaited any more. A subscription still unanchored will not be
+            // re-anchored by a snapshot now, so its next frame starts the count afresh; one a
+            // snapshot already re-anchored keeps the count that snapshot set.
+            if self.sequences.unanchored.remove(&sid) {
+                self.sequences.last.remove(&sid);
+            }
         }
     }
 
@@ -653,8 +657,10 @@ impl PredictionsProtocol {
 ///
 /// The first `seq` of a subscription is taken as it comes; after it, each must be the
 /// previous plus one, except on the order book's subscription after a gap: its frames are not
-/// checked until the first snapshot that answers the re-snapshot, and each such snapshot
-/// re-anchors the numbering on its own `seq`. The correlation closure of a request observes
+/// checked until the first snapshot that answers the re-snapshot, or until no market's
+/// snapshot is awaited any more, when the next frame starts the count afresh; each such
+/// snapshot re-anchors the numbering on its own `seq`, and removing the markets still awaited
+/// after one has done so leaves the count it set. The correlation closure of a request observes
 /// every sequenced frame it reads while it waits, and counts in `ahead` each push it keeps for
 /// the stream, which `decode` meets later and must not observe again. A gap the closure finds is
 /// held in `gap` for the next frame `decode` sees.
@@ -2793,5 +2799,30 @@ mod tests {
         // The connection failing under a command is not a refusal: the replay repairs it.
         let lost = PredictionsWsError::from(WsError::closed(None, ""));
         assert_eq!(Refusal::of(&lost), None);
+    }
+
+    #[test]
+    fn a_numbering_a_snapshot_re_anchored_survives_the_last_awaited_market_leaving() {
+        // Bug: clearing the count when the last market awaited is removed even though a
+        // snapshot (A's) had already set it, so the next frame started the count afresh and a
+        // skipped number on it went unchecked.
+        let mut protocol = on_the_book();
+        let id = gap_on_the_book(&mut protocol);
+        // A's snapshot re-anchors the subscription at 10; B's is still awaited.
+        assert!(matches!(
+            decoded(&mut protocol, &snapshot_answer(id, "A-1", 1, 10)),
+            Decoded::Event(Event::Snapshot(_))
+        ));
+        assert!(protocol.resync.is_some());
+        assert!(protocol.sequences.unanchored.is_empty());
+        // B leaves the membership: nothing is awaited any more.
+        protocol.tickers.remove(&Ticker::new("B-2").unwrap());
+        protocol.forget_markets(&["B-2".to_owned()]);
+        assert!(protocol.resync.is_none());
+        // The first frame after it skips 11: still a gap, against the snapshot's number.
+        match decoded(&mut protocol, &delta_of("A-1", 1, 12)) {
+            Decoded::Event(Event::Resyncing { tickers }) => assert_eq!(tickers, ["A-1"]),
+            other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
+        }
     }
 }
