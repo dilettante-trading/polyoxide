@@ -490,7 +490,7 @@ channels:
     address: pyth_value
     title: Pyth Value Feed
     description: |
-      Real-time Pyth price updates for configured underlying tickers. Requires authentication.
+      Real-time Pyth price and Treasury yield updates for configured underlying tickers. Requires authentication.
 
       ## Access and pricing
 
@@ -498,9 +498,9 @@ channels:
 
       Connect using an authenticated Kalshi WebSocket session. See [Quick Start: WebSockets](/getting_started/quick_start_websockets#authentication) for API key authentication and request signing.
 
-      ## Commodities and underlying tickers
+      ## Underlying tickers
 
-      The reference table below lists the underlyings currently streaming in production: spot metals, metal and commodity indices, an equity index, and FX pairs. Index descriptions note Pyth's publishing schedule (24/7, 24/5, or 23/5); spot metals and FX pairs follow their market sessions.
+      The reference table below lists supported underlyings: spot metals, metal and commodity indices, an equity index, FX pairs, and Treasury yields. Index descriptions note Pyth's publishing schedule (24/7, 24/5, or 23/5); spot metals, FX pairs, and Treasury yields follow their market sessions.
 
       | Pyth feed ID | Pyth symbol                     | Description                                             |
       |--------------|---------------------------------|---------------------------------------------------------|
@@ -518,6 +518,10 @@ channels:
       | 3525         | `Commodities.Index.CU/USD`      | Copper Index in USD (24/7)                              |
       | 3266         | `Commodities.Index.COPPER/USD`  | Copper Index in USD (23/5)                              |
       | 3292         | `Equity.Index.US30/USD`         | US30 (Dow Jones Industrial Average) Index in USD (24/5) |
+      | 1530         | `InterestRate.US2Y`             | US 2-year Treasury yield in percent                     |
+      | 1534         | `InterestRate.US5Y`             | US 5-year Treasury yield in percent                     |
+      | 1527         | `InterestRate.US10Y`            | US 10-year Treasury yield in percent                    |
+      | 1531         | `InterestRate.US30Y`            | US 30-year Treasury yield in percent                    |
       | 327          | `FX.EUR/USD`                    | Euro / US Dollar                                        |
       | 333          | `FX.GBP/USD`                    | British Pound / US Dollar                               |
       | 315          | `FX.AUD/USD`                    | Australian Dollar / US Dollar                           |
@@ -534,6 +538,8 @@ channels:
       Pass the exact **Pyth symbol** in `underlying_tickers`. The numeric Pyth feed IDs are reference information and are not subscription parameters for this channel. Kalshi market tickers are not Pyth underlying tickers.
 
       Use `underlying_list` to discover recently streamed tickers on your connection. Availability can change, including as futures contracts expire; the table does not guarantee that every feed is streaming in every environment.
+
+      Treasury yields use the exact symbols above, without a `/USD` suffix. They are included in `["all"]` subscriptions and can also be requested individually, for example with `underlying_tickers: ["InterestRate.US2Y"]`. These are the yield feeds behind the `KX{2,5,10,30}YRRATE15M` and `KX{2,5,10,30}YRRATEH` markets; `/USD` symbols identify separate bond-price feeds.
 
       ## Requirements
 
@@ -633,7 +639,7 @@ channels:
 
       - `sid` identifies the subscription stream; use it for `update_subscription` and `unsubscribe`.
       - Missing or empty `underlying_tickers` for `subscribe_underlyings` or `unsubscribe_underlyings` returns an `error` with `code: 28` ("Underlying tickers required").
-      - `value_usd` is a USD price string formatted to eight decimal places.
+      - `value_usd` is formatted to eight decimal places. The field name is retained for compatibility: for Treasury yield symbols it contains the yield in percent, so `"4.25000000"` means **4.25%**, not a dollar price or a decimal fraction. Other symbols retain their quoted price units.
       - `source_ts_ms` is the source timestamp in Unix milliseconds; `received_at` is when Kalshi received the update, also in Unix milliseconds.
     messages:
       pythValue:
@@ -1772,7 +1778,7 @@ components:
     pythValue:
       name: pyth_value
       title: Pyth Value Update
-      summary: Deduplicated real-time Pyth price for an underlying ticker
+      summary: Deduplicated real-time Pyth price or Treasury yield for an underlying ticker
       contentType: application/json
       payload:
         $ref: '#/components/schemas/pythValuePayload'
@@ -1786,6 +1792,17 @@ components:
             msg:
               underlying_ticker: "Commodities.Index.PYTHOIL/USD"
               value_usd: "82.12345000"
+              source_ts_ms: 1710000000100
+              received_at: 1710000000123
+        - name: pythTreasuryYieldUpdate
+          payload:
+            type: pyth_value
+            sending_ts_ms: 1710000000124
+            sid: 1
+            seq: 43
+            msg:
+              underlying_ticker: "InterestRate.US2Y"
+              value_usd: "4.25000000"
               source_ts_ms: 1710000000100
               received_at: 1710000000123
 
@@ -2346,7 +2363,6 @@ components:
     marketTicker:
       type: string
       description: Unique market identifier
-      pattern: '^[A-Z0-9-]+$'
       examples:
         - "FED-23DEC-T3.00"
         - "HIGHNY-22DEC23-B53.5"
@@ -2368,7 +2384,7 @@ components:
 
     lastUpdateReason:
       type: string
-      description: Order update reason. ReduceOnlyCancel means reduce_only capped the order at placement.
+      description: Order update reason. The value ReduceOnlyCancel means reduce_only capped the order at placement.
       enum: ["Decrease", "Amend", "MarginCancel", "SelfTradeCancel", "ExpiryCancel", "CloseCancel", "HaltCancel", "Trade", "PostOnlyCrossCancel", "ReduceOnlyCancel", "SettlementBoundsCancel"]
 
     orderAction:
@@ -2986,7 +3002,7 @@ components:
               description: Qualified Pyth underlying ticker
             value_usd:
               type: string
-              description: USD value formatted to 8 decimal places
+              description: 'Value formatted to 8 decimal places in the underlying''s quoted units. For Treasury yields (InterestRate.US2Y, InterestRate.US5Y, InterestRate.US10Y, InterestRate.US30Y), this is percent: "4.25000000" means 4.25%. The field name is retained for compatibility.'
             source_ts_ms:
               type: integer
               description: Pyth source timestamp (unix ms)
@@ -3198,7 +3214,7 @@ components:
             time:
               type: string
               deprecated: true
-              description: Deprecated - Timestamp for when the update happened (RFC3339). Use ts_ms instead.
+              description: Deprecated - Timestamp for when the update happened (RFC3339, truncated to milliseconds). Use ts_ms instead.
               format: date-time
         sending_ts_ms:
           $ref: '#/components/schemas/sendingTimestampMs'
@@ -3887,17 +3903,17 @@ components:
             created_time:
               type: [string, "null"]
               deprecated: true
-              description: Deprecated - Order creation time in RFC3339 format. Use created_ts_ms instead.
+              description: Deprecated - Order creation time in RFC3339 format, truncated to milliseconds. Use created_ts_ms instead.
               format: date-time
             last_update_time:
               type: string
               deprecated: true
-              description: Deprecated - Last update time in RFC3339 format. Use last_updated_ts_ms instead.
+              description: Deprecated - Last update time in RFC3339 format, truncated to milliseconds. Use last_updated_ts_ms instead.
               format: date-time
             expiration_time:
               type: string
               deprecated: true
-              description: Deprecated - Order expiration time in RFC3339 format. Use expiration_ts_ms instead.
+              description: Deprecated - Order expiration time in RFC3339 format, truncated to milliseconds. Use expiration_ts_ms instead.
               format: date-time
             expiration_ts_ms:
               type: integer
