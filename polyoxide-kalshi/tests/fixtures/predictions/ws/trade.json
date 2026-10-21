@@ -3,17 +3,17 @@
   "sid": 3,
   "seq": 1,
   "msg": {
-    "trade_id": "07242628-c0e1-b2c9-1bb8-a77fc6e5d299",
+    "trade_id": "072426b3-5951-bc28-08f5-5379cb9cd833",
     "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
-    "yes_price_dollars": "0.5200",
-    "no_price_dollars": "0.4800",
+    "yes_price_dollars": "0.4800",
+    "no_price_dollars": "0.5200",
     "count_fp": "2.00",
-    "taker_side": "yes",
-    "taker_outcome_side": "yes",
-    "taker_book_side": "bid",
+    "taker_side": "no",
+    "taker_outcome_side": "no",
+    "taker_book_side": "ask",
     "is_block_trade": false,
-    "ts": 1792578960,
-    "ts_ms": 1792578960491
+    "ts": 1792580894,
+    "ts_ms": 1792580894091
   },
-  "sending_ts_ms": 1792578960492
+  "sending_ts_ms": 1792580894092
 }

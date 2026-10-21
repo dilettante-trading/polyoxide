@@ -1,10 +1,10 @@
 {
   "type": "error",
-  "id": 5,
+  "id": 11,
   "sid": 2,
   "msg": {
     "code": 13,
     "msg": "Unsupported action"
   },
-  "sending_ts_ms": 1792578992548
+  "sending_ts_ms": 1792580958006
 }

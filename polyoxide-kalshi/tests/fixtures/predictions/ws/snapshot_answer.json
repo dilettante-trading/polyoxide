@@ -2,22 +2,22 @@
   "type": "orderbook_snapshot",
   "id": 2,
   "sid": 1,
-  "seq": 28,
+  "seq": 35,
   "msg": {
     "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
     "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
     "yes_dollars_fp": [
       [
         "0.4800",
-        "200.00"
+        "198.00"
       ]
     ],
     "no_dollars_fp": [
       [
         "0.5200",
-        "198.00"
+        "200.00"
       ]
     ]
   },
-  "sending_ts_ms": 1792578961765
+  "sending_ts_ms": 1792580895412
 }

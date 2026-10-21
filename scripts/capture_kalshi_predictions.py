@@ -536,6 +536,7 @@ def check_candlesticks(root):
             return None
 
     tickers = set()
+    batch_rows = {}
     for name, width in BATCH_FILES.items():
         body = load(name)
         if body is None:
@@ -551,6 +552,9 @@ def check_candlesticks(root):
         ):
             problems.append(f"{name}: `candlesticks` is not a list of rows with an integer `end_period_ts` and a `price` object")
             continue
+        batch_rows[name] = rows
+        for found in d6_problems(rows):
+            problems.append(f"{name}: contradicts D6's reading of the wire: {found}")
         kinds = Counter(kind(row) for row in rows)
         if not kinds["traded"]:
             problems.append(f"{name}: no traded period")
@@ -569,9 +573,13 @@ def check_candlesticks(root):
             problems.append("series_60.json: expected exactly the keys `candlesticks` and `ticker`")
         elif tickers and series["ticker"] not in tickers:
             problems.append(f"series_60.json: ticker {series['ticker']!r} is not the batch files' {sorted(map(str, tickers))}")
+        elif "batch_60.json" in batch_rows and series["candlesticks"] != batch_rows["batch_60.json"]:
+            problems.append("series_60.json: its rows differ from batch_60.json's, which OBSERVED.md records as identical")
     refusal = load("error_width.json")
-    if refusal is not None and not (isinstance(refusal, dict) and refusal):
-        problems.append("error_width.json: expected a non-empty JSON object")
+    if refusal is not None and not (
+        isinstance(refusal, dict) and set(refusal) == {"msg"} and isinstance(refusal["msg"], str) and refusal["msg"]
+    ):
+        problems.append('error_width.json: expected the 400 body it was captured with, `{"msg": "<text>"}`')
 
     try:
         provenance = (folder / "PROVENANCE.md").read_text(encoding="utf-8")
