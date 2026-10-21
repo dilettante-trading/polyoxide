@@ -27,9 +27,9 @@ Kalshi answers with three shapes, which the client's one decode reads (`Predicti
 
 The documentation says a 429 carries no `Retry-After` and no `X-RateLimit-*` header.
 
-## The AsyncAPI's ticker pattern
+## The ticker's spelling
 
-`asyncapi.yaml` gives `marketTicker` the pattern `^[A-Z0-9-]+$`, and its own examples carry dots (`FED-23DEC-T3.00`), as production's tickers do. The client accepts `[A-Z0-9.-]`, 1 to 200 characters (the OpenAPI's `maxLength` for the tickers of `GET /markets/orderbooks`), at least one of them a letter or digit, so `.` and `..`, which a URL resolves as dot segments, are refused, and uppercases ASCII letters.
+`asyncapi.yaml` gave `marketTicker` the pattern `^[A-Z0-9-]+$` until upstream removed it (adopted 2026-10-21, #68), though its own examples carried dots (`FED-23DEC-T3.00`), as production's tickers do. Neither mirror now constrains a ticker's characters. The client accepts `[A-Z0-9.-]`, 1 to 200 characters (the OpenAPI's `maxLength` for the tickers of `GET /markets/orderbooks`), at least one of them a letter or digit, so `.` and `..`, which a URL resolves as dot segments, are refused, and uppercases ASCII letters.
 
 ## Rate limits
 

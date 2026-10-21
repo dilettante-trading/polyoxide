@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn a_dotted_ticker_parses_and_keeps_its_dot() {
         // Production serves tickers such as this one, though the AsyncAPI's
-        // pattern is `^[A-Z0-9-]+$`.
+        // pattern was `^[A-Z0-9-]+$` until upstream removed it (#68).
         let parsed = parse(&raw("kalshi.predictions:FED-23DEC-T3.00:no")).unwrap();
         let id = outcome(&parsed).unwrap();
         assert_eq!(id.ticker.as_str(), "FED-23DEC-T3.00");
