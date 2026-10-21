@@ -3,9 +3,9 @@
 Upstream API documentation for Claude, one directory per host of each venue polyoxide
 reads. Source of truth for endpoint contracts, rate limits, auth schemes, and response
 schemas: Polymarket's as Polymarket documents them, and Binance's, which publishes no spec
-for USDⓈ-M, as its hosts were observed to behave ([Other venues](#other-venues)).
+for USDⓈ-M, as its hosts were observed to behave, and Kalshi's, which publishes an OpenAPI and an AsyncAPI, as it publishes them, with what its hosts were observed to do beside them ([Other venues](#other-venues)).
 
-Polymarket's specs are sourced from https://docs.polymarket.com and the OpenAPI specs at:
+The specs are sourced from https://docs.polymarket.com (Polymarket's) and https://docs.kalshi.com (Kalshi's), and the OpenAPI specs at:
 <!-- generated:begin index-upstream -->
 - CLOB: https://docs.polymarket.com/api-spec/clob-openapi.yaml
 - Gamma: https://docs.polymarket.com/api-spec/gamma-openapi.yaml
@@ -46,13 +46,13 @@ Mirrored for reference, **not implemented** by any crate:
 
 ## Other venues
 
-Not Polymarket hosts. Read by a polyoxide crate for consumers that trade both venues:
+Not Polymarket hosts. Read by a polyoxide crate for consumers that trade across venues:
 
 <!-- generated:begin index-other-venues -->
 | API | Base URL | Description | Crate |
 |-----|----------|-------------|-------|
 | [Binance USDⓈ-M](binance/INDEX.md) | `https://fapi.binance.com`, `wss://fstream.binance.com` | Futures public market data and market streams. No published spec, so not a mirror | `polyoxide-binance` (streams behind `usdm-ws`) |
-| [Kalshi](kalshi/OBSERVED.md) | `https://external-api.kalshi.com`, `https://external-api.demo.kalshi.co`, `wss://external-api-ws.kalshi.com/trade-api/ws/v2`, `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` | Event-contract market data and its order-book stream. A walking skeleton, in a crate that is not published | `polyoxide-kalshi` |
+| [Kalshi](kalshi/OBSERVED.md) | `https://external-api.kalshi.com`, `https://external-api.demo.kalshi.co`, `wss://external-api-ws.kalshi.com/trade-api/ws/v2`, `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` | Event-contract market data and its order-book, ticker and trade streams | `polyoxide-kalshi` |
 <!-- generated:end index-other-venues -->
 
 ## Hosts with no upstream spec
@@ -109,5 +109,5 @@ entirely.
 | [rtds/asyncapi-live-data.json](rtds/asyncapi-live-data.json) | RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md) | `polyoxide-polymarket` |
 | [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (27 channels) — six public channels implemented (`perps-ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md) | `polyoxide-polymarket` |
 | [combos-rfq/asyncapi.json](combos-rfq/asyncapi.json) | RFQ quoter gateway — not implemented | — |
-| [kalshi/asyncapi.yaml](kalshi/asyncapi.yaml) | Trade API WebSocket (15 channels); `orderbook_delta` is implemented | `polyoxide-kalshi` |
+| [kalshi/asyncapi.yaml](kalshi/asyncapi.yaml) | Trade API WebSocket (15 channels); `orderbook_delta`, `ticker` and `trade` are implemented | `polyoxide-kalshi` |
 <!-- generated:end index-asyncapi -->

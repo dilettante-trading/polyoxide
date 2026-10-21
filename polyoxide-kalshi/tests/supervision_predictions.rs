@@ -8,22 +8,23 @@ use futures_util::StreamExt;
 use polyoxide_kalshi::predictions::{
     key::Ticker,
     ws::{
-        DisconnectReason, Event, PredictionsMembership, PredictionsWsBuilder, PredictionsWsError,
-        SupervisedPredictionsWs,
+        Books, Channel, DisconnectReason, Event, PredictionsMembership, PredictionsWsBuilder,
+        PredictionsWsError, SupervisedPredictionsWs,
     },
     Credentials,
 };
 use polyoxide_test_support::fixtures;
-use polyoxide_venue::{Class, Classify};
+use polyoxide_venue::{Class, Classify, Level};
 use polyoxide_ws::test_server::{next_event, next_item, WINDOW};
 use ring::signature::{UnparsedPublicKey, ED25519};
+use rust_decimal::Decimal;
 use serde_json::{json, Value};
 
 // Kalshi's answer on the shared scripted server, as the unit tests use it.
 #[path = "../src/predictions/ws/scripted.rs"]
 mod scripted;
 
-use scripted::{delta, KalshiServer, Script};
+use scripted::{delta, ticker_frame, trade_frame, KalshiServer, Script};
 
 const PATH: &str = "/trade-api/ws/v2";
 const A: &str = "KXAAA-1";
@@ -497,17 +498,44 @@ async fn a_replay_refused_with_a_code_that_reconnects_is_retried() {
     ws.close().await.expect("close");
 }
 
+fn label(event: &Event) -> &'static str {
+    match event {
+        Event::Snapshot(_) => "snapshot",
+        Event::Delta(_) => "delta",
+        Event::Ticker(_) => "ticker",
+        Event::Trade(_) => "trade",
+        Event::Resyncing { .. } => "resyncing",
+        Event::Disconnected { .. } => "disconnected",
+        Event::Reconnected => "reconnected",
+        _ => "other",
+    }
+}
+
+/// The labels of the next `count` events, naming every kind the socket yields.
+async fn labels(ws: &mut SupervisedPredictionsWs, count: usize) -> Vec<&'static str> {
+    let mut seen = Vec::new();
+    for _ in 0..count {
+        seen.push(label(&next_event(ws).await));
+    }
+    seen
+}
+
 #[tokio::test]
-async fn a_sequence_gap_reconnects_and_resnapshots() {
-    // Bug: carrying on past a lost delta, so a book built on it is silently wrong.
-    let server = KalshiServer::start(vec![
-        Script {
-            // The snapshot is seq 1; a delta at 3 skips 2.
-            pushes: vec![delta(1, 3, A).to_string()],
-            ..Default::default()
-        },
-        Script::default(),
-    ])
+async fn a_sequence_gap_resnapshots_in_place() {
+    // Bug: carrying on past a lost delta, so a book built on it is silently wrong; and
+    // reconnecting for it, which loses every other market's book and the connection too.
+    let server = KalshiServer::start(vec![Script {
+        // The snapshot is seq 1; a delta at 3 skips 2.
+        pushes: vec![delta(1, 3, A).to_string()],
+        // The snapshot that answers the request is number 10, and the delta after it 11.
+        // This pins that the delta after the snapshot is delivered. That the numbering is
+        // re-anchored on 10, and checked from there, is pinned by the second-gap tests:
+        // `a_second_gap_during_a_resnapshot_reconnects` here, which expects 11, and
+        // `a_second_gap_while_snapshots_are_awaited_reconnects` in `protocol.rs`.
+        snapshot_seq: Some(10),
+        after_snapshot: vec![delta(1, 11, A).to_string()],
+        ..Default::default()
+    }])
     .await;
     let mut ws = builder_for(&server)
         .connect(credentials(), [t(A)])
@@ -515,32 +543,37 @@ async fn a_sequence_gap_reconnects_and_resnapshots() {
         .expect("connect");
     assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
     match next_event(&mut ws).await {
-        Event::Disconnected {
-            reason:
-                DisconnectReason::Error(PredictionsWsError::SequenceGap {
-                    sid,
-                    expected,
-                    received,
-                }),
-        } => assert_eq!((sid, expected, received), (1, 2, 3)),
-        other => panic!("expected the gap to end the connection, got {other:?}"),
+        Event::Resyncing { tickers } => assert_eq!(tickers, [A]),
+        other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
     }
-    assert_eq!(kinds(&mut ws, 2).await, ["reconnected", "snapshot"]);
-    assert_eq!(server.connection_count(), 2);
+    match next_event(&mut ws).await {
+        Event::Snapshot(book) => assert_eq!(book.market_ticker, A),
+        other => panic!("expected the snapshot that answers it, got {other:?}"),
+    }
+    assert!(matches!(next_event(&mut ws).await, Event::Delta(_)));
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    // One connection throughout, and one request for the snapshot.
+    assert_eq!(server.connection_count(), 1);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(requests[1]["cmd"], "update_subscription");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A]})
+    );
+    assert_ne!(requests[1]["id"], requests[0]["id"]);
     ws.close().await.expect("close");
 }
 
 #[tokio::test]
-async fn a_gap_in_an_answer_reconnects() {
+async fn a_gap_in_an_answer_resnapshots_in_place() {
     // Bug: checking only the pushes, so an `ok` that skipped a number goes unnoticed and
-    // the delta lost behind it is never found.
-    let server = KalshiServer::start(vec![
-        Script {
-            ok_skips_seq: true,
-            ..Default::default()
-        },
-        Script::default(),
-    ])
+    // the delta lost behind it is never found; and, once found, repairing it by a
+    // reconnect, where a snapshot of the whole membership on the same connection is enough.
+    let server = KalshiServer::start(vec![Script {
+        ok_skips_seq: true,
+        ..Default::default()
+    }])
     .await;
     let mut ws = builder_for(&server)
         .connect(credentials(), [t(A)])
@@ -548,24 +581,26 @@ async fn a_gap_in_an_answer_reconnects() {
         .expect("connect");
     let membership = ws.membership();
     assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
-    // The change itself succeeded; the gap behind it ends the connection.
+    // The change itself succeeded; the gap behind its `ok` starts the re-snapshot, ahead of
+    // the added market's own snapshot, which was the frame that raised it and is not lost.
     membership.subscribe([t(B)]).await.expect("the change");
     match next_event(&mut ws).await {
-        Event::Disconnected {
-            reason:
-                DisconnectReason::Error(PredictionsWsError::SequenceGap {
-                    sid,
-                    expected,
-                    received,
-                }),
-        } => assert_eq!((sid, expected, received), (1, 2, 3)),
-        other => panic!("expected the gap in the answer, got {other:?}"),
+        Event::Resyncing { tickers } => assert_eq!(tickers, [A, B]),
+        other => panic!("expected the gap in the answer to start a re-snapshot, got {other:?}"),
     }
+    // B's snapshot from the change, then the two that answer the request.
     assert_eq!(
-        kinds(&mut ws, 3).await,
-        ["reconnected", "snapshot", "snapshot"]
+        labels(&mut ws, 3).await,
+        ["snapshot", "snapshot", "snapshot"]
     );
-    assert_subscribe(&server.first_frames()[1], &[A, B]);
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 3, "{requests:?}");
+    assert_eq!(
+        requests[2]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A, B]})
+    );
     ws.close().await.expect("close");
 }
 
@@ -945,6 +980,706 @@ async fn an_empty_membership_connects_sends_nothing_and_keeps_pinging() {
         .await;
     assert!(server.requests().is_empty());
     assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}
+
+/// Asserts a request is a `subscribe` naming exactly `channels`, in that order, and the
+/// markets `expected`.
+fn assert_subscribe_to(frame: &Value, channels: &[&str], expected: &[&str]) {
+    assert_eq!(frame["cmd"], "subscribe");
+    assert_eq!(frame["params"]["channels"], json!(channels));
+    let mut tickers: Vec<&str> = frame["params"]["market_tickers"]
+        .as_array()
+        .expect("a ticker list")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    tickers.sort_unstable();
+    assert_eq!(tickers, expected);
+}
+
+const EVERY_CHANNEL: [&str; 3] = ["orderbook_delta", "ticker", "trade"];
+
+#[tokio::test]
+async fn the_replay_names_every_channel_once_in_channel_order() {
+    // Bug: a subscribe naming the first channel only, or the channels in the order they
+    // were given, which a later update then reads against the wrong subscriptions.
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let mut ws = builder_for(&server)
+        .channels([
+            Channel::Trade,
+            Channel::OrderbookDelta,
+            Channel::Trade,
+            Channel::Ticker,
+        ])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    let firsts = server.first_frames();
+    assert_subscribe_to(&firsts[0], &EVERY_CHANNEL, &[A]);
+    assert_eq!(firsts[0]["params"]["use_yes_price"], true);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_subscribe_without_the_order_book_does_not_ask_for_yes_pricing() {
+    // Bug: sending the order book's flag on channels it does not apply to.
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let ws = builder_for(&server)
+        .channels([Channel::Ticker, Channel::Trade])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let firsts = server.first_frames();
+    assert_subscribe_to(&firsts[0], &["ticker", "trade"], &[A]);
+    assert!(firsts[0]["params"].get("use_yes_price").is_none());
+    drop(ws);
+}
+
+#[tokio::test]
+async fn a_change_updates_every_channels_subscription_in_channel_order() {
+    // Bug: an update sent to the order book's subscription alone, which leaves the other
+    // channels on the old set of markets.
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let mut ws = builder_for(&server)
+        .channels(Channel::ALL.iter().copied())
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    membership.subscribe([t(B)]).await.expect("add");
+    match next_event(&mut ws).await {
+        Event::Snapshot(book) => assert_eq!(book.market_ticker, B),
+        other => panic!("expected the added market's snapshot, got {other:?}"),
+    }
+    membership.unsubscribe([t(A)]).await.expect("delete");
+    let requests = server.requests();
+    assert_eq!(requests.len(), 7, "{requests:?}");
+    for (n, sid) in [1u64, 2, 3].into_iter().enumerate() {
+        assert_eq!(
+            requests[1 + n]["params"],
+            json!({"sid": sid, "action": "add_markets", "market_tickers": [B]}),
+            "{requests:?}"
+        );
+        assert_eq!(
+            requests[4 + n]["params"],
+            json!({"sid": sid, "action": "delete_markets", "market_tickers": [A]}),
+            "{requests:?}"
+        );
+    }
+    // The kit's ids, one for each command.
+    let ids: Vec<u64> = requests.iter().filter_map(|r| r["id"].as_u64()).collect();
+    assert_eq!(ids, [1, 2, 3, 4, 5, 6, 7]);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn emptying_the_set_unsubscribes_every_subscription_and_the_next_add_subscribes_afresh() {
+    // Bug: leaving the ticker and trade subscriptions open on an empty set, where Kalshi
+    // would refuse a fresh subscribe with no markets (code 14), or sending the first add to
+    // subscriptions that are gone.
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let mut ws = builder_for(&server)
+        .channels(Channel::ALL.iter().copied())
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    membership
+        .unsubscribe([t(A)])
+        .await
+        .expect("empty the membership");
+    membership.subscribe([t(C)]).await.expect("add after empty");
+    let requests = server.requests();
+    assert_eq!(requests.len(), 5, "{requests:?}");
+    for (n, sid) in [1u64, 2, 3].into_iter().enumerate() {
+        assert_eq!(requests[1 + n]["cmd"], "unsubscribe", "{requests:?}");
+        assert_eq!(requests[1 + n]["params"], json!({"sids": [sid]}));
+    }
+    assert_subscribe_to(&requests[4], &EVERY_CHANNEL, &[C]);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn an_empty_set_is_never_subscribed_on_any_channel_not_even_after_a_reconnect() {
+    // Bug: replaying a subscribe with no markets after a reconnect, which Kalshi refuses on
+    // the ticker and trade channels (code 14) and so fails the replay.
+    let server = KalshiServer::start(vec![
+        Script {
+            cut_after: Some(Duration::from_millis(400)),
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels(Channel::ALL.iter().copied())
+        .connect(credentials(), Vec::<Ticker>::new())
+        .await
+        .expect("connect");
+    // Nothing is sent while the set is empty.
+    server
+        .wait_for("a handshake", |s| s.handshake_headers().len() == 1)
+        .await;
+    assert!(server.requests().is_empty());
+    let membership = ws.membership();
+    membership.subscribe([t(A)]).await.expect("add");
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    membership
+        .unsubscribe([t(A)])
+        .await
+        .expect("empty the membership");
+    assert_eq!(labels(&mut ws, 2).await, ["disconnected", "reconnected"]);
+    assert_quiet(&mut ws, Duration::from_millis(200)).await;
+    // The first connection's subscribe and three unsubscribes; the second sent nothing.
+    assert_eq!(server.requests().len(), 4, "{:?}", server.requests());
+    assert_eq!(server.connection_count(), 2);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn ticker_frames_carry_no_seq_and_pass() {
+    // Bug: checking a channel that has no sequence, which reads the second frame as a gap.
+    let server = KalshiServer::start(vec![Script {
+        pushes: vec![
+            ticker_frame(2, A).to_string(),
+            ticker_frame(2, A).to_string(),
+            ticker_frame(2, A).to_string(),
+        ],
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Ticker])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    match next_event(&mut ws).await {
+        Event::Ticker(update) => {
+            assert_eq!(update.market_ticker, A);
+            assert_eq!(update.yes_bid, "0.4500".parse::<Decimal>().unwrap());
+            assert_eq!(update.yes_ask, "0.5300".parse::<Decimal>().unwrap());
+        }
+        other => panic!("expected a ticker update, got {other:?}"),
+    }
+    assert_eq!(labels(&mut ws, 2).await, ["ticker", "ticker"]);
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn trades_are_events_on_the_trade_subscription() {
+    let server = KalshiServer::start(vec![Script {
+        pushes: vec![
+            trade_frame(2, 1, A).to_string(),
+            trade_frame(2, 2, A).to_string(),
+        ],
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Trade])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    match next_event(&mut ws).await {
+        Event::Trade(trade) => {
+            assert_eq!(trade.market_ticker, A);
+            assert_eq!(trade.yes_price, "0.3600".parse::<Decimal>().unwrap());
+            assert_eq!(trade.count, "136.00".parse::<Decimal>().unwrap());
+        }
+        other => panic!("expected a trade, got {other:?}"),
+    }
+    assert!(matches!(next_event(&mut ws).await, Event::Trade(_)));
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_gap_on_the_trade_subscription_reconnects() {
+    // Bug: re-snapshotting the order book for a lost trade, which repairs nothing: the
+    // trade channel has no snapshot to ask for.
+    let server = KalshiServer::start(vec![
+        Script {
+            // Numbers 1 then 3 on the trade subscription.
+            pushes: vec![
+                trade_frame(2, 1, A).to_string(),
+                trade_frame(2, 3, A).to_string(),
+            ],
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Trade])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert_eq!(labels(&mut ws, 2).await, ["snapshot", "trade"]);
+    match next_event(&mut ws).await {
+        Event::Disconnected {
+            reason:
+                DisconnectReason::Error(PredictionsWsError::SequenceGap {
+                    sid,
+                    expected,
+                    received,
+                }),
+        } => assert_eq!((sid, expected, received), (2, 2, 3)),
+        other => panic!("expected the gap to end the connection, got {other:?}"),
+    }
+    assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_eq!(server.connection_count(), 2);
+    let requests = server.requests();
+    assert!(
+        requests.iter().all(|request| request["cmd"] == "subscribe"),
+        "{requests:?}"
+    );
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn deltas_between_a_gap_and_the_snapshot_are_dropped() {
+    // Bug: yielding a delta that applies to a book the consumer has dropped, which the
+    // snapshot then replaces after a flash of wrong prices.
+    let server = KalshiServer::start(vec![Script {
+        // The gap, then a delta the stale book must not see.
+        pushes: vec![delta(1, 3, A).to_string(), delta(1, 4, A).to_string()],
+        snapshot_seq: Some(10),
+        after_snapshot: vec![delta(1, 11, A).to_string()],
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert_eq!(
+        labels(&mut ws, 4).await,
+        ["snapshot", "resyncing", "snapshot", "delta"]
+    );
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_missing_snapshot_reconnects_after_the_staleness_window() {
+    // Bug: waiting for ever for a snapshot Kalshi does not send, with the books dropped.
+    let server = KalshiServer::start(vec![
+        Script {
+            pushes: vec![delta(1, 3, A).to_string()],
+            snapshot_limit: Some(0),
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert_eq!(labels(&mut ws, 2).await, ["snapshot", "resyncing"]);
+    match next_event(&mut ws).await {
+        Event::Disconnected {
+            reason: DisconnectReason::Error(PredictionsWsError::SnapshotTimeout { sid, waited }),
+        } => {
+            assert_eq!(sid, 1);
+            assert!(waited >= Duration::from_millis(300), "{waited:?}");
+        }
+        other => panic!("expected the missing snapshot to end the connection, got {other:?}"),
+    }
+    assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_eq!(server.connection_count(), 2);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn an_error_answering_the_resnapshot_reconnects() {
+    // Bug: skipping the refusal as an ordinary code-11 frame, which leaves the books
+    // dropped and their deltas withheld for ever.
+    let server = KalshiServer::start(vec![
+        Script {
+            pushes: vec![delta(1, 3, A).to_string()],
+            snapshot_error: Some((11, "Invalid parameter".to_owned())),
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert_eq!(labels(&mut ws, 2).await, ["snapshot", "resyncing"]);
+    match next_event(&mut ws).await {
+        Event::Disconnected {
+            reason: DisconnectReason::Error(PredictionsWsError::Server { code, .. }),
+        } => assert_eq!(code, 11),
+        other => panic!("expected the refusal to end the connection, got {other:?}"),
+    }
+    assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_eq!(server.connection_count(), 2);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_second_gap_during_a_resnapshot_reconnects() {
+    // Bug: starting a second re-snapshot over the first, which never finishes under a feed
+    // that keeps losing messages.
+    let server = KalshiServer::start(vec![
+        Script {
+            // Snapshots 1 and 2, then a delta at 4: a gap.
+            pushes: vec![delta(1, 4, A).to_string()],
+            // Only A's snapshot answers, as number 10; B's is still awaited when the
+            // delta at 13 skips 11 and 12.
+            snapshot_limit: Some(1),
+            snapshot_seq: Some(10),
+            after_snapshot: vec![delta(1, 13, A).to_string()],
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A), t(B)])
+        .await
+        .expect("connect");
+    assert_eq!(
+        labels(&mut ws, 4).await,
+        ["snapshot", "snapshot", "resyncing", "snapshot"]
+    );
+    match next_event(&mut ws).await {
+        Event::Disconnected {
+            reason:
+                DisconnectReason::Error(PredictionsWsError::SequenceGap {
+                    sid,
+                    expected,
+                    received,
+                }),
+        } => assert_eq!((sid, expected, received), (1, 11, 13)),
+        other => panic!("expected the second gap to end the connection, got {other:?}"),
+    }
+    assert_eq!(
+        labels(&mut ws, 3).await,
+        ["reconnected", "snapshot", "snapshot"]
+    );
+    assert_eq!(server.connection_count(), 2);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn snapshot_asks_for_snapshots_without_changing_the_membership() {
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    membership.snapshot([t(A)]).await.expect("the request");
+    match next_event(&mut ws).await {
+        Event::Snapshot(book) => assert_eq!(book.market_ticker, A),
+        other => panic!("expected the snapshot that answers it, got {other:?}"),
+    }
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A]})
+    );
+    assert_ne!(requests[1]["id"], requests[0]["id"]);
+    // The answer was on the subscription's own numbering: no gap, no reconnect.
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_snapshot_of_a_market_outside_the_membership_is_refused_and_sends_nothing() {
+    // Bug: asking Kalshi for a book of a market the socket does not follow. The host
+    // answers with a snapshot of it (the demo host, 2026-10-21), which the stream would
+    // yield as the book of a market nobody follows, so this refusal is the only guard.
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    let err = membership
+        .snapshot([t(B)])
+        .await
+        .expect_err("B is not subscribed");
+    assert!(
+        matches!(err, PredictionsWsError::InvalidRequest { .. }),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::InvalidRequest);
+    assert_eq!(server.requests().len(), 1, "only the subscribe");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_snapshot_without_the_order_book_channel_is_refused_and_sends_nothing() {
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let ws = builder_for(&server)
+        .channels([Channel::Ticker])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    let err = membership
+        .snapshot([t(A)])
+        .await
+        .expect_err("no order book to ask for");
+    assert!(
+        matches!(err, PredictionsWsError::InvalidRequest { .. }),
+        "{err:?}"
+    );
+    assert_eq!(server.requests().len(), 1, "only the subscribe");
+    drop(ws);
+}
+
+#[tokio::test]
+async fn a_snapshot_during_an_outage_is_answered_ok_and_sends_nothing() {
+    // Bug: holding the request for the next connection, which asks for a snapshot the
+    // replay has already brought, or failing it for an outage that is the stream's.
+    let server = KalshiServer::start(vec![
+        Script {
+            then_cut: true,
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    // A long backoff keeps the outage open while the request is made.
+    let mut ws = builder_for(&server)
+        .backoff(Duration::from_millis(200), Duration::from_millis(200))
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert_eq!(labels(&mut ws, 2).await, ["snapshot", "disconnected"]);
+    membership
+        .snapshot([t(A)])
+        .await
+        .expect("answered at once during the outage");
+    assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(
+        requests.iter().all(|request| request["cmd"] == "subscribe"),
+        "{requests:?}"
+    );
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_connect_with_no_channel_is_refused_before_any_connection() {
+    let server = KalshiServer::start(vec![Script::default()]).await;
+    let err = builder_for(&server)
+        .channels(Vec::new())
+        .connect(credentials(), [t(A)])
+        .await
+        .expect_err("no channel");
+    assert!(
+        matches!(err, PredictionsWsError::InvalidRequest { .. }),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::InvalidRequest);
+    assert_eq!(server.connection_count(), 0);
+}
+
+#[tokio::test]
+async fn a_refusal_after_an_accepted_command_fails_the_change_and_replaces_the_connection() {
+    // Bug: undoing only the membership when the ticker subscription's update is refused after
+    // the order book's was accepted, so Kalshi keeps the added market on the order book while
+    // the membership has lost it: its books arrive for a market nobody holds, and every
+    // later change is made against subscriptions that no longer agree with the membership.
+    // The subscriptions are issued in channel order, so 1 is the order book and 2 the ticker.
+    let server = KalshiServer::start(vec![
+        Script {
+            refuse_update_on: Some((2, 11)),
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Ticker])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    let err = membership
+        .subscribe([t(B)])
+        .await
+        .expect_err("Kalshi refuses the ticker subscription's update");
+    assert!(
+        matches!(err, PredictionsWsError::Server { code: 11, .. }),
+        "{err:?}"
+    );
+    // The order book's update was accepted, and Kalshi sent the added market's snapshot
+    // behind its answer: the connection ends before that frame reaches the stream.
+    match next_event(&mut ws).await {
+        Event::Disconnected {
+            reason: DisconnectReason::Error(PredictionsWsError::Server { code: 11, .. }),
+        } => {}
+        other => panic!("expected the refusal to end the connection, got {other:?}"),
+    }
+    assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_eq!(server.connection_count(), 2);
+    // The replay names the membership as it stands: the refused market is not in it.
+    let firsts = server.first_frames();
+    assert_subscribe_to(&firsts[1], &["orderbook_delta", "ticker"], &[A]);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 4, "{requests:?}");
+    assert_eq!(requests[1]["params"]["sid"], 1, "{requests:?}");
+    assert_eq!(requests[2]["params"]["sid"], 2, "{requests:?}");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_refusal_of_the_first_command_keeps_the_connection() {
+    // Bug: replacing the connection on every refusal, where one that came before anything
+    // was accepted left Kalshi's subscriptions as they were and the undone membership agrees
+    // with them.
+    let server = KalshiServer::start(vec![Script {
+        refuse_update_on: Some((1, 11)),
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Ticker])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    let err = membership
+        .subscribe([t(B)])
+        .await
+        .expect_err("Kalshi refuses the order book's update");
+    assert!(
+        matches!(err, PredictionsWsError::Server { code: 11, .. }),
+        "{err:?}"
+    );
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    // Only the order book's update was sent: the change stopped at the first refusal.
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_gaps_resnapshot_rebuilds_the_local_book_end_to_end() {
+    // Bug: a book that survives its market's gap, or one rebuilt from anything but the
+    // snapshot that answers the request, so the consumer trades on levels the venue no
+    // longer holds. The socket's events and `Books` are each pinned against the `Event`
+    // contract alone; this feeds the one into the other.
+    fn book_delta(seq: u64, side: &str, price: &str, size: &str) -> String {
+        let mut frame = delta(1, seq, A);
+        frame["msg"]["side"] = json!(side);
+        frame["msg"]["price_dollars"] = json!(price);
+        frame["msg"]["delta_fp"] = json!(size);
+        frame.to_string()
+    }
+    fn level(price: &str, size: &str) -> Level {
+        Level::new(price.parse().unwrap(), size.parse().unwrap())
+    }
+    let server = KalshiServer::start(vec![Script {
+        // The snapshot is seq 1. The first delta adds 100 to the YES bid at 0.22; the
+        // second is seq 4, which skips 3.
+        pushes: vec![
+            book_delta(2, "yes", "0.2200", "100.00"),
+            book_delta(4, "no", "0.5000", "9.00"),
+        ],
+        // The snapshot that answers the request is number 10; the delta after it, 11, adds 5
+        // to the NO bid at 0.54, an ask in YES pricing.
+        snapshot_seq: Some(10),
+        after_snapshot: vec![book_delta(11, "no", "0.5400", "5.00")],
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let mut books = Books::new();
+
+    // The snapshot, then a delta on it.
+    let event = next_event(&mut ws).await;
+    assert!(matches!(event, Event::Snapshot(_)), "{event:?}");
+    books.apply(&event);
+    let event = next_event(&mut ws).await;
+    assert!(matches!(event, Event::Delta(_)), "{event:?}");
+    books.apply(&event);
+    let book = books.get(A).expect("A has a book");
+    assert_eq!(
+        book.bids(),
+        [level("0.2200", "433.00"), level("0.0800", "300.00")]
+    );
+    assert_eq!(
+        book.asks(),
+        [level("0.5400", "20.00"), level("0.5600", "146.00")]
+    );
+
+    // The gap drops A's book, and the delta behind it never reaches it.
+    let event = next_event(&mut ws).await;
+    match &event {
+        Event::Resyncing { tickers } => assert_eq!(tickers, &[A]),
+        other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
+    }
+    books.apply(&event);
+    assert!(
+        books.get(A).is_none(),
+        "the gap left A's stale book in place"
+    );
+
+    // The re-snapshot: a book of the answer alone, with none of the 100 added before the gap.
+    let event = next_event(&mut ws).await;
+    match &event {
+        Event::Snapshot(book) => assert_eq!(book.market_ticker, A),
+        other => panic!("expected the snapshot that answers the request, got {other:?}"),
+    }
+    books.apply(&event);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A]})
+    );
+    let book = books.get(A).expect("A has a book again");
+    assert_eq!(
+        book.bids(),
+        [level("0.2200", "333.00"), level("0.0800", "300.00")]
+    );
+
+    // The delta after it lands on the new book, and the book is exactly the answer plus it.
+    let event = next_event(&mut ws).await;
+    assert!(matches!(event, Event::Delta(_)), "{event:?}");
+    books.apply(&event);
+    let book = books.get(A).expect("A has a book");
+    assert_eq!(
+        book.bids(),
+        [level("0.2200", "333.00"), level("0.0800", "300.00")]
+    );
+    assert_eq!(
+        book.asks(),
+        [level("0.5400", "25.00"), level("0.5600", "146.00")]
+    );
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    // Repaired in place: one connection, so no `Disconnected` can have been yielded.
     assert_eq!(server.connection_count(), 1);
     ws.close().await.expect("close");
 }

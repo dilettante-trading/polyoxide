@@ -740,6 +740,149 @@ async fn calculate_price_post_body() {
     mock.assert_async().await;
 }
 
+/// Book params for two tokens, sides as given.
+fn book_params(
+    sides: [Option<polyoxide_polymarket::clob::OrderSide>; 2],
+) -> Vec<polyoxide_polymarket::clob::BookParams> {
+    ["T1", "T2"]
+        .into_iter()
+        .zip(sides)
+        .map(|(token_id, side)| polyoxide_polymarket::clob::BookParams {
+            token_id: token_id.into(),
+            side,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn prices_decode_the_token_keyed_map() {
+    use polyoxide_polymarket::clob::OrderSide;
+    let mut server = Server::new_async().await;
+
+    // The shape the CLOB answered on 2026-10-21 (#70): token, then side, then a
+    // string price. A side with no orders is "0" (BUY) or "1" (SELL), and a
+    // token with no book is absent.
+    let mock = server
+        .mock("POST", "/prices")
+        .match_body(Matcher::JsonString(
+            r#"[{"token_id": "T1", "side": "BUY"}, {"token_id": "T2", "side": "SELL"}]"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"T1": {"BUY": "0.43"}, "T2": {"SELL": "1"}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let prices = clob
+        .markets()
+        .prices(&book_params([Some(OrderSide::Buy), Some(OrderSide::Sell)]))
+        .await
+        .unwrap();
+
+    assert_eq!(prices.len(), 2);
+    assert_eq!(
+        prices["T1"].get(&OrderSide::Buy),
+        Some(&rust_decimal::Decimal::new(43, 2))
+    );
+    assert_eq!(prices["T1"].get(&OrderSide::Sell), None);
+    assert_eq!(
+        prices["T2"].get(&OrderSide::Sell),
+        Some(&rust_decimal::Decimal::ONE)
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn prices_accept_numbers_as_the_spec_types_them() {
+    use polyoxide_polymarket::clob::OrderSide;
+    let mut server = Server::new_async().await;
+
+    // `docs/specs/clob/openapi.yaml` types the prices as numbers.
+    let mock = server
+        .mock("POST", "/prices")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"T1": {"BUY": 0.43, "SELL": 0.45}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let prices = clob
+        .markets()
+        .prices(&book_params([Some(OrderSide::Buy), Some(OrderSide::Sell)]))
+        .await
+        .unwrap();
+
+    assert_eq!(prices.len(), 1);
+    assert_eq!(
+        prices["T1"].get(&OrderSide::Buy),
+        Some(&rust_decimal::Decimal::new(43, 2))
+    );
+    assert_eq!(
+        prices["T1"].get(&OrderSide::Sell),
+        Some(&rust_decimal::Decimal::new(45, 2))
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn midpoints_decode_the_token_keyed_map() {
+    let mut server = Server::new_async().await;
+
+    // The second value is a number, which the spec allows.
+    let mock = server
+        .mock("POST", "/midpoints")
+        .match_body(Matcher::JsonString(
+            r#"[{"token_id": "T1"}, {"token_id": "T2"}]"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"T1": "0.565", "T2": 0.435}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let mids = clob
+        .markets()
+        .midpoints(&book_params([None, None]))
+        .await
+        .unwrap();
+
+    assert_eq!(mids.len(), 2);
+    assert_eq!(mids["T1"], rust_decimal::Decimal::new(565, 3));
+    assert_eq!(mids["T2"], rust_decimal::Decimal::new(435, 3));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn spreads_decode_the_token_keyed_map() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/spreads")
+        .match_body(Matcher::JsonString(
+            r#"[{"token_id": "T1"}, {"token_id": "T2"}]"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"T1": "0.01", "T2": 0.02}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let spreads = clob
+        .markets()
+        .spreads(&book_params([None, None]))
+        .await
+        .unwrap();
+
+    assert_eq!(spreads.len(), 2);
+    assert_eq!(spreads["T1"], rust_decimal::Decimal::new(1, 2));
+    assert_eq!(spreads["T2"], rust_decimal::Decimal::new(2, 2));
+    mock.assert_async().await;
+}
+
 #[tokio::test]
 async fn cancel_all_sends_delete_no_body() {
     let mut server = Server::new_async().await;

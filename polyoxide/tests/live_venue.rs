@@ -1,5 +1,6 @@
 //! The example's `best_bid_ask` against the live hosts: the same function
-//! reads Binance USDⓈ-M, Polymarket perps and the Polymarket CLOB.
+//! reads Binance USDⓈ-M, Polymarket perps, the Polymarket CLOB and Kalshi's
+//! Predictions.
 
 #[allow(dead_code)]
 #[path = "../examples/venue_neutral.rs"]
@@ -9,11 +10,17 @@ use std::sync::Arc;
 
 use example::best_bid_ask;
 use polyoxide::binance::usdm::{self, types::Symbol, Usdm};
+use polyoxide::kalshi::predictions::{
+    key::{self as kalshi_key, Outcome, Ticker},
+    types::{MarketStatus, MarketStatusFilter, MveFilter},
+    Predictions,
+};
 use polyoxide::polymarket::clob::{Clob, ClobError};
 use polyoxide::polymarket::perps::Perps;
 use polyoxide::polymarket::shared::keys::{self, TokenId};
 use polyoxide::venue::{DynMarketData, Level, MarketKey};
 use polyoxide_test_support::{environmental, fail, ClassifiedResultExt, ResultExt};
+use rust_decimal::Decimal;
 
 /// Reads `key`'s best bid and ask through `venue`, and checks the two do not
 /// cross.
@@ -117,6 +124,66 @@ async fn best_bid_ask_reads_the_polymarket_clob() {
     };
     let key = keys::clob(&TokenId::new(token).or_fail("read the token id"));
     let (bid, ask) = read(DynMarketData::new_arc(clob), &key).await;
+    assert!(
+        bid.is_some() && ask.is_some(),
+        "the order book had both sides"
+    );
+}
+
+/// Quoted Kalshi markets to confirm on the order book route the trait's quote reads.
+const KALSHI_CANDIDATES: usize = 20;
+
+#[tokio::test]
+#[ignore = "hits the live hosts"]
+async fn best_bid_ask_reads_kalshi_predictions() {
+    let kalshi = Predictions::new().or_fail("build the predictions client");
+    // The unfiltered open listing serves multivariate combinations first, none of them quoted,
+    // so the walk asks to leave them out.
+    let page = kalshi
+        .markets()
+        .list()
+        .status(MarketStatusFilter::Open)
+        .mve_filter(MveFilter::Exclude)
+        .limit(1000)
+        .send()
+        .await
+        .or_fail("list the open markets");
+    let quoted = page
+        .markets
+        .iter()
+        .filter(|market| {
+            market.status == MarketStatus::Active
+                && market.yes_bid_dollars > Decimal::ZERO
+                && market.yes_ask_dollars < Decimal::ONE
+        })
+        .take(KALSHI_CANDIDATES);
+    // The market is picked on the route the trait's quote reads (depth 1), so it has both
+    // sides there.
+    let mut found = None;
+    for market in quoted {
+        let Ok(ticker) = Ticker::new(&market.ticker) else {
+            continue;
+        };
+        let book = kalshi
+            .markets()
+            .orderbook(&ticker)
+            .depth(1)
+            .send()
+            .await
+            .or_fail("read a quoted market's order book")
+            .orderbook_fp;
+        if !book.yes_dollars.is_empty() && !book.no_dollars.is_empty() {
+            found = Some(ticker);
+            break;
+        }
+    }
+    let Some(ticker) = found else {
+        environmental(&format!(
+            "none of the first {KALSHI_CANDIDATES} quoted open markets has an order book with both sides"
+        ));
+    };
+    let key = kalshi_key::key(&ticker, Outcome::Yes);
+    let (bid, ask) = read(DynMarketData::new_arc(kalshi), &key).await;
     assert!(
         bid.is_some() && ask.is_some(),
         "the order book had both sides"

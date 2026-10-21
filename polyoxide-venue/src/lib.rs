@@ -99,7 +99,7 @@ pub use market::{
 #[cfg(feature = "market")]
 pub use records::{
     Book, Candle, CandleInterval, CandleQuery, EventGroup, EventOutcome, FundingRate, Instrument,
-    Level, NotListed, Quote, Side, SizeUnit, Trade, TradeId,
+    Level, NotListed, Quote, Side, SizeUnit, Trade, TradeId, UnservedInterval,
 };
 pub use retry_after::{parse_retry_after, retry_delay};
 pub use secret::Secret;
@@ -127,4 +127,6 @@ const _: fn() = || {
     is::<NotListed>();
     #[cfg(feature = "market")]
     is::<UndeclaredExtension>();
+    #[cfg(feature = "market")]
+    is::<UnservedInterval>();
 };

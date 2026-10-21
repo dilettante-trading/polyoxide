@@ -6,12 +6,14 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Rust client library for Kalshi's event-contract market data and its order-book stream (a walking skeleton, not published)"
-publish = false
+description = "Rust client library for Kalshi's event-contract market data and its order-book, ticker and trade streams"
+keywords = ["kalshi", "prediction-markets", "event-contracts", "market-data"]
+categories = ["api-bindings", "web-programming::http-client"]
 
 # One feature per module, as polyoxide-binance has: `predictions`, the REST client
-# for Kalshi's Predictions exchange and its Read throttle, with its order-book stream
-# under `predictions-ws`, whose handshake needs credentials even for public data.
+# for Kalshi's Predictions exchange and its Read throttle, with its three streams (order book,
+# `ticker` and `trade`) under `predictions-ws`, whose handshake needs credentials even for
+# public data.
 [features]
 default = ["predictions"]
 predictions = [
@@ -30,10 +32,10 @@ predictions = [
     "dep:url",
 ]
 
-# The order-book socket, `predictions::ws`, on the socket kit. It turns on `predictions` and
-# the kit, whose own manifest declares the tokio features the supervisor needs. This crate's
-# sources use no runtime or macro feature and no `futures-util`; the suites do, from
-# `[dev-dependencies]`.
+# The socket, `predictions::ws`, with its three channels (order book, `ticker` and `trade`), on
+# the socket kit. It turns on `predictions` and the kit, whose own manifest declares the tokio
+# features the supervisor needs. This crate's sources use no runtime or macro feature and no
+# `futures-util`; the suites do, from `[dev-dependencies]`.
 predictions-ws = ["predictions", "dep:polyoxide-ws"]
 
 [dependencies]
@@ -56,18 +58,21 @@ polyoxide-ws = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The tests' query and header helpers, the failure tags and the credential
-# loaders. Path-only: it is never published, and cargo strips a path-only
-# dev-dependency on publish.
-polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
+# loaders, and `examples/read_soak.rs`'s pacer, throttle observer and verdicts (`soak`).
+# Path-only: it is never published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
 mockito = { workspace = true }
 # The shared scripted WebSocket server the `predictions-ws` suites run on, with Kalshi's
 # answer (`src/predictions/ws/scripted.rs`). Path-only, so cargo strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 # `tests/venue_predictions.rs` includes the umbrella's `examples/venue_neutral.rs`
-# by `#[path]`. The three features are that example's `required-features`; they
-# build the CLOB, perps and USDⓈ-M stacks into Kalshi's test builds only.
-# Path-only, so cargo strips it on publish.
-polyoxide = { path = "../polyoxide", default-features = false, features = ["polymarket-clob", "polymarket-perps", "binance-usdm"] }
+# by `#[path]`. The four features are that example's `required-features`; they
+# build the CLOB, perps and USDⓈ-M stacks into Kalshi's test builds only, and
+# `kalshi-predictions` is the example's Kalshi arm, which names the umbrella's
+# `polyoxide::kalshi`. That makes a dev-dependency cycle with the umbrella's own
+# dependency on this crate, which cargo allows. Path-only, so cargo strips it on
+# publish.
+polyoxide = { path = "../polyoxide", default-features = false, features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"] }
 # Reads the OpenAPI mirror, which Kalshi publishes as YAML only; dev-only, so it is in no
 # normal build and no dependency allowlist.
 serde-saphyr = { workspace = true }
@@ -143,9 +148,18 @@ required-features = ["predictions-ws"]
 name = "wire_agreement_predictions_ws"
 required-features = ["predictions-ws"]
 
+# The unsigned soak and the signed-bucket probe that sized `src/predictions/throttle.rs` (Epic 9,
+# Story 7). `cargo test` builds examples but does not run their unit tests unless asked, so the
+# harness's own checks run only because `test = true` is set here.
+[[example]]
+name = "read_soak"
+path = "examples/read_soak.rs"
+test = true
+required-features = ["predictions"]
+
 # Registration, read by scripts/gen_registry.py; run it with --write after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its order-book stream under `predictions-ws`); a walking skeleton, not published"
+readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its streams under `predictions-ws`); re-exported by the umbrella as `polyoxide::kalshi`"
 venue = "kalshi"
 products = ["predictions"]
 mirrors = ["kalshi"]

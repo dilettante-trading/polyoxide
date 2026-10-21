@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+- **CLOB batch reads decode (#70).** `Markets::prices`, `midpoints` and `spreads` declared a
+  `Vec` return, but the CLOB answers a map keyed by token id, so every call failed to decode.
+  They now return `HashMap<String, HashMap<OrderSide, Decimal>>` (token, side, price) and
+  `HashMap<String, Decimal>`, and accept each value as a string, as the venue sends it, or a
+  number, as the spec types it. A token with no order book is absent. `OrderSide` derives
+  `Hash`. The return types change, so the release that carries this raises the 0.x minor.
+  `last_trade_prices` is unchanged: `POST /last-trades-prices` does answer an array.
+
 ## [0.41.1] - 2026-10-19
 
 Three upstream drifts adopted, each additive: nothing is removed or renamed, no signature

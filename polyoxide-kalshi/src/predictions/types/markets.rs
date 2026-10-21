@@ -1,4 +1,4 @@
-//! Markets, their order books and their public trades.
+//! Markets, their order books, their public trades and their candlesticks.
 //!
 //! Money (`*_dollars`) and counts (`*_fp`) are [`Decimal`], decoded from the fixed-point
 //! strings Kalshi sends, so no value passes through an `f64` and every digit survives a round
@@ -366,6 +366,159 @@ pub struct TradesPage {
     pub cursor: String,
 }
 
+polyoxide_venue::wire_enum! {
+    /// The `period_interval` of the candlestick routes: a candlestick's width in minutes. Kalshi
+    /// serves these three. The batch route answers any other number with `200` and the daily
+    /// candles, so an unserved width would silently read as daily, and the series route with a
+    /// `400`; the closed set is what keeps the native client from sending one.
+    #[non_exhaustive]
+    pub enum PeriodInterval {
+        /// One minute: wire value `1`.
+        Minute1 => "1",
+        /// One hour: wire value `60`.
+        Hour1 => "60",
+        /// One day: wire value `1440`.
+        Day1 => "1440",
+    }
+}
+
+impl PeriodInterval {
+    /// The width in seconds.
+    pub(crate) fn seconds(self) -> i64 {
+        match self {
+            Self::Minute1 => 60,
+            Self::Hour1 => 3_600,
+            Self::Day1 => 86_400,
+        }
+    }
+}
+
+/// Offers on one side of the market over a candlestick's period (`BidAskDistribution`): the
+/// first, lowest, highest and last price, in dollars.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BidAskDistribution {
+    /// The price at the start of the period.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub open_dollars: Decimal,
+    /// The lowest price in the period.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub low_dollars: Decimal,
+    /// The highest price in the period.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub high_dollars: Decimal,
+    /// The price at the end of the period.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub close_dollars: Decimal,
+}
+
+/// Trade prices over a candlestick's period (`PriceDistribution`), in dollars. Kalshi leaves a
+/// field out when it has no value: a period with no trade has only `previous_dollars`, and a
+/// period before the market's first trade has none of them (`{}`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceDistribution {
+    /// The first YES trade of the period.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub open_dollars: Option<Decimal>,
+    /// The lowest YES trade of the period.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub low_dollars: Option<Decimal>,
+    /// The highest YES trade of the period.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub high_dollars: Option<Decimal>,
+    /// The last YES trade of the period.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub close_dollars: Option<Decimal>,
+    /// The mean YES trade price of the period.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub mean_dollars: Option<Decimal>,
+    /// The last YES trade before the period.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub previous_dollars: Option<Decimal>,
+    /// The mirror's `min_dollars`, which Kalshi has not been seen to send.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub min_dollars: Option<Decimal>,
+    /// The mirror's `max_dollars`, which Kalshi has not been seen to send.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "rust_decimal::serde::str_option"
+    )]
+    pub max_dollars: Option<Decimal>,
+}
+
+/// One candlestick (`MarketCandlestick`). Kalshi names it by when its period ends, inclusive.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarketCandlestick {
+    /// The end of the period, in Unix seconds.
+    pub end_period_ts: i64,
+    /// Offers to buy YES.
+    pub yes_bid: BidAskDistribution,
+    /// Offers to sell YES.
+    pub yes_ask: BidAskDistribution,
+    /// Trades.
+    pub price: PriceDistribution,
+    /// Contracts traded in the period.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub volume_fp: Decimal,
+    /// Contracts bought, without netting, by the end of the period.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub open_interest_fp: Decimal,
+}
+
+/// One market's candlesticks in the batch answer (`MarketCandlesticksResponse`), oldest first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarketCandlesticks {
+    /// The market's ticker.
+    pub market_ticker: String,
+    /// Its candlesticks.
+    pub candlesticks: Vec<MarketCandlestick>,
+}
+
+/// `GET /markets/candlesticks` (`BatchGetMarketCandlesticksResponse`): one entry per market.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BatchCandlesticksResponse {
+    /// The markets asked for.
+    pub markets: Vec<MarketCandlesticks>,
+}
+
+/// `GET /series/{series_ticker}/markets/{ticker}/candlesticks`
+/// (`GetMarketCandlesticksResponse`): one market's candlesticks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeriesCandlesticksResponse {
+    /// The market's ticker.
+    pub ticker: String,
+    /// Its candlesticks.
+    pub candlesticks: Vec<MarketCandlestick>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,5 +562,45 @@ mod tests {
         assert_eq!(status, MarketStatus::Other("suspended".into()));
         assert_eq!(serde_json::to_string(&status).unwrap(), r#""suspended""#);
         assert_eq!(MarketStatus::from_wire("active"), MarketStatus::Active);
+    }
+
+    #[test]
+    fn a_price_distribution_keeps_every_digit_and_leaves_out_what_the_host_leaves_out() {
+        let price: PriceDistribution =
+            serde_json::from_str(r#"{"previous_dollars":"0.4200"}"#).unwrap();
+        assert_eq!(
+            price.previous_dollars.map(|p| p.to_string()),
+            Some("0.4200".to_owned())
+        );
+        assert!(price.open_dollars.is_none() && price.close_dollars.is_none());
+        assert_eq!(
+            serde_json::to_string(&price).unwrap(),
+            r#"{"previous_dollars":"0.4200"}"#
+        );
+
+        let none: PriceDistribution = serde_json::from_str("{}").unwrap();
+        assert_eq!(serde_json::to_string(&none).unwrap(), "{}");
+    }
+
+    #[test]
+    fn a_period_interval_is_its_width_in_minutes_and_nothing_else_parses() {
+        assert_eq!(PeriodInterval::Minute1.to_string(), "1");
+        assert_eq!(PeriodInterval::Hour1.to_string(), "60");
+        assert_eq!(PeriodInterval::Day1.to_string(), "1440");
+        assert_eq!(
+            "1440".parse::<PeriodInterval>().ok(),
+            Some(PeriodInterval::Day1)
+        );
+        for other in ["0", "5", "15", "240", "10080", "hour"] {
+            assert!(other.parse::<PeriodInterval>().is_err(), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_period_interval_is_as_many_seconds_as_its_minutes() {
+        for width in PeriodInterval::ALL {
+            let minutes: i64 = width.as_str().parse().unwrap();
+            assert_eq!(width.seconds(), minutes * 60);
+        }
     }
 }

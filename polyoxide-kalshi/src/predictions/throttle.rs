@@ -1,14 +1,23 @@
-//! The Read throttle: one token bucket, sized at Kalshi's Basic tier until the client has read the
-//! account's own size, and the per-route costs it charges.
+//! The Read throttle: Read token buckets, sized at Kalshi's Basic tier until the client has read the
+//! account's own size or, holding no key, taken the size the unsigned soak measured, and the
+//! per-route costs it charges.
 //!
 //! Kalshi charges every authenticated request tokens from a Read or a Write bucket, 10 by default.
-//! This module sends reads only. A bucket here holds its published capacity: Kalshi publishes a
-//! token bucket's capacity and refill rate (Basic's Read refills 200 tokens a second and holds 3
-//! seconds of it), and the server implements a bucket, so a bucket of that capacity is a faithful
-//! model. That is the opposite of Cloudflare's window quotas, which publish a count per window with
-//! no capacity term and must not be given a depth.
+//! This module sends reads only. A client with no key has one Read bucket. A keyed client has two:
+//! the key's, which the one route that needs the key (`GET /account/limits`) draws on and which is
+//! sized from that route's answer, and a public one for every other route, sized as an unsigned
+//! client's, because a signed public read does not draw on the key's bucket.
+//!
+//! The key's bucket holds its published capacity: Kalshi publishes a token bucket's capacity and
+//! refill rate (Basic's Read refills 200 tokens a second and holds 3 seconds of it), and the server
+//! implements a bucket, so a bucket of that capacity is a faithful model. That is the opposite of
+//! Cloudflare's window quotas, which publish a count per window with no capacity term and must not
+//! be given a depth. The public bucket's size is measured, not published: no limit for unsigned
+//! requests is published, so its refill is the highest rate the host served clean less a tenth, and
+//! its depth is Basic's.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -26,6 +35,34 @@ pub(crate) const BASIC_READ_CAPACITY: u32 = 600;
 /// Tokens a second the Basic tier's Read bucket refills. No tier's is lower.
 pub(crate) const BASIC_READ_REFILL: u32 = 200;
 
+/// Reciprocal of the share of a measured clean rate the unsigned client leaves unused, as in core's
+/// `RESERVED_FRACTION` and Binance's: the highest rate a host served clean is not a rate to aim at,
+/// because the server's count and the client's never agree exactly. `10` reserves a tenth, so the
+/// client targets 90%.
+const RESERVED_FRACTION: u32 = 10;
+
+/// The highest rate, in requests a second, at which Kalshi's production host served an unsigned
+/// client over distinct URLs with no `429` (`docs/specs/kalshi/OBSERVED.md`, "Rate limits":
+/// "Highest clean stage"). It is Basic's own 20 reads a second, never more: the soak's ramp was
+/// clean there, but the shipped client at exactly that rate drew retried `429`s on the host, so the
+/// owner sized the client a tenth below it.
+pub(crate) const UNSIGNED_CLEAN_RATE: u32 = 20;
+
+/// `measured` less its reserve, and never below one: a bucket that never refills is a panic.
+const fn after_reserve(measured: u32) -> u32 {
+    let kept = measured - measured.div_ceil(RESERVED_FRACTION);
+    if kept == 0 {
+        1
+    } else {
+        kept
+    }
+}
+
+/// Tokens a second the unsigned client's Read bucket refills: its measured clean rate less a tenth,
+/// at the default cost of a read. Its depth stays Basic's: the soak measured a rate and not a
+/// depth, and the validation run held Basic's depth clean on the host.
+pub(crate) const UNSIGNED_READ_REFILL: u32 = after_reserve(UNSIGNED_CLEAN_RATE) * DEFAULT_COST;
+
 /// Charges each request its cost on the Read layer, and holds every request when the retry policy
 /// says to.
 ///
@@ -34,15 +71,26 @@ pub(crate) const BASIC_READ_REFILL: u32 = 200;
 /// every hold this module's policy sets is the loop's own `retry_delay(0)`, which
 /// `RetryConfig::max_backoff_ms` bounds.
 ///
-/// A clone shares the bucket and the hold.
+/// A keyed client's public reads draw on a second bucket, sized as an unsigned client's, once its
+/// confirmation turns the split on: a signed public read does not draw on the key's bucket (the
+/// signed probe of `docs/specs/kalshi/OBSERVED.md`), so it must not spend the key's tokens. Both
+/// buckets share the one hold.
+///
+/// A clone shares the buckets, the split and the hold.
 #[derive(Debug, Clone)]
 pub(crate) struct PredictionsThrottle {
     read: CapacityBucket,
+    public: CapacityBucket,
+    split: Arc<AtomicBool>,
     hold: Hold,
 }
 
+/// The paths that need the key. Every other path is a public read.
+const PRIVATE_PATHS: [&str; 1] = [crate::predictions::request::routes::ACCOUNT_LIMITS.template];
+
 impl PredictionsThrottle {
-    /// A throttle with a full Read bucket at Basic's sizing.
+    /// A throttle with a full Read bucket at Basic's sizing and a public bucket at the unsigned
+    /// client's.
     pub(crate) fn new() -> Self {
         let hold = Hold::unbounded();
         Self {
@@ -52,6 +100,13 @@ impl PredictionsThrottle {
                 BASIC_READ_REFILL,
                 hold.clone(),
             ),
+            public: CapacityBucket::provisional(
+                READ,
+                BASIC_READ_CAPACITY,
+                UNSIGNED_READ_REFILL,
+                hold.clone(),
+            ),
+            split: Arc::new(AtomicBool::new(false)),
             hold,
         }
     }
@@ -60,20 +115,54 @@ impl PredictionsThrottle {
     pub(crate) fn bucket(&self) -> &CapacityBucket {
         &self.read
     }
+
+    /// The public bucket, which a keyed client's public reads draw on once the split is on.
+    pub(crate) fn public_bucket(&self) -> &CapacityBucket {
+        &self.public
+    }
+
+    /// Whether a public read is charged to the public bucket and not the Read one.
+    pub(crate) fn splits_public_reads(&self) -> bool {
+        self.split.load(Ordering::Acquire)
+    }
+
+    /// The bucket a request for `path` is charged to: the public one once the split is on and
+    /// `path` is not a route that needs the key, else the Read bucket.
+    fn bucket_for(&self, path: &str) -> &CapacityBucket {
+        if self.splits_public_reads() && !PRIVATE_PATHS.contains(&path) {
+            &self.public
+        } else {
+            &self.read
+        }
+    }
+
+    /// The capacity of the bucket a request for `path` is charged to.
+    pub(crate) fn capacity_for(&self, path: &str) -> u32 {
+        self.bucket_for(path).capacity()
+    }
+
+    /// From now on a public read is charged to the public bucket, confirmed at its sizing, and
+    /// not to the Read bucket.
+    pub(crate) fn split_public_reads(&self) {
+        self.public.confirm();
+        self.split.store(true, Ordering::Release);
+    }
 }
 
 impl Throttle for PredictionsThrottle {
     /// Waits out the hold, charges each cost on the Read layer (a cost on any other layer is not
-    /// this throttle's), and waits out the hold again, since one set while the bucket made this
-    /// request wait for tokens still applies (AD-23).
+    /// this throttle's) to the bucket the request's path belongs to, and waits out the hold
+    /// again, since one set while the bucket made this request wait for tokens still applies
+    /// (AD-23).
     async fn acquire(&self, meta: &RequestMeta<'_>) -> Result<Charge, Refused> {
         self.hold.wait().await;
         let mut charge = Charge::none();
+        let bucket = self.bucket_for(meta.path);
         for cost in meta.costs {
             if cost.layer != READ {
                 continue;
             }
-            self.read.acquire(cost.units, cost.exact).await?;
+            bucket.acquire(cost.units, cost.exact).await?;
             charge = charge.with(LayerCharge {
                 layer: READ,
                 units: cost.units,
@@ -145,6 +234,12 @@ impl Inner {
     }
 
     async fn confirm(&self) {
+        if self.auth.is_some() {
+            // A signed public read does not draw on the key's bucket (the signed probe in
+            // `docs/specs/kalshi/OBSERVED.md`), so a keyed client charges its public reads to
+            // the public bucket from here on, this confirmation's costs read included.
+            self.throttle.split_public_reads();
+        }
         self.read_costs().await;
         self.read_limits().await;
     }
@@ -158,9 +253,10 @@ impl Inner {
     /// can bring, and every send would wait with it. The venue is told the real route, and
     /// charges what it charges; the cap only bounds what this client waits for.
     fn confirmation_request<T>(&self, route: &Route) -> Request<T, PredictionsError> {
+        let path = route.path(&[]);
         let mut cost = self.read_cost(route);
-        cost.units = cost.units.min(self.throttle.bucket().capacity());
-        let request = Request::new(self.http.clone(), route.path(&[])).with_cost(cost);
+        cost.units = cost.units.min(self.throttle.capacity_for(&path));
+        let request = Request::new(self.http.clone(), path).with_cost(cost);
         match &self.auth {
             Some(auth) => request.authenticator(Arc::clone(auth)),
             None => request,
@@ -201,16 +297,19 @@ impl Inner {
         }
     }
 
-    /// Sizes the Read bucket from `/account/limits` when the client holds a key, and confirms it
-    /// in every case.
+    /// Sizes the Read bucket from `/account/limits` when the client holds a key, and from the
+    /// unsigned soak's measurement when it holds none. Either way it ends confirmed.
     async fn read_limits(&self) {
         use crate::predictions::request::routes;
         use crate::predictions::types::AccountLimits;
 
         let bucket = self.throttle.bucket();
         if self.auth.is_none() {
-            // No limit for unauthenticated requests is published: Basic's sizing stands.
-            bucket.confirm();
+            // No limit for unauthenticated requests is published: the unsigned soak sized this
+            // bucket (`UNSIGNED_READ_REFILL`, recorded in `docs/specs/kalshi/OBSERVED.md`), and
+            // `resize` confirms it. Only the refill is the soak's: the depth is the bucket's own,
+            // Basic's unless a size was set before the first send.
+            bucket.resize(bucket.capacity(), UNSIGNED_READ_REFILL);
             return;
         }
         let route = routes::ACCOUNT_LIMITS;
@@ -786,5 +885,273 @@ mod tests {
         costs.set(&post, 7);
         assert_eq!(costs.cost(&post), 7);
         assert_eq!(costs.cost(&get), 10);
+    }
+}
+
+#[cfg(test)]
+mod unsigned_sizing_tests {
+    use mockito::{Mock, Server, ServerGuard};
+    use polyoxide_test_support::fixtures;
+
+    use super::*;
+    use crate::predictions::{Credentials, Predictions};
+
+    const COSTS: &str = "/trade-api/v2/account/endpoint_costs";
+    const LIMITS: &str = "/trade-api/v2/account/limits";
+    const STATUS: &str = "/trade-api/v2/exchange/status";
+    const NO_COSTS: &str = r#"{"default_cost":10,"endpoint_costs":[]}"#;
+    const STATUS_BODY: &str = r#"{"exchange_active":true,"trading_active":true}"#;
+
+    /// The highest clean stage of `docs/specs/kalshi/OBSERVED.md`'s "Rate limits" record, in
+    /// requests a second, and what the arithmetic makes of it: less a tenth, at 10 tokens a read.
+    const RECORDED_CLEAN_RATE: u32 = 20;
+    const RECORDED_REFILL_TOKENS: u32 = 180;
+
+    /// The Ed25519 key of the signing vectors, which are throwaway ones.
+    fn keyed() -> Credentials {
+        let vectors = fixtures!("predictions/signing").json("vectors");
+        let body = vectors["ed25519"]["pkcs8_body"]
+            .as_str()
+            .expect("the vectors hold an Ed25519 key body");
+        let label = "PRIVATE KEY";
+        let pem = format!("-----BEGIN {label}-----\n{body}\n-----END {label}-----\n");
+        Credentials::from_pem("test-key", &pem).unwrap()
+    }
+
+    /// A mock answering `path` with `status` and `body`, expected `hits` times.
+    async fn answer(
+        server: &mut ServerGuard,
+        path: &str,
+        status: usize,
+        body: &str,
+        hits: usize,
+    ) -> Mock {
+        server
+            .mock("GET", path)
+            .with_status(status)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .expect(hits)
+            .create_async()
+            .await
+    }
+
+    #[test]
+    fn a_tenth_of_a_measured_rate_is_left_unused() {
+        for (measured, kept) in [
+            (1, 1),
+            (2, 1),
+            (9, 8),
+            (10, 9),
+            (11, 9),
+            (20, 18),
+            (37, 33),
+            (40, 36),
+            (200, 180),
+        ] {
+            assert_eq!(after_reserve(measured), kept, "{measured}");
+        }
+    }
+
+    #[test]
+    fn the_unsigned_refill_is_the_recorded_clean_rate_less_a_tenth_at_ten_tokens_a_read() {
+        assert_eq!(UNSIGNED_CLEAN_RATE, RECORDED_CLEAN_RATE);
+        assert_eq!(UNSIGNED_READ_REFILL, RECORDED_REFILL_TOKENS);
+        assert_eq!(
+            UNSIGNED_READ_REFILL,
+            after_reserve(RECORDED_CLEAN_RATE) * 10
+        );
+    }
+
+    #[test]
+    fn the_measured_sizing_is_below_basics_and_never_raises_it() {
+        // Basic's 200 tokens a second are 20 reads at the default cost. The soak replaces Basic's
+        // sizing with its clean rate less a tenth, and that clean rate is at most Basic's own
+        // (the owner sized it at exactly 20 reads a second), so the sizing it gives is under
+        // Basic's 200 tokens, never over.
+        use std::cmp::Ordering;
+
+        assert_ne!(
+            UNSIGNED_CLEAN_RATE.cmp(&(BASIC_READ_REFILL / DEFAULT_COST)),
+            Ordering::Greater
+        );
+        assert_eq!(
+            UNSIGNED_READ_REFILL.cmp(&BASIC_READ_REFILL),
+            Ordering::Less,
+            "{UNSIGNED_READ_REFILL} tokens a second"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unsigned_client_is_resized_to_the_measured_refill_and_keeps_basics_depth() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        let limits = answer(&mut server, LIMITS, 200, "{}", 0).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .build()
+            .unwrap();
+
+        kalshi.exchange().status().send().await.unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        let bucket = format!("{:?}", kalshi.inner.throttle.bucket());
+        assert!(
+            bucket.contains(&format!("refill_per_sec: {RECORDED_REFILL_TOKENS}")),
+            "{bucket}"
+        );
+        assert!(
+            bucket.contains(&format!("capacity: {BASIC_READ_CAPACITY}")),
+            "{bucket}"
+        );
+        assert!(bucket.contains("provisional: false"), "{bucket}");
+    }
+
+    #[tokio::test]
+    async fn a_keyed_clients_unreadable_limits_leave_basics_refill_not_the_unsigned_one() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        let limits = answer(&mut server, LIMITS, 500, "{}", 1).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .credentials(keyed())
+            .build()
+            .unwrap();
+
+        kalshi.exchange().status().send().await.unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        let bucket = format!("{:?}", kalshi.inner.throttle.bucket());
+        assert!(
+            bucket.contains(&format!("refill_per_sec: {BASIC_READ_REFILL}")),
+            "{bucket}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unsigned_clients_resize_keeps_the_capacity_the_bucket_has() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        let limits = answer(&mut server, LIMITS, 200, "{}", 0).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .build()
+            .unwrap();
+        // A size set before the first send is kept: only the refill is the soak's.
+        kalshi.inner.throttle.bucket().resize(5, 1);
+
+        // The 10-token read of the costs route cannot be held by a bucket of 5, so it is charged
+        // at the capacity; the status read is then refused for the same reason.
+        let refused = kalshi.exchange().status().send().await.unwrap_err();
+
+        assert!(format!("{refused:?}").contains("Refused"), "{refused:?}");
+        costs.assert_async().await;
+        limits.assert_async().await;
+        let bucket = format!("{:?}", kalshi.inner.throttle.bucket());
+        assert!(bucket.contains("capacity: 5"), "{bucket}");
+        assert!(
+            bucket.contains(&format!("refill_per_sec: {RECORDED_REFILL_TOKENS}")),
+            "{bucket}"
+        );
+        assert!(bucket.contains("provisional: false"), "{bucket}");
+    }
+
+    /// The depth the owner set for the unsigned bucket (spec D11): Basic's 3 seconds of refill.
+    const RECORDED_DEPTH: u32 = 600;
+
+    #[tokio::test]
+    async fn a_keyed_clients_public_bucket_is_the_unsigned_size_and_the_key_keeps_its_own() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        // The key's size has distinct numbers, and none is Basic's or the unsigned refill.
+        let key_size = serde_json::json!({
+            "usage_tier": "Premier",
+            "read": {"refill_rate": 1000, "bucket_capacity": 1200},
+            "write": {"refill_rate": 100, "bucket_capacity": 100},
+            "grants": [],
+        })
+        .to_string();
+        let limits = answer(&mut server, LIMITS, 200, &key_size, 1).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .credentials(keyed())
+            .build()
+            .unwrap();
+
+        kalshi.exchange().status().send().await.unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        let throttle = &kalshi.inner.throttle;
+
+        // A public read is charged to the public bucket, confirmed at the unsigned client's size.
+        let public = throttle.bucket_for("/trade-api/v2/markets/KXA-1");
+        assert!(
+            !std::ptr::eq(public, throttle.bucket()),
+            "a public read was charged to the key's bucket"
+        );
+        assert_eq!(public.capacity(), RECORDED_DEPTH);
+        let public = format!("{public:?}");
+        assert!(
+            public.contains(&format!("capacity: {RECORDED_DEPTH},")),
+            "{public}"
+        );
+        assert!(
+            public.contains(&format!("refill_per_sec: {RECORDED_REFILL_TOKENS},")),
+            "{public}"
+        );
+        assert!(public.contains("provisional: false"), "{public}");
+
+        // The route that needs the key is charged to the bucket the account's size resized.
+        let key = throttle.bucket_for(crate::predictions::request::routes::ACCOUNT_LIMITS.template);
+        assert!(
+            std::ptr::eq(key, throttle.bucket()),
+            "the limits read was not charged to the key's bucket"
+        );
+        let key = format!("{key:?}");
+        assert!(key.contains("capacity: 1200,"), "{key}");
+        assert!(key.contains("refill_per_sec: 1000,"), "{key}");
+        assert!(key.contains("provisional: false"), "{key}");
+
+        // The printed client shows the split too.
+        let printed = format!("{kalshi:?}");
+        assert!(printed.contains("split: true"), "{printed}");
+    }
+
+    #[test]
+    fn the_routes_charged_to_the_keys_bucket_are_exactly_the_one_that_needs_the_key() {
+        use crate::predictions::request::routes;
+
+        let throttle = PredictionsThrottle::new();
+        throttle.split_public_reads();
+
+        let charged_to_the_key: Vec<&str> = routes::ALL
+            .iter()
+            .filter(|route| {
+                let parameters = route
+                    .template
+                    .split('/')
+                    .filter(|segment| segment.starts_with(':'))
+                    .count();
+                let path = route.path(&vec!["X"; parameters]);
+                std::ptr::eq(throttle.bucket_for(&path), throttle.bucket())
+            })
+            .map(|route| route.template)
+            .collect();
+
+        assert_eq!(
+            charged_to_the_key,
+            [routes::ACCOUNT_LIMITS.template],
+            "a route was added to or dropped from PRIVATE_PATHS; a signed route needs the key's \
+             bucket, a public one the public bucket, so decide which and say why"
+        );
     }
 }

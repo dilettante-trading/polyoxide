@@ -1,7 +1,7 @@
 # polyoxide in stage S3: what each release adds
 
 Stage S3 of the multi-venue restructure is for additions (AD-16): the venue-neutral traits, a
-supervised clob socket, and the Kalshi skeleton. Its removals, which are few, are listed in
+supervised clob socket, and a third venue, Kalshi. Its removals, which are few, are listed in
 [`s3-removals.md`](s3-removals.md). This page holds the consumer-impact note of each S3 piece of
 work, for the CHANGELOG section of the first release that ships it.
 
@@ -127,3 +127,47 @@ renamed, and no signature changes.
 - The CLOB's `event_group` makes one `closed=any` request where it made one or two.
 - The `id` setters of `ListMarkets` and `ListEvents` documented a batch of 400 ids, and the
   host takes 100.
+
+## Epic 9: Kalshi published
+
+**Consumer impact: additive.** Nothing is removed or renamed, and no signature changes; code
+that builds on 0.41 builds unchanged. `polyoxide-kalshi` is new on crates.io, and the umbrella's
+default build, `polymarket`, gains no crate.
+
+- `polyoxide-kalshi`, first published in 0.42.0 (it was `publish = false`). The module
+  `predictions`, feature `predictions` (on by default): `Predictions` and `PredictionsBuilder`,
+  for Kalshi's production and demo hosts, with optional `Credentials` that sign a keyed client's
+  requests; the namespaces `health`, `exchange`, `markets` (`list`, `get`, `orderbook`, `trades`,
+  `candlesticks` and `series_candlesticks`), `events` and `account`; `PredictionsError`;
+  `predictions::key`, whose keys read `kalshi.predictions:<TICKER>:yes|no`; and
+  `predictions::venue`, whose `Predictions` implements `MarketData`, `Trades`, `EventGroups`
+  and `Candles` with `InstrumentExt`, `TradeExt`, `EventGroupExt` and `CandleExt`. Its candles
+  come at one minute, one hour and one day (any other width is refused before a request), and a span can return fewer candles than it has periods, since the venue's route leaves out a period with no row at all.
+- `polyoxide-kalshi`, with `predictions-ws`: `PredictionsWsBuilder` connects a
+  `SupervisedPredictionsWs` on the three channels `orderbook_delta`, `ticker` and `trade`
+  (`Channel`, chosen with `channels`, the order book by default). It yields `Event::Snapshot`,
+  `Delta`, `Ticker`, `Trade`, `Resyncing`, `Disconnected` and `Reconnected`. A gap in the
+  order-book sequence asks Kalshi for fresh snapshots on the same connection instead of
+  reconnecting (`PredictionsMembership::snapshot` asks on demand), and `ws::book::Books` keeps
+  each ticker's ladder from the events. The handshake needs `Credentials`, public data
+  included.
+- The Read throttle: a client with no credentials has one bucket, depth 600 refilling 180 tokens
+  a second (20 reads a second measured clean, less a tenth); a keyed client's public reads draw on
+  a second bucket sized the same, and only `GET /account/limits` draws on the key's bucket.
+- The umbrella: the features `kalshi`, `kalshi-predictions` and `kalshi-predictions-ws`, all in
+  `full` and none in the default; `polyoxide::kalshi`; `polyoxide::parse_key` names
+  `kalshi.predictions` under `kalshi-predictions`; and the prelude names `Predictions`,
+  `PredictionsBuilder`, `PredictionsError`, `KalshiCredentials`, `PredictionsEvent`,
+  `PredictionsWsBuilder`, `SupervisedPredictionsWs`, `PredictionsWsError`,
+  `PredictionsMembership`, `PredictionsChannel` and `PredictionsBooks`.
+- `polyoxide-venue`, feature `market`: `Candles::intervals()`, a provided method that returns
+  the widths a venue serves, `CandleInterval::ALL` by default, so every existing implementation
+  keeps its behaviour and `DynCandles` forwards it. `CandleQuery::ensure_served` and the new
+  `UnservedInterval` (`InvalidRequest`, a fault) let a venue that serves fewer widths refuse
+  another before it sends anything.
+- `polyoxide-ws`: `Protocol::follow_up`, a provided method that returns no frame by default. The
+  `Supervisor` calls it once after each `decode` that leaves the connection up and sends the
+  frame it returns, bounded by `stale_after`. A `Protocol` written before it is unchanged.
+
+No existing build gains a third-party crate; `full` gains `polyoxide-kalshi`. `kalshi-predictions` builds core's HTTP stack,
+as the other venues' HTTP modules do, and `kalshi-predictions-ws` adds the socket kit.

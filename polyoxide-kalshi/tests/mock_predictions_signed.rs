@@ -610,17 +610,17 @@ async fn a_premier_account_is_admitted_a_cost_the_basic_bucket_would_refuse() {
     let mut server = Server::new_async().await;
     let seen = Seen::default();
     let limits = limits_body(1200, 1200);
-    let bodies = [
-        (COSTS, COSTLY_STATUS),
-        (LIMITS, limits.as_str()),
-        (STATUS, STATUS_BODY),
-    ];
+    let bodies = [(COSTS, COSTLY_LIMITS), (LIMITS, limits.as_str())];
     let _mock = recording(&mut server, &[200], &bodies, &seen).await;
     let client = client(&server, Some(ed25519()));
 
-    within(client.exchange().status().send()).await.unwrap();
+    within(client.account().limits().send()).await.unwrap();
 
-    assert_eq!(seen.to(STATUS).len(), 1, "the 700-token send went out");
+    assert_eq!(
+        seen.to(LIMITS).len(),
+        2,
+        "the confirmation's read and the 700-token send both went out"
+    );
 }
 
 #[tokio::test]
@@ -628,18 +628,18 @@ async fn the_bucket_takes_the_capacity_the_account_reports() {
     let mut server = Server::new_async().await;
     let seen = Seen::default();
     let limits = limits_body(650, 100);
-    let bodies = [
-        (COSTS, COSTLY_STATUS),
-        (LIMITS, limits.as_str()),
-        (STATUS, STATUS_BODY),
-    ];
+    let bodies = [(COSTS, COSTLY_LIMITS), (LIMITS, limits.as_str())];
     let _mock = recording(&mut server, &[200], &bodies, &seen).await;
     let client = client(&server, Some(ed25519()));
 
-    let refused = refusal(within(client.exchange().status().send()).await);
+    let refused = refusal(within(client.account().limits().send()).await);
 
     assert_eq!((refused.units, refused.capacity), (700, 650));
-    assert!(seen.to(STATUS).is_empty(), "a refused cost was sent");
+    assert_eq!(
+        seen.to(LIMITS).len(),
+        1,
+        "only the confirmation's read went out, not the refused cost"
+    );
 }
 
 #[tokio::test]
@@ -714,4 +714,54 @@ fn the_captured_limits_fit_the_type_in_both_directions() {
     // tokens and refills at least 200 a second.
     assert!(limits.read.bucket_capacity >= 600);
     assert!(limits.read.refill_rate >= 200);
+}
+
+/// `/account/endpoint_costs` listing the limits route at 700 tokens, more than Basic's Read bucket
+/// holds.
+const COSTLY_LIMITS: &str = r#"{"default_cost":10,"endpoint_costs":[{"method":"GET","path":"/trade-api/v2/account/limits","cost":700}]}"#;
+
+#[tokio::test]
+async fn a_keyed_clients_public_read_is_charged_to_the_unsigned_bucket_not_the_keys() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let limits = limits_body(1200, 1200);
+    let bodies = [
+        (COSTS, COSTLY_STATUS),
+        (LIMITS, limits.as_str()),
+        (STATUS, STATUS_BODY),
+    ];
+    let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+    let client = client(&server, Some(ed25519()));
+
+    // The key's bucket holds 1200 tokens, so a 700-token read would fit it. A public read is
+    // charged to the unsigned bucket, which holds Basic's 600.
+    let refused = refusal(within(client.exchange().status().send()).await);
+
+    assert_eq!((refused.units, refused.capacity), (700, 600));
+    assert!(seen.to(STATUS).is_empty(), "a refused cost was sent");
+}
+
+#[tokio::test]
+async fn a_keyed_clients_public_reads_do_not_spend_the_keys_tokens() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    // A key whose bucket holds one read and refills a token a second: a second read charged to it
+    // would wait ten seconds.
+    let limits = limits_body(10, 1);
+    let bodies = [
+        (COSTS, NO_COSTS),
+        (LIMITS, limits.as_str()),
+        (STATUS, STATUS_BODY),
+    ];
+    let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+    let client = client(&server, Some(ed25519()));
+
+    for read in 1..=3 {
+        tokio::time::timeout(Duration::from_secs(3), client.exchange().status().send())
+            .await
+            .unwrap_or_else(|_| panic!("read {read} waited on the key's bucket"))
+            .unwrap();
+    }
+
+    assert_eq!(seen.to(STATUS).len(), 3);
 }

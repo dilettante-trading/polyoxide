@@ -6,7 +6,8 @@ use crate::predictions::{
     key::Ticker,
     request::{routes, Routed},
     types::{
-        MarketResponse, MarketStatusFilter, MarketsPage, MveFilter, OrderbookResponse, TradesPage,
+        BatchCandlesticksResponse, MarketResponse, MarketStatusFilter, MarketsPage, MveFilter,
+        OrderbookResponse, PeriodInterval, SeriesCandlesticksResponse, TradesPage,
     },
     Inner, PredictionsError,
 };
@@ -48,6 +49,54 @@ impl MarketsApi {
     pub fn trades(&self) -> ListTrades {
         ListTrades {
             request: Routed::new(&self.inner, routes::TRADES, &[]),
+        }
+    }
+
+    /// `GET /trade-api/v2/markets/candlesticks` for one market: its candlesticks of one width
+    /// that end between `start_ts` and `end_ts`, both inclusive and in Unix seconds.
+    ///
+    /// Kalshi selects a candlestick by when it ends, so a span of open times is shifted forward
+    /// by one width. Kalshi refuses a request over 10,000 candlesticks across the markets asked
+    /// for with a `400` rather than truncating it, so a caller keeps its span within 10,000
+    /// periods.
+    ///
+    /// A market that settled before Kalshi's historical cutoff has candlesticks only on
+    /// `GET /historical/markets/{ticker}/candlesticks`, which this client does not call.
+    pub fn candlesticks(
+        &self,
+        ticker: &Ticker,
+        period: PeriodInterval,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> GetCandlesticks {
+        GetCandlesticks {
+            request: Routed::new(&self.inner, routes::CANDLESTICKS, &[])
+                .query("market_tickers", ticker.as_str())
+                .query("start_ts", start_ts)
+                .query("end_ts", end_ts)
+                .query("period_interval", period),
+        }
+    }
+
+    /// `GET /trade-api/v2/series/{series_ticker}/markets/{ticker}/candlesticks`: the same
+    /// candlesticks as [`candlesticks`](Self::candlesticks), for the market under its series.
+    pub fn series_candlesticks(
+        &self,
+        series_ticker: &str,
+        ticker: &Ticker,
+        period: PeriodInterval,
+        start_ts: i64,
+        end_ts: i64,
+    ) -> GetSeriesCandlesticks {
+        GetSeriesCandlesticks {
+            request: Routed::new(
+                &self.inner,
+                routes::SERIES_CANDLESTICKS,
+                &[series_ticker, ticker.as_str()],
+            )
+            .query("start_ts", start_ts)
+            .query("end_ts", end_ts)
+            .query("period_interval", period),
         }
     }
 }
@@ -133,6 +182,44 @@ impl ListTrades {
 
     /// Waits for the Read budget, sends, and decodes the response.
     pub async fn send(self) -> Result<TradesPage, PredictionsError> {
+        self.request.send().await
+    }
+}
+
+/// Request builder for `GET /trade-api/v2/markets/candlesticks`.
+#[must_use = "a request does nothing until it is sent"]
+pub struct GetCandlesticks {
+    pub(crate) request: Routed<BatchCandlesticksResponse>,
+}
+
+impl GetCandlesticks {
+    polyoxide_core::query_setters! {
+        /// Also prepend the latest candlestick before `start_ts`, projected to the first period
+        /// boundary with every price null and `previous_dollars` set to its close.
+        include_latest_before_start: bool => "include_latest_before_start",
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response.
+    pub async fn send(self) -> Result<BatchCandlesticksResponse, PredictionsError> {
+        self.request.send().await
+    }
+}
+
+/// Request builder for `GET /trade-api/v2/series/{series_ticker}/markets/{ticker}/candlesticks`.
+#[must_use = "a request does nothing until it is sent"]
+pub struct GetSeriesCandlesticks {
+    pub(crate) request: Routed<SeriesCandlesticksResponse>,
+}
+
+impl GetSeriesCandlesticks {
+    polyoxide_core::query_setters! {
+        /// Also prepend the latest candlestick before `start_ts`, projected to the first period
+        /// boundary with every price null and `previous_dollars` set to its close.
+        include_latest_before_start: bool => "include_latest_before_start",
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response.
+    pub async fn send(self) -> Result<SeriesCandlesticksResponse, PredictionsError> {
         self.request.send().await
     }
 }

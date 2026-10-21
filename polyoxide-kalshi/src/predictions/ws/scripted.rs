@@ -58,6 +58,9 @@ pub struct Script {
     pub error_after_subscribe: Option<(u32, String)>,
     /// A command naming this ticker is answered with an `error` of this code.
     pub refuse_ticker: Option<(String, u32)>,
+    /// An `update_subscription` on this `sid` is answered with an `error` of this code,
+    /// whatever markets it names: the refusal of one command of a change that sends several.
+    pub refuse_update_on: Option<(u64, u32)>,
     /// Answer every `subscribe` with a `subscribed` frame that carries no `sid`: an answer
     /// to the command that does not decode, and nothing else (no snapshot follows).
     pub undecodable_subscribed: bool,
@@ -68,6 +71,18 @@ pub struct Script {
     pub ok_skips_seq: bool,
     /// Send a delta ahead of that `ok`.
     pub delta_before_ok: bool,
+    /// The `seq` the first snapshot answering a `get_snapshot` takes, instead of the next
+    /// number; the ones after it count on from there.
+    pub snapshot_seq: Option<u64>,
+    /// Answer a `get_snapshot` with at most this many snapshots, from the first market it
+    /// names: `Some(0)` leaves it unanswered.
+    pub snapshot_limit: Option<usize>,
+    /// Answer every `get_snapshot` with an `error` of this code and message, carrying the
+    /// command's `id`.
+    pub snapshot_error: Option<(u32, String)>,
+    /// Frames sent right after the snapshots that answer a `get_snapshot`. Their sequence
+    /// numbers are the test's own.
+    pub after_snapshot: Vec<String>,
 }
 
 impl Script {
@@ -256,6 +271,55 @@ pub fn delta(sid: u64, seq: u64, ticker: &str) -> Value {
     })
 }
 
+/// A `ticker` frame with the mirror's example values. The channel carries no `seq`.
+pub fn ticker_frame(sid: u64, market: &str) -> Value {
+    json!({
+        "type": "ticker",
+        "sending_ts_ms": SENDING_TS_MS,
+        "sid": sid,
+        "msg": {
+            "market_id": MARKET_ID,
+            "market_ticker": market,
+            "price_dollars": "0.4800",
+            "yes_bid_dollars": "0.4500",
+            "yes_ask_dollars": "0.5300",
+            "volume_fp": "33896.00",
+            "open_interest_fp": "20422.00",
+            "dollar_volume": 16_948,
+            "dollar_open_interest": 10_211,
+            "yes_bid_size_fp": "300.00",
+            "yes_ask_size_fp": "150.00",
+            "last_trade_size_fp": "25.00",
+            "ts": 1_669_149_841_u64,
+            "ts_ms": 1_669_149_841_000_u64,
+            "time": "2022-11-22T20:44:01Z",
+        },
+    })
+}
+
+/// A `trade` frame with the mirror's example values: a taker positioned for NO.
+pub fn trade_frame(sid: u64, seq: u64, market: &str) -> Value {
+    json!({
+        "type": "trade",
+        "sending_ts_ms": SENDING_TS_MS,
+        "sid": sid,
+        "seq": seq,
+        "msg": {
+            "trade_id": "d91bc706-ee49-470d-82d8-11418bda6fed",
+            "market_ticker": market,
+            "yes_price_dollars": "0.3600",
+            "no_price_dollars": "0.6400",
+            "count_fp": "136.00",
+            "taker_side": "no",
+            "taker_outcome_side": "no",
+            "taker_book_side": "ask",
+            "is_block_trade": false,
+            "ts": 1_669_149_841_u64,
+            "ts_ms": 1_669_149_841_000_u64,
+        },
+    })
+}
+
 fn error(id: &Value, code: u32, message: &str) -> Value {
     json!({
         "id": id,
@@ -264,6 +328,9 @@ fn error(id: &Value, code: u32, message: &str) -> Value {
         "msg": {"code": code, "msg": message},
     })
 }
+
+/// The channel whose subscriptions carry books.
+const BOOK: &str = "orderbook_delta";
 
 /// What one connection has subscribed.
 #[derive(Default)]
@@ -275,6 +342,8 @@ struct State {
 
 #[derive(Default)]
 struct Subscription {
+    /// The channel it was subscribed on.
+    channel: String,
     /// The last sequence number issued.
     seq: u64,
     tickers: Vec<String>,
@@ -286,6 +355,20 @@ impl State {
         let subscription = self.subscriptions.entry(sid).or_default();
         subscription.seq += 1;
         subscription.seq
+    }
+
+    /// Whether subscription `sid` is on the order-book channel.
+    fn is_book(&self, sid: u64) -> bool {
+        self.subscriptions
+            .get(&sid)
+            .is_some_and(|subscription| subscription.channel == BOOK)
+    }
+
+    /// Whether the frames of subscription `sid` carry a `seq`: the `ticker` channel's do not.
+    fn numbered(&self, sid: u64) -> bool {
+        self.subscriptions
+            .get(&sid)
+            .is_some_and(|subscription| subscription.channel != "ticker")
     }
 }
 
@@ -323,8 +406,15 @@ fn reply(state: &mut State, script: &Script, request: &Value) -> Vec<Value> {
             return vec![error(&id, *code, "Invalid parameter")];
         }
     }
+    if let (Some((refused, code)), Some("update_subscription")) =
+        (&script.refuse_update_on, request["cmd"].as_str())
+    {
+        if params["sid"].as_u64() == Some(*refused) {
+            return vec![error(&id, *code, "Invalid parameter")];
+        }
+    }
     match request["cmd"].as_str() {
-        Some("subscribe") => subscribe(state, script, &id, &tickers),
+        Some("subscribe") => subscribe(state, script, &id, params, &tickers),
         Some("update_subscription") if script.ignore_updates => Vec::new(),
         Some("update_subscription") => update(state, script, &id, params, &tickers),
         Some("unsubscribe") => unsubscribe(state, &id, params),
@@ -332,35 +422,76 @@ fn reply(state: &mut State, script: &Script, request: &Value) -> Vec<Value> {
     }
 }
 
-fn subscribe(state: &mut State, script: &Script, id: &Value, tickers: &[String]) -> Vec<Value> {
+/// The channels a `subscribe` names; the order book when it names none.
+fn channels_of(params: &Value) -> Vec<String> {
+    let named: Vec<String> = params["channels"]
+        .as_array()
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(|name| name.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    if named.is_empty() {
+        vec![BOOK.to_owned()]
+    } else {
+        named
+    }
+}
+
+/// A `subscribed` for each channel named, each with its own `sid`, then the order-book
+/// channel's snapshot of each market, counting from 1.
+fn subscribe(
+    state: &mut State,
+    script: &Script,
+    id: &Value,
+    params: &Value,
+    tickers: &[String],
+) -> Vec<Value> {
+    let channels = channels_of(params);
     if script.undecodable_subscribed {
         return vec![json!({
             "id": id,
             "type": "subscribed",
             "sending_ts_ms": SENDING_TS_MS,
-            "msg": {"channel": "orderbook_delta"},
+            "msg": {"channel": channels[0]},
         })];
     }
-    state.issued += 1;
-    let sid = state.issued;
-    state.subscriptions.insert(
-        sid,
-        Subscription {
-            seq: 0,
-            tickers: tickers.to_vec(),
-        },
-    );
-    let mut frames = vec![json!({
-        "id": id,
-        "type": "subscribed",
-        "sending_ts_ms": SENDING_TS_MS,
-        "msg": {"channel": "orderbook_delta", "sid": sid},
-    })];
-    for ticker in tickers {
-        let seq = state.next_seq(sid);
-        frames.push(snapshot(sid, seq, ticker));
+    let mut frames = Vec::new();
+    let mut first = None;
+    let mut book = None;
+    for channel in &channels {
+        state.issued += 1;
+        let sid = state.issued;
+        state.subscriptions.insert(
+            sid,
+            Subscription {
+                channel: channel.clone(),
+                seq: 0,
+                tickers: tickers.to_vec(),
+            },
+        );
+        frames.push(json!({
+            "id": id,
+            "type": "subscribed",
+            "sending_ts_ms": SENDING_TS_MS,
+            "msg": {"channel": channel, "sid": sid},
+        }));
+        if first.is_none() {
+            first = Some(sid);
+        }
+        if book.is_none() && channel == BOOK {
+            book = Some(sid);
+        }
     }
-    if let Some((code, message)) = &script.error_after_subscribe {
+    if let Some(sid) = book {
+        for ticker in tickers {
+            let seq = state.next_seq(sid);
+            frames.push(snapshot(sid, seq, ticker));
+        }
+    }
+    if let (Some((code, message)), Some(sid)) = (&script.error_after_subscribe, book.or(first)) {
         let seq = state.next_seq(sid);
         frames.push(json!({
             "type": "error",
@@ -386,6 +517,9 @@ fn update(
     else {
         return vec![error(id, 7, "Unknown subscription ID")];
     };
+    if params["action"].as_str() == Some("get_snapshot") {
+        return get_snapshot(state, script, id, sid, tickers);
+    }
     let adding = params["action"].as_str() == Some("add_markets");
     {
         let subscription = state.subscriptions.entry(sid).or_default();
@@ -395,8 +529,10 @@ fn update(
             subscription.tickers.retain(|held| !tickers.contains(held));
         }
     }
+    let book = state.is_book(sid);
+    let numbered = state.numbered(sid);
     let mut frames = Vec::new();
-    if script.delta_before_ok {
+    if script.delta_before_ok && book {
         let ticker = state.subscriptions[&sid]
             .tickers
             .first()
@@ -405,25 +541,58 @@ fn update(
         let seq = state.next_seq(sid);
         frames.push(delta(sid, seq, &ticker));
     }
-    if script.ok_skips_seq {
+    if script.ok_skips_seq && book {
         // A number the client never sees: the answer that follows has a gap behind it.
         state.next_seq(sid);
     }
     let seq = state.next_seq(sid);
     let held = state.subscriptions[&sid].tickers.clone();
-    frames.push(json!({
+    let mut ok = json!({
         "id": id,
         "sid": sid,
-        "seq": seq,
         "type": "ok",
         "sending_ts_ms": SENDING_TS_MS,
         "msg": {"market_tickers": held},
-    }));
-    if adding {
+    });
+    if numbered {
+        ok["seq"] = json!(seq);
+    }
+    frames.push(ok);
+    if adding && book {
         for ticker in tickers {
             let seq = state.next_seq(sid);
             frames.push(snapshot(sid, seq, ticker));
         }
+    }
+    frames
+}
+
+/// The answer to a `get_snapshot`: an `orderbook_snapshot` of each market asked for, in the
+/// order asked, carrying the command's `id` and counting on the subscription's numbers,
+/// with no `ok`; the script's knobs renumber, limit, refuse and follow it.
+fn get_snapshot(
+    state: &mut State,
+    script: &Script,
+    id: &Value,
+    sid: u64,
+    tickers: &[String],
+) -> Vec<Value> {
+    if let Some((code, message)) = &script.snapshot_error {
+        return vec![error(id, *code, message)];
+    }
+    let limit = script.snapshot_limit.unwrap_or(usize::MAX);
+    if let (Some(from), true) = (script.snapshot_seq, limit > 0) {
+        state.subscriptions.entry(sid).or_default().seq = from.saturating_sub(1);
+    }
+    let mut frames = Vec::new();
+    for ticker in tickers.iter().take(limit) {
+        let seq = state.next_seq(sid);
+        let mut frame = snapshot(sid, seq, ticker);
+        frame["id"] = id.clone();
+        frames.push(frame);
+    }
+    for frame in &script.after_snapshot {
+        frames.push(parse(frame));
     }
     frames
 }
@@ -439,15 +608,19 @@ fn unsubscribe(state: &mut State, id: &Value, params: &Value) -> Vec<Value> {
             frames.push(error(id, 7, "Unknown subscription ID"));
             continue;
         }
+        let numbered = state.numbered(sid);
         let seq = state.next_seq(sid);
         state.subscriptions.remove(&sid);
-        frames.push(json!({
+        let mut frame = json!({
             "id": id,
             "sid": sid,
-            "seq": seq,
             "type": "unsubscribed",
             "sending_ts_ms": SENDING_TS_MS,
-        }));
+        });
+        if numbered {
+            frame["seq"] = json!(seq);
+        }
+        frames.push(frame);
     }
     frames
 }
@@ -617,5 +790,159 @@ mod tests {
             );
             assert!(frames[2].get("id").is_none(), "{code}");
         }
+    }
+    fn subscribe_channels(tickers: &[&str], channels: &[&str]) -> Value {
+        json!({"id": 1, "cmd": "subscribe", "params": {
+            "channels": channels, "market_tickers": tickers, "use_yes_price": true,
+        }})
+    }
+
+    #[test]
+    fn a_subscribe_on_three_channels_gets_a_subscribed_each_then_the_books_snapshots() {
+        let mut state = State::default();
+        let frames = ask(
+            &mut state,
+            &Script::default(),
+            subscribe_channels(&["A-1"], &["orderbook_delta", "ticker", "trade"]),
+        );
+        assert_eq!(frames.len(), 4);
+        for (n, channel) in ["orderbook_delta", "ticker", "trade"].iter().enumerate() {
+            assert_eq!(frames[n]["type"], "subscribed");
+            assert_eq!(frames[n]["id"], 1);
+            assert_eq!(frames[n]["msg"]["channel"], *channel);
+            assert_eq!(frames[n]["msg"]["sid"], n as u64 + 1);
+        }
+        // Only the order book has a snapshot, and it counts on the book's subscription.
+        assert_eq!(frames[3]["type"], "orderbook_snapshot");
+        assert_eq!(
+            (frames[3]["sid"].as_u64(), frames[3]["seq"].as_u64()),
+            (Some(1), Some(1))
+        );
+    }
+
+    #[test]
+    fn a_subscribe_with_no_channels_is_the_order_book() {
+        let mut state = State::default();
+        let request = json!({"id": 1, "cmd": "subscribe", "params": {"market_tickers": ["A-1"]}});
+        let frames = ask(&mut state, &Script::default(), request);
+        assert_eq!(frames[0]["msg"]["channel"], "orderbook_delta");
+        assert_eq!(frames[1]["type"], "orderbook_snapshot");
+    }
+
+    #[test]
+    fn the_ticker_channel_numbers_nothing_and_the_trade_channel_does() {
+        let mut state = State::default();
+        ask(
+            &mut state,
+            &Script::default(),
+            subscribe_channels(&["A-1"], &["ticker", "trade"]),
+        );
+        let add = |sid: u64| {
+            json!({"id": 2, "cmd": "update_subscription", "params": {
+                "sid": sid, "action": "add_markets", "market_tickers": ["B-2"],
+            }})
+        };
+        let ticker = ask(&mut state, &Script::default(), add(1));
+        assert_eq!(ticker.len(), 1, "no snapshot on a channel without books");
+        assert!(ticker[0].get("seq").is_none(), "{:?}", ticker[0]);
+        let trade = ask(&mut state, &Script::default(), add(2));
+        assert_eq!(trade[0]["seq"], 1);
+        let end = json!({"id": 3, "cmd": "unsubscribe", "params": {"sids": [1]}});
+        assert!(ask(&mut state, &Script::default(), end)[0]
+            .get("seq")
+            .is_none());
+    }
+
+    fn get_snapshot_request(id: u64, tickers: &[&str]) -> Value {
+        json!({"id": id, "cmd": "update_subscription", "params": {
+            "sid": 1, "action": "get_snapshot", "market_tickers": tickers,
+        }})
+    }
+
+    #[test]
+    fn a_get_snapshot_is_answered_with_snapshots_that_carry_its_id_and_the_next_numbers() {
+        let mut state = State::default();
+        ask(
+            &mut state,
+            &Script::default(),
+            subscribe_request(&["A-1", "B-2"]),
+        );
+        let frames = ask(
+            &mut state,
+            &Script::default(),
+            get_snapshot_request(77, &["B-2", "A-1"]),
+        );
+        // No `ok`: the snapshots are the answer, in the order asked.
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0]["type"], "orderbook_snapshot");
+        assert_eq!(frames[0]["id"], 77);
+        assert_eq!(frames[0]["msg"]["market_ticker"], "B-2");
+        assert_eq!(
+            (frames[0]["sid"].as_u64(), frames[0]["seq"].as_u64()),
+            (Some(1), Some(3))
+        );
+        assert_eq!(frames[1]["msg"]["market_ticker"], "A-1");
+        assert_eq!(frames[1]["seq"], 4);
+        // The subscription is unchanged.
+        let again = ask(
+            &mut state,
+            &Script::default(),
+            get_snapshot_request(78, &["A-1"]),
+        );
+        assert_eq!(again[0]["seq"], 5);
+    }
+
+    #[test]
+    fn the_snapshot_knobs_renumber_limit_refuse_and_follow_the_answer() {
+        let mut state = State::default();
+        ask(
+            &mut state,
+            &Script::default(),
+            subscribe_request(&["A-1", "B-2"]),
+        );
+        let numbered = Script {
+            snapshot_seq: Some(10),
+            snapshot_limit: Some(1),
+            after_snapshot: vec![delta(1, 11, "A-1").to_string()],
+            ..Script::default()
+        };
+        let frames = ask(
+            &mut state,
+            &numbered,
+            get_snapshot_request(5, &["A-1", "B-2"]),
+        );
+        assert_eq!(frames.len(), 2, "one snapshot, then the frame that follows");
+        assert_eq!(frames[0]["seq"], 10);
+        assert_eq!(frames[1]["type"], "orderbook_delta");
+        assert_eq!(frames[1]["seq"], 11);
+        let silent = Script {
+            snapshot_limit: Some(0),
+            ..Script::default()
+        };
+        assert!(ask(&mut state, &silent, get_snapshot_request(6, &["A-1"])).is_empty());
+        let refused = Script {
+            snapshot_error: Some((11, "Invalid parameter".to_owned())),
+            ..Script::default()
+        };
+        let frames = ask(&mut state, &refused, get_snapshot_request(7, &["A-1"]));
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0]["type"], "error");
+        assert_eq!(frames[0]["id"], 7);
+        assert_eq!(frames[0]["msg"]["code"], 11);
+    }
+
+    #[test]
+    fn the_ticker_and_trade_frames_are_the_mirrors_examples() {
+        let update = ticker_frame(11, "FED-23DEC-T3.00");
+        assert_eq!(update["type"], "ticker");
+        assert!(update.get("seq").is_none());
+        assert_eq!(update["msg"]["price_dollars"], "0.4800");
+        let public = trade_frame(11, 2, "HIGHNY-22DEC23-B53.5");
+        assert_eq!(public["type"], "trade");
+        assert_eq!(
+            (public["sid"].as_u64(), public["seq"].as_u64()),
+            (Some(11), Some(2))
+        );
+        assert_eq!(public["msg"]["taker_book_side"], "ask");
     }
 }

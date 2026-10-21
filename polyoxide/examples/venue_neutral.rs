@@ -1,11 +1,13 @@
 //! One function reads any venue's best bid and ask, and one classifier reads
 //! any venue's error. Written once, against `polyoxide::venue`'s
 //! `MarketData` and `Classify`, they run unchanged on the Polymarket CLOB,
-//! Polymarket perps and Binance USDⓈ-M; adding a venue adds no code here.
+//! Polymarket perps, Binance USDⓈ-M and Kalshi's Predictions; adding a venue
+//! adds only its client and key to `main`'s list.
 //!
 //! ```text
 //! cargo run -p polyoxide --example venue_neutral \
-//!     --no-default-features --features polymarket-clob,polymarket-perps,binance-usdm
+//!     --no-default-features \
+//!     --features polymarket-clob,polymarket-perps,binance-usdm,kalshi-predictions
 //! ```
 //!
 //! `tests/venue_neutral.rs` runs both functions against mock servers for each
@@ -89,7 +91,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find_map(|token| token.token_id.clone())
         .ok_or("no open market on the CLOB's first sampling page")?;
 
-    let venues: [(Arc<DynMarketData<'static>>, MarketKey); 3] = [
+    // Kalshi's first open market of one page that leaves out the multivariate combinations the
+    // unfiltered listing serves first, keyed `yes`. It is named by path and has no `cfg`:
+    // `polyoxide-kalshi`'s `venue_predictions` suite includes this file by `#[path]`, where a
+    // feature that crate does not declare would fail `unexpected_cfgs`.
+    let kalshi = polyoxide::kalshi::predictions::Predictions::new()?;
+    let page = kalshi
+        .markets()
+        .list()
+        .status(polyoxide::kalshi::predictions::types::MarketStatusFilter::Open)
+        .mve_filter(polyoxide::kalshi::predictions::types::MveFilter::Exclude)
+        .send()
+        .await?;
+    let market = page
+        .markets
+        .first()
+        .ok_or("no open market on Kalshi's first page")?;
+    let kalshi_key = polyoxide::kalshi::predictions::key::key(
+        &polyoxide::kalshi::predictions::key::Ticker::new(&market.ticker)?,
+        polyoxide::kalshi::predictions::key::Outcome::Yes,
+    );
+
+    let venues: [(Arc<DynMarketData<'static>>, MarketKey); 4] = [
         (
             DynMarketData::new_arc(Usdm::new()?),
             usdm::key(&Symbol::new("BTCUSDT")?),
@@ -102,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             DynMarketData::new_arc(clob),
             keys::clob(&TokenId::new(token)?),
         ),
+        (DynMarketData::new_arc(kalshi), kalshi_key),
     ];
     for (venue, key) in &venues {
         match best_bid_ask(venue, key).await {

@@ -17,7 +17,7 @@ impl polyoxide_venue::Classify for ParseTickSizeError {
 }
 
 /// Side of an order (buy or sell).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OrderSide {
     Buy,
