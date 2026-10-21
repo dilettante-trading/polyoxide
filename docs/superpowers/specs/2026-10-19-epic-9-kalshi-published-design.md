@@ -419,7 +419,10 @@ An owner session, after the run, not a story.
   `polyoxide-venue/tests/`; `polyoxide-ws/src/supervisor/`; `polyoxide/`; `docs/specs/kalshi/`;
   `scripts/capture_kalshi_*.py`; `ci/dep-allowlists/polyoxide-kalshi*.txt` and
   `ci/dep-allowlists/polyoxide@kalshi*.txt`; `.github/scripts/tests/test_dep_allowlists.py`,
-  `test_ci_workflow.py` and `test_classify_coverage.py`; the files `gen_registry.py` writes;
+  `test_ci_workflow.py` and `test_classify_coverage.py`; `.github/workflows/ci.yml`, for Story 8's
+  rewrite of the comment above the `features` job's umbrella header pins, which says Kalshi is
+  `publish = false` and outside the umbrella, and nothing else in it (the owner, 2026-10-21,
+  drafting); the files `gen_registry.py` writes;
   `CLAUDE.md`, `README.md`, `SELF-HEALING.md`, `.env.example`, `docs/specs/INDEX.md`,
   `docs/s3-migration.md`;
   this spec, the plan, `_bmad-output/specs/`, `spine-amendments/epic-9.md` and
@@ -439,6 +442,11 @@ An owner session, after the run, not a story.
   re-snapshot on one connection (their reconnects move to new tests: a gap on the `trade` `sid`, a
   second gap during a resync), and may edit `ws/protocol.rs`'s unit tests to the multi-channel
   shapes (one `sid` per channel, one `subscribe` naming the channels, an answer with several `sid`s).
+  A third (2026-10-21, drafting): if Story 7's signed probe shows a keyed client's public reads do
+  not draw from the key's Read bucket and they move to the unsigned bucket, Story 7 rewrites
+  `mock_predictions_signed.rs`'s `a_premier_account_is_admitted_a_cost_the_basic_bucket_would_refuse`
+  and `the_bucket_takes_the_capacity_the_account_reports` to charge a signed account route, so they
+  still pin the key's bucket; its tests of the move are appended.
 - Mirrors stay byte for byte; live tests follow test-support's loaders and tags, with no
   `.unwrap()`; no `connect_async` outside the kit, no `.gzip(`, no `allow_burst(`.
 - Commits by pathspec, conventional, naming the story, never `--no-verify`.
