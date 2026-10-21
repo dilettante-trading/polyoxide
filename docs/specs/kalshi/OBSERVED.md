@@ -116,4 +116,26 @@ Findings of Epic 9's Story 1 and of the stories after it. Each is dated and name
 
 `GET /trade-api/v2/markets/candlesticks` for `KXMLBGAME-26OCT192008CLETB-TB` at `period_interval` 1, 60 and 1440 answered `200` with `{markets: [{market_ticker, candlesticks}]}`. In a traded period `price` held `open_dollars`, `high_dollars`, `low_dollars`, `close_dollars`, `mean_dollars` and `previous_dollars`; the first traded period had no `previous_dollars`. An untraded period after a trade held only `previous_dollars`, and a period before any trade held `price: {}`. `min_dollars` and `max_dollars` never appeared. `period_interval=5` answered `200` with no rows on the batch route and `400` (a validation `msg`) on `GET /series/{series_ticker}/markets/{ticker}/candlesticks`. Hourly candles end on the hour; the daily candle ended at 04:00 UTC. The captures below re-measure each of these.
 
+<!-- kalshi-candlesticks-capture:begin -->
+### Candlesticks, production, unsigned
+
+Captured 2026-10-21T09:32:12Z by `scripts/capture_kalshi_predictions.py --candlesticks` from `https://external-api.kalshi.com/trade-api/v2` on `KXUCLGAME-26OCT21RMARBL-RMA` (series `KXUCLGAME`, opened 2026-10-07 00:35Z). Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/candlesticks/`.
+
+| Width (min) | Span (UTC) | Rows | Traded / untraded / empty | Wire order by `end_period_ts` | `end_period_ts` mod the width (s) | `price` keys seen |
+|-------------|------------|------|---------------------------|-------------------------------|-----------------------------------|-------------------|
+| 1 | 2026-10-21 07:31Z to 2026-10-21 09:31Z | 89 | 76 / 13 / 0 | ascending | 0 | `close_dollars`, `high_dollars`, `low_dollars`, `mean_dollars`, `open_dollars`, `previous_dollars` |
+| 60 | 2026-10-14 09:31Z to 2026-10-21 09:31Z | 167 | 152 / 15 / 0 | ascending | 0 | `close_dollars`, `high_dollars`, `low_dollars`, `mean_dollars`, `open_dollars`, `previous_dollars` |
+| 1440 | 2026-10-07 00:35Z to 2026-10-21 09:31Z | 15 | 13 / 1 / 1 | ascending | 14400 (04:00 UTC) | `close_dollars`, `high_dollars`, `low_dollars`, `mean_dollars`, `open_dollars`, `previous_dollars` |
+
+- `min_dollars` or `max_dollars` in any `price`: never. A `null` in any `price`: never, the keys are omitted.
+- An untraded period's `price` holds a key besides `previous_dollars`: no.
+- A period before the first trade held `price` = `{}`, `yes_bid` = `{"close_dollars": "0.0600", "high_dollars": "0.0600", "low_dollars": "0.0100", "open_dollars": "0.0100"}`, `yes_ask` = `{"close_dollars": "0.8100", "high_dollars": "1.0000", "low_dollars": "0.8100", "open_dollars": "1.0000"}`, `volume_fp` = `0.00`.
+- First traded period: 1: the earliest traded period has `previous_dollars` (the span starts after the market opened); 60: the earliest traded period has `previous_dollars` (the span starts after the market opened); 1440: the earliest traded period lacks `previous_dollars` (the span starts at the market's open).
+- The series route at 60 answered `['candlesticks', 'ticker']`, identical to the batch route's rows.
+- Width 5 on the batch route: `200`, 7 rows.
+- Width 5 on the series route: `400`, body `{"msg": "Parameter validation failed for GetMarketCandlesticks: Key: 'GetMarketCandlesticksParams.PeriodInterval' Error:Field validation for 'PeriodInterval' failed on the 'oneof' tag"}`.
+- One batch for 100 open markets at width 1 over 3 hours: `400` with no market list: {'error': {'code': 'bad_request', 'message': 'bad request', 'details': 'requested candlesticks across all markets: 18000, max candlesticks: 10000'}}
+- Spec D6's reading of the wire (every `*_dollars` and `*_fp` a decimal string, `yes_bid` and `yes_ask` carrying exactly the four distribution keys, `end_period_ts` an integer): holds in every captured row.
+<!-- kalshi-candlesticks-capture:end -->
+
 <!-- epic 9 findings go above this line -->
