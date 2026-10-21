@@ -35,6 +35,24 @@ const EVENT_QUEUE: usize = 1024;
 /// The one channel this socket carries.
 const CHANNEL: &str = "orderbook_delta";
 
+polyoxide_venue::wire_enum! {
+    /// A channel of Kalshi's socket this client carries. One ticker set serves every channel
+    /// chosen; Kalshi gives each its own subscription. The order is the order a membership
+    /// change goes to the subscriptions in.
+    #[derive(PartialOrd, Ord)]
+    #[non_exhaustive]
+    pub enum Channel {
+        /// `orderbook_delta`: a snapshot of each market's book, then its changes, in YES
+        /// pricing. The default channel.
+        OrderbookDelta => "orderbook_delta",
+        /// `ticker`: a market's last price, best bid and ask, volume and open interest. It
+        /// carries no `seq`.
+        Ticker => "ticker",
+        /// `trade`: each public trade.
+        Trade => "trade",
+    }
+}
+
 /// One change to the subscribed markets, made through [`PredictionsMembership`] or
 /// `MembershipHandle::apply`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1339,6 +1357,26 @@ mod tests {
             err.class(),
             polyoxide_venue::Class::InvalidRequest,
             "{err:?}"
+        );
+    }
+    #[test]
+    fn channels_are_kalshis_wire_names_and_sort_in_channel_order() {
+        assert_eq!(
+            Channel::ALL,
+            [Channel::OrderbookDelta, Channel::Ticker, Channel::Trade]
+        );
+        assert_eq!(Channel::OrderbookDelta.as_str(), "orderbook_delta");
+        assert_eq!(Channel::Ticker.as_str(), "ticker");
+        assert_eq!(Channel::Trade.as_str(), "trade");
+        // The order updates and unsubscribes go out in.
+        let mut shuffled = [Channel::Trade, Channel::OrderbookDelta, Channel::Ticker];
+        shuffled.sort();
+        assert_eq!(shuffled, Channel::ALL);
+        assert_eq!("trade".parse::<Channel>().unwrap(), Channel::Trade);
+        assert!("fill".parse::<Channel>().is_err());
+        assert_eq!(
+            serde_json::to_string(&Channel::OrderbookDelta).unwrap(),
+            r#""orderbook_delta""#
         );
     }
 }

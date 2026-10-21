@@ -31,10 +31,12 @@ pub use builder::PredictionsWsBuilder;
 pub use error::PredictionsWsError;
 #[doc(hidden)]
 pub use event::frames;
-pub use event::{DisconnectReason, Event, OrderbookDelta, OrderbookSnapshot};
+pub use event::{
+    DisconnectReason, Event, OrderbookDelta, OrderbookSnapshot, PublicTrade, TickerUpdate,
+};
 #[doc(hidden)]
 pub use protocol::signed_request;
-pub use protocol::{Change, PredictionsMembership, PredictionsProtocol};
+pub use protocol::{Change, Channel, PredictionsMembership, PredictionsProtocol};
 
 /// A supervised connection: a `Stream` of [`Event`]s that survives drops, stalls and gaps
 /// by reconnecting and replaying its subscription, run by the kit's `Supervisor` on

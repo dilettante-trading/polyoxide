@@ -67,6 +67,25 @@ pub enum PredictionsWsError {
         reason: &'static str,
     },
 
+    /// Kalshi did not send the snapshots a gap in the order book's sequence asked for within
+    /// the staleness window. The socket reconnects, and the replay brings fresh snapshots.
+    #[error("the snapshots of subscription {sid} did not arrive within {waited:?}")]
+    SnapshotTimeout {
+        /// The order-book subscription that gapped.
+        sid: u64,
+        /// How long the socket waited.
+        waited: Duration,
+    },
+
+    /// The socket refused a request before sending it: an empty set of channels at
+    /// `connect`, or a `snapshot` of a market that is not subscribed or on a socket without
+    /// the order-book channel.
+    #[error("invalid request: {reason}")]
+    InvalidRequest {
+        /// Why it was refused.
+        reason: String,
+    },
+
     /// The handshake could not be signed.
     #[error("could not sign the handshake: {0}")]
     Credentials(#[from] CredentialsError),
@@ -81,7 +100,8 @@ pub enum PredictionsWsError {
 /// AsyncAPI calls codes 10 and 25 terminal ("the user must resubscribe"), and 17 and 18
 /// are the venue's own failures, so all four are retriable: the socket reconnects and its
 /// replay resubscribes. A gap in the sequence is a lost message, `Network` and a fault; a
-/// frame that did not decode is `Decode`; a URL or a key that cannot be used is
+/// snapshot that never came is `Unavailable`; a frame that did not decode is `Decode`; a URL
+/// or a key that cannot be used, and a request the socket refuses before sending it, are
 /// `InvalidRequest`.
 impl Classify for PredictionsWsError {
     fn class(&self) -> Class {
@@ -97,7 +117,8 @@ impl Classify for PredictionsWsError {
             },
             Self::SequenceGap { .. } => Class::Network,
             Self::Json { .. } => Class::Decode,
-            Self::InvalidUrl { .. } => Class::InvalidRequest,
+            Self::InvalidUrl { .. } | Self::InvalidRequest { .. } => Class::InvalidRequest,
+            Self::SnapshotTimeout { .. } => Class::Unavailable { code: None },
             Self::Credentials(err) => err.class(),
         }
     }
@@ -324,5 +345,33 @@ mod tests {
             let err = PredictionsWsError::from(err);
             assert_eq!(err.class(), Class::Network, "{err:?}");
         }
+    }
+    #[test]
+    fn a_missing_snapshot_is_an_unavailable_fault_the_socket_retries() {
+        let err = PredictionsWsError::SnapshotTimeout {
+            sid: 1,
+            waited: Duration::from_secs(30),
+        };
+        assert_eq!(err.class(), Class::Unavailable { code: None });
+        assert!(err.is_retriable() && err.is_fault());
+        assert_eq!(err.retry_after(), None);
+        assert_eq!(
+            err.to_string(),
+            "the snapshots of subscription 1 did not arrive within 30s"
+        );
+    }
+
+    #[test]
+    fn a_request_the_socket_refuses_is_an_invalid_request_and_is_not_retried() {
+        let err = PredictionsWsError::InvalidRequest {
+            reason: "the socket needs at least one channel".to_owned(),
+        };
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert!(!err.is_retriable());
+        assert_eq!(err.retry_after(), None);
+        assert_eq!(
+            err.to_string(),
+            "invalid request: the socket needs at least one channel"
+        );
     }
 }
