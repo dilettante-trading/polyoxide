@@ -200,7 +200,7 @@ jobs:
         with:
           crate: polyoxide
           suite: venue
-          flags: "--no-default-features --features binance-usdm,polymarket-clob,polymarket-perps --test live_venue"
+          flags: "--no-default-features --features binance-usdm,kalshi-predictions,polymarket-clob,polymarket-perps --test live_venue"
 
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)

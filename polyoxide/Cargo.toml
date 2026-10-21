@@ -85,7 +85,7 @@ required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kal
 
 [[test]]
 name = "live_venue"
-required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
 
 # `parse_key` across the three venues' products.
 [[test]]
@@ -110,5 +110,5 @@ readme = "The multi-venue umbrella: `polyoxide::polymarket`, `polyoxide::binance
 [package.metadata.polyoxide.live.live_venue]
 suite = "venue"
 timeout = 15
-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
 secrets = []
