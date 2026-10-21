@@ -221,7 +221,10 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
   description and READMEs drop "walking skeleton" and "not published", and its
   `[workspace.dependencies]` entry gains `version = "0.41.1", default-features = false`, as
   `polyoxide-binance`'s has (the release commit raises every pin to `0.42.0`, §12). Its `polyoxide-test-support` dev-dependency stays path-only.
-  `[package.metadata.polyoxide] readme` loses "a walking skeleton, not published". It must pass
+  `[package.metadata.polyoxide] readme` loses "a walking skeleton, not published". The manifest
+  gains `keywords = ["kalshi", "prediction-markets", "event-contracts", "market-data"]` and
+  binance's `categories = ["api-bindings", "web-programming::http-client"]` (manager, 2026-10-21,
+  matching `polyoxide-binance`; Story 9 adds them). It must pass
   `publish_order.py check-manifests` and the publish dry run.
 - **D13. The umbrella.**
   - Features: `kalshi = ["kalshi-predictions"]`;
