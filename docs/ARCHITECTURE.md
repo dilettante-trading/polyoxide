@@ -24,7 +24,7 @@ Precedence:
 
 ## The shape
 
-polyoxide is a set of **venue crates**: Polymarket, Binance and later Kalshi. Each venue crate is
+polyoxide is a set of **venue crates**: Polymarket, Binance and Kalshi. Each venue crate is
 split into **modules**, one per host or product (`clob`, `gamma`, `data`, `relay`, `perps`, `rtds`,
 `sports`, `usdm`, …). The venue crates sit on two **kernels**, one for HTTP and one for sockets,
 and on one **vocabulary** crate that the HTTP kernel also depends on. Facades (the umbrella crate,
@@ -34,7 +34,7 @@ The rows below are layers. The edges are listed after them.
 
 ```text
 facades      polyoxide · polyoxide-cli · polyoxide-py
-venues       polyoxide-polymarket · polyoxide-binance · polyoxide-kalshi (planned)
+venues       polyoxide-polymarket · polyoxide-binance · polyoxide-kalshi
 kernels      polyoxide-core: HttpClient, the send loop, Throttle / RetryPolicy / Authenticator,
                              the hold, WindowQuotaTable, capacity bucket, keychain
              polyoxide-ws:   TLS, Backoff, connect, the bare tier, Supervisor + Protocol, test_server
@@ -56,7 +56,7 @@ The picture above and the routing table below describe the **end state**. The re
 reaches it in three releases:
 - **S1, internals:** the new crates and shared code. Crate names do not change yet.
 - **S2, renames:** crates merge into `polyoxide-polymarket`, and the CLI and Python move to the venue layout.
-- **S3 and later, additions:** traits, a supervised clob socket, and the Kalshi skeleton.
+- **S3 and later, additions:** traits, a supervised clob socket, and the Kalshi crate, published and in the umbrella.
 
 Before S2, a path such as `polyoxide-polymarket/src/clob/` still means `polyoxide-clob/src/`. The
 full stage table is under [Release stages](#release-stages-ad-16-ad-25).
@@ -222,7 +222,7 @@ is then regenerated from the spine.
 | --- | --- | --- |
 | S1, internals | the new crates (`polyoxide-venue`, `polyoxide-ws`, `polyoxide-test-support`), the one send loop, `Supervisor` (perps and usdm migrated), DRIFT fixes, registration (AD-13), CI, the CLI on crates.io | Consolidated items' old paths (a checked-in removal list, gated by `cargo semver-checks`); error and builder shapes |
 | S2, renames | `polyoxide-polymarket`, the multi-venue umbrella, the CLI venue tree, Python modules, feature renames; built in one loom integration session with a draft PR to `main` | Every remaining path. The rename manifest is the migration guide, and retired crates get one tombstone release |
-| S3 and later, additions | traits, a supervised clob socket (a new type), the Kalshi skeleton (`publish = false`) | nothing |
+| S3 and later, additions | traits, a supervised clob socket (a new type), the Kalshi crate, published and re-exported as `polyoxide::kalshi` | nothing |
 
 ## Standing rules this replaces (AD-21)
 
