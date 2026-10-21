@@ -156,8 +156,18 @@ impl Books {
                 add(side, delta.price, delta.delta);
                 Some(&*book)
             }
+            Event::Resyncing { tickers } => {
+                for ticker in tickers {
+                    self.books.remove(ticker);
+                }
+                None
+            }
+            Event::Reconnected => {
+                self.books.clear();
+                None
+            }
             // The events that carry no book: the ticker and trade channels, and the
-            // outage marker. The book-dropping events are Task 6.2's.
+            // outage marker.
             _ => None,
         }
     }
@@ -171,7 +181,9 @@ impl Books {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::predictions::ws::OrderbookDelta;
+    use std::time::Duration;
+
+    use crate::predictions::ws::{DisconnectReason, OrderbookDelta};
 
     fn level(price: &str, size: &str) -> Level {
         Level::new(price.parse().unwrap(), size.parse().unwrap())
@@ -365,5 +377,73 @@ mod tests {
         assert_eq!(bids, ladder(&[("0.45", "7.00"), ("0.40", "3.00")]));
         // A YES bid at 0.45 is a NO ask at 0.55, and the highest YES bid is the best NO ask.
         assert_eq!(asks, ladder(&[("0.55", "5.00"), ("0.60", "10.00")]));
+    }
+
+    #[test]
+    fn resyncing_drops_the_books_it_names_and_only_those() {
+        let mut books = Books::new();
+        books.apply(&snapshot("A-1", &[("0.40", "10.00")], &[("0.60", "3.00")]));
+        books.apply(&snapshot("B-2", &[("0.10", "1.00")], &[]));
+        let resync = Event::Resyncing {
+            tickers: vec!["A-1".to_owned()],
+        };
+        assert!(books.apply(&resync).is_none());
+        assert!(books.get("A-1").is_none());
+        assert_eq!(
+            books.get("B-2").unwrap().bids(),
+            ladder(&[("0.10", "1.00")])
+        );
+        // Its deltas are ignored until its fresh snapshot arrives, so none lands on the
+        // dropped book's levels...
+        assert!(books
+            .apply(&delta("A-1", BookSide::Bid, "0.40", "5.00"))
+            .is_none());
+        // ...and the snapshot builds the book anew, with nothing of the old one.
+        let book = books
+            .apply(&snapshot("A-1", &[("0.41", "2.00")], &[]))
+            .unwrap();
+        assert_eq!(book.bids(), ladder(&[("0.41", "2.00")]));
+        assert_eq!(book.asks(), Vec::new());
+    }
+
+    #[test]
+    fn resyncing_names_a_ticker_with_no_book_without_harm() {
+        let mut books = Books::new();
+        books.apply(&snapshot("B-2", &[("0.10", "1.00")], &[]));
+        let resync = Event::Resyncing {
+            tickers: vec!["A-1".to_owned()],
+        };
+        assert!(books.apply(&resync).is_none());
+        assert!(books.get("B-2").is_some());
+    }
+
+    #[test]
+    fn a_reconnect_drops_every_book() {
+        let mut books = Books::new();
+        books.apply(&snapshot("A-1", &[("0.40", "10.00")], &[]));
+        books.apply(&snapshot("B-2", &[("0.10", "1.00")], &[]));
+        assert!(books.apply(&Event::Reconnected).is_none());
+        assert!(books.get("A-1").is_none());
+        assert!(books.get("B-2").is_none());
+        // A delta from the new connection that precedes its snapshot is ignored.
+        assert!(books
+            .apply(&delta("A-1", BookSide::Bid, "0.40", "1.00"))
+            .is_none());
+    }
+
+    #[test]
+    fn an_outage_marker_alone_keeps_the_books() {
+        let mut books = Books::new();
+        books.apply(&snapshot("A-1", &[("0.40", "10.00")], &[]));
+        let outage = Event::Disconnected {
+            reason: DisconnectReason::Stale {
+                silent: Duration::from_secs(30),
+            },
+        };
+        assert!(books.apply(&outage).is_none());
+        assert_eq!(
+            books.get("A-1").unwrap().bids(),
+            ladder(&[("0.40", "10.00")])
+        );
     }
 }
