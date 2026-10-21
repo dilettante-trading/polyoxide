@@ -139,7 +139,10 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
     (`OrderbookDelta`, `Ticker`, `Trade`), whatever Kalshi does with several `sids` in one command;
     the change is answered once every command is, and the first refusal fails the change and
     undoes it, as Epic 8's does. Story 1 records what a several-`sids` command does, for a later
-    epic.
+    epic. **A refusal partway** (the owner, 2026-10-21): when a refusal follows a command already
+    accepted within the same change, the change still fails with Kalshi's error and the protocol
+    also ends the connection (recovery `Reconnect`), so the replay brings the membership and
+    Kalshi's subscriptions back into agreement. A test fails without it.
   - **An empty ticker set never subscribes.** Kalshi refuses a `ticker` or `trade` subscribe with
     no markets (code 14, "Market Ticker required", on the demo host, 2026-10-21, Story 1's capture,
     which corrects this spec's first reading that it means "every market"; the probe wins, §1.4), so
