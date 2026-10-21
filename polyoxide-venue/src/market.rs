@@ -180,8 +180,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        CandleInterval, Class, EventOutcome, KeySpace, Level, NotListed, ProductId, SizeUnit,
-        VenueId,
+        CandleInterval, Class, EventOutcome, KeySpace, Level, NotListed, ProductClass, ProductId,
+        SizeUnit, VenueId,
     };
 
     struct Spot;
@@ -189,6 +189,7 @@ mod tests {
     impl KeySpace for Spot {
         const VENUE: VenueId = VenueId::from_static("acme");
         const PRODUCT: ProductId = ProductId::from_static("spot");
+        const CLASS: ProductClass = ProductClass::PerpetualFuture;
         type Id = String;
 
         fn parse_id(text: &str) -> Result<String, String> {
@@ -364,6 +365,7 @@ mod tests {
         impl KeySpace for Other {
             const VENUE: VenueId = VenueId::from_static("other");
             const PRODUCT: ProductId = ProductId::from_static("spot");
+            const CLASS: ProductClass = ProductClass::PerpetualFuture;
             type Id = String;
             fn parse_id(text: &str) -> Result<String, String> {
                 Ok(text.to_owned())

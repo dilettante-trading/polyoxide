@@ -86,8 +86,41 @@ id_type! {
     ProductId, "product"
 }
 
+/// What a product trades, which fixes what its shared records mean.
+///
+/// A product declares its class as [`KeySpace::CLASS`], and every key it makes
+/// carries it, so [`MarketKey::class`] answers without a request. A class is
+/// added only when a product of that class lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum ProductClass {
+    /// Contracts on an event's outcomes. A key names one outcome, a price lies
+    /// between 0 and 1, and a share pays one unit of the settlement currency
+    /// when its outcome happens, so a position's size is never negative.
+    EventContract,
+    /// Perpetual futures. A price is unbounded, a position's size is signed,
+    /// and holders pay or receive funding.
+    PerpetualFuture,
+}
+
+impl ProductClass {
+    /// The class's id, as a crate's registration spells it in `classes`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EventContract => "event-contract",
+            Self::PerpetualFuture => "perpetual-future",
+        }
+    }
+}
+
+impl fmt::Display for ProductClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// One instrument's name, written `venue.product:id`, such as
-/// `acme.spot:ABCUSD`.
+/// `acme.perp:ABCUSD`.
 ///
 /// A key has no public constructor from text or from parts. Only a product's
 /// [`KeySpace`] makes one, and it canonicalizes the id first, so two keys are
@@ -99,41 +132,46 @@ id_type! {
 ///
 /// ```
 /// use std::borrow::Cow;
-/// use polyoxide_venue::{KeySpace, MarketKey, ProductId, RawKey, VenueId};
+/// use polyoxide_venue::{KeySpace, MarketKey, ProductClass, ProductId, RawKey, VenueId};
 ///
-/// /// A product whose ids are ASCII and uppercased.
-/// struct Spot;
+/// /// A perpetual whose ids are ASCII and uppercased.
+/// struct Perp;
 ///
-/// impl KeySpace for Spot {
+/// impl KeySpace for Perp {
 ///     const VENUE: VenueId = VenueId::from_static("acme");
-///     const PRODUCT: ProductId = ProductId::from_static("spot");
-///     type Id = SpotId;
+///     const PRODUCT: ProductId = ProductId::from_static("perp");
+///     const CLASS: ProductClass = ProductClass::PerpetualFuture;
+///     type Id = PerpId;
 ///
-///     fn parse_id(text: &str) -> Result<SpotId, String> {
+///     fn parse_id(text: &str) -> Result<PerpId, String> {
 ///         if text.is_ascii() {
-///             Ok(SpotId(text.to_ascii_uppercase()))
+///             Ok(PerpId(text.to_ascii_uppercase()))
 ///         } else {
 ///             Err("an id is ASCII".into())
 ///         }
 ///     }
 ///
-///     fn id_text(id: &SpotId) -> Cow<'_, str> {
+///     fn id_text(id: &PerpId) -> Cow<'_, str> {
 ///         Cow::Borrowed(&id.0)
 ///     }
 /// }
 ///
-/// /// An id in canonical form: only `Spot::parse_id` makes one.
-/// struct SpotId(String);
+/// /// An id in canonical form: only `Perp::parse_id` makes one.
+/// struct PerpId(String);
 ///
-/// let key = Spot::parse(&RawKey::parse("acme.spot:abcusd")?)?;
-/// assert_eq!(key, Spot::key(&Spot::parse_id("ABCUSD")?));
-/// assert_eq!(key.to_string(), "acme.spot:ABCUSD");
+/// let key = Perp::parse(&RawKey::parse("acme.perp:abcusd")?)?;
+/// assert_eq!(key, Perp::key(&Perp::parse_id("ABCUSD")?));
+/// assert_eq!(key.to_string(), "acme.perp:ABCUSD");
+/// assert_eq!(key.class(), ProductClass::PerpetualFuture);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MarketKey {
     venue: VenueId,
     product: ProductId,
+    // After `product`: the class follows from the venue and product, so the
+    // derived order still sorts by venue, product and id.
+    class: ProductClass,
     id: Arc<str>,
 }
 
@@ -146,6 +184,12 @@ impl MarketKey {
     /// The product, the module that trades it.
     pub fn product(&self) -> &ProductId {
         &self.product
+    }
+
+    /// The product's class, which its [`KeySpace::CLASS`] declares. It follows
+    /// from the venue and product, so the text form does not carry it.
+    pub fn class(&self) -> ProductClass {
+        self.class
     }
 
     /// The id, in its product's canonical form. Opaque to everything but its
@@ -304,6 +348,9 @@ pub trait KeySpace {
     const VENUE: VenueId;
     /// The product id, one of the `products` the venue crate registers.
     const PRODUCT: ProductId;
+    /// The product's class, equal to the one the venue crate registers for
+    /// the product in `classes`.
+    const CLASS: ProductClass;
     /// The product's own id, in canonical form.
     type Id;
 
@@ -322,6 +369,7 @@ pub trait KeySpace {
         MarketKey {
             venue: Self::VENUE,
             product: Self::PRODUCT,
+            class: Self::CLASS,
             id: Arc::from(Self::id_text(id).as_ref()),
         }
     }
@@ -460,6 +508,7 @@ mod tests {
     impl KeySpace for Upper {
         const VENUE: VenueId = VenueId::from_static("acme");
         const PRODUCT: ProductId = ProductId::from_static("spot");
+        const CLASS: ProductClass = ProductClass::EventContract;
         type Id = UpperId;
 
         fn parse_id(text: &str) -> Result<UpperId, String> {
@@ -481,6 +530,7 @@ mod tests {
     impl KeySpace for Numbered {
         const VENUE: VenueId = VenueId::from_static("acme");
         const PRODUCT: ProductId = ProductId::from_static("perpetual");
+        const CLASS: ProductClass = ProductClass::PerpetualFuture;
         type Id = u64;
 
         fn parse_id(text: &str) -> Result<u64, String> {
@@ -633,5 +683,24 @@ mod tests {
     #[should_panic(expected = "an id is a lowercase letter")]
     fn a_static_id_must_be_an_id() {
         let _ = VenueId::from_static("Acme");
+    }
+
+    #[test]
+    fn a_key_carries_the_class_its_product_declares() {
+        assert_eq!(upper("ABC").class(), ProductClass::EventContract);
+        let parsed = Numbered::parse(&raw("acme.perpetual:007")).unwrap();
+        assert_eq!(parsed.class(), ProductClass::PerpetualFuture);
+        assert_eq!(parsed.class(), Numbered::CLASS);
+        // The class is not part of the text form.
+        assert_eq!(parsed.to_string(), "acme.perpetual:7");
+    }
+
+    #[test]
+    fn a_class_is_spelled_as_a_registration_spells_it() {
+        assert_eq!(ProductClass::EventContract.as_str(), "event-contract");
+        assert_eq!(
+            ProductClass::PerpetualFuture.to_string(),
+            "perpetual-future"
+        );
     }
 }

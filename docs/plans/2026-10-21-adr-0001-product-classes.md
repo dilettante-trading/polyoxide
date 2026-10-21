@@ -280,7 +280,7 @@ Expected: 12 lines, each ending in `: 1` or `: 2` as listed, and no exit message
 Then confirm that every `KeySpace` impl has the line:
 
 Run: `grep -rn --include='*.rs' 'impl KeySpace for' polyoxide* | wc -l; grep -rn --include='*.rs' 'const CLASS: ProductClass' polyoxide* | wc -l`
-Expected: `18` twice: the 15 impls the script edited, `Upper` and `Numbered` in `key.rs`, and the `MarketKey` doc example.
+Expected: `18`, then `19`: the 15 impls the script edited, `Upper` and `Numbered` in `key.rs` and the `MarketKey` doc example, and on the second count the trait's own `const CLASS: ProductClass;` as well.
 
 - [ ] **Step 7: Build and test the workspace**
 

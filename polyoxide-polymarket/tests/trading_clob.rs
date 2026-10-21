@@ -16,8 +16,8 @@ use polyoxide_polymarket::data::DataApi;
 use polyoxide_polymarket::shared::keys::{self, TokenId};
 use polyoxide_venue::OrderId;
 use polyoxide_venue::{
-    Class, ClientOrderId, KeySpace, KillReason, MarketKey, OrderRequest, OrderStatus, ProductId,
-    Side, TimeInForce, Trading, UnixMillis, VenueId,
+    Class, ClientOrderId, KeySpace, KillReason, MarketKey, OrderRequest, OrderStatus, ProductClass,
+    ProductId, Side, TimeInForce, Trading, UnixMillis, VenueId,
 };
 use polyoxide_venue::{DynTrading, Fill, Liquidity, TradingEvent};
 use polyoxide_ws::test_server::{next_item, Script, ScriptedServer};
@@ -243,6 +243,7 @@ struct Elsewhere;
 impl KeySpace for Elsewhere {
     const VENUE: VenueId = VenueId::from_static("elsewhere");
     const PRODUCT: ProductId = ProductId::from_static("spot");
+    const CLASS: ProductClass = ProductClass::PerpetualFuture;
     type Id = String;
 
     fn parse_id(text: &str) -> Result<String, String> {

@@ -90,7 +90,7 @@ pub use extensions::{DuplicateExtension, Extensions, UndeclaredExtension};
 #[cfg(feature = "trading")]
 pub use ids::{ClientOrderId, FillId, OrderId};
 #[cfg(feature = "keys")]
-pub use key::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
+pub use key::{KeyError, KeySpace, MarketKey, ProductClass, ProductId, RawKey, VenueId};
 #[cfg(feature = "market")]
 pub use market::{
     Candles, DynCandles, DynEventGroups, DynFunding, DynInstruments, DynMarketData, DynTrades,

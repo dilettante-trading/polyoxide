@@ -569,13 +569,14 @@ mod tests {
     use std::borrow::Cow;
 
     use super::*;
-    use crate::{KeySpace, ProductId, VenueId};
+    use crate::{KeySpace, ProductClass, ProductId, VenueId};
 
     struct Spot;
 
     impl KeySpace for Spot {
         const VENUE: VenueId = VenueId::from_static("acme");
         const PRODUCT: ProductId = ProductId::from_static("spot");
+        const CLASS: ProductClass = ProductClass::PerpetualFuture;
         type Id = String;
 
         fn parse_id(text: &str) -> Result<String, String> {
