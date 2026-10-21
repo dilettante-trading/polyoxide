@@ -44,7 +44,7 @@ Published (`getting_started/rate_limits`, read 2026-10-18):
 What the client builds, and what is provisional:
 
 - One Read layer, `predictions.read`, a token bucket sized at Basic's published capacity (600) and refill (200 a second). Kalshi publishes a bucket's capacity and the server is a bucket, so the client's bucket holds the published burst. It is provisional until the account's own size is read from `GET /account/limits` (Story 4 of the epic). Basic is the floor of every tier, so a client that cannot read its account's size under-sends and never over-sends.
-- A client with no credentials keeps that sizing. No anonymous limit is published, so for it the sizing is a guess. A soak that measures the anonymous limit is deferred.
+- A client with no credentials starts at that sizing and, when its first send confirms, takes the refill the Epic 9 soak measured (`### Rate limits` in the Epic 9 section below), keeping Basic's depth.
 - Every route costs the default, 10. The first-use confirmation (Story 4) replaces a cost with what `GET /account/endpoint_costs` lists.
 - An instrument's `min_size` and `size_increment` will be 0.01, the granularity the OpenAPI gives `FixedPointCount` for orders. They are provisional until Kalshi's `Trading` probes them.
 
@@ -221,6 +221,19 @@ The event route was clean at 20 requests a second and refused 40 after 3.51 s, s
 | public | `GET /markets/{ticker}` | 40 | 3 s | none in the 10 s window (401 replies over 401 distinct tickers, all served) |
 
 Verdict: does not follow. The control throttled at 2.97 s, where a bucket that empties after 3 s puts it, so the host enforces the key's bucket at this rate, and the public read then did not throttle in 10 s, three times the time the key's bucket takes to empty, so a signed public read does not draw on the key's bucket. The probe was made on the demo host; the production host was measured unsigned only (above), where a public read at the same 40 requests a second was refused after 3.26 s.
+
+**Sizing.** The ramp was clean through 20 requests a second, Basic's own rate (20 reads at 10 tokens is Basic's 200 tokens a second), and refused 40. The shipped client at exactly Basic's sizing was refused all the same. A ramp's pacer spends exactly the refill, which leaves the host's bucket full; the client spends its 60-read depth first and then sits at the refill with demand to spare, so the host's bucket hovers near empty and any jitter in arrival times is a refusal. At Basic's sizing (600 tokens refilling 200 a second) it drew retried 429s on production, and at 180 none (the validation below). So the unsigned client's Read bucket refills `(N − ⌈N/10⌉) × 10` tokens a second for N = 20, the highest clean stage: 180 tokens a second, below Basic's 200, a tenth of the measured rate left unused (`RESERVED_FRACTION`, as core's and Binance's) at the default cost of 10 tokens a read. Its depth stays Basic's 600 tokens, since the ramp measured a rate and not a depth; the validation below ran that depth against the host. The owner set this sizing on 2026-10-21 (spec D11).
+
+**Validation**, the shipped client on production (`--routes all --pace client --concurrency 32 --max-concurrent 32 --stage-secs 120`), four runs of 120 s on 2026-10-21 from the same workstation. Every 429 was retried by the send loop, so no call failed.
+
+| Time (UTC) | Unsigned refill (depth 600) | Calls | Throttled | Failed |
+|---|---|---|---|---|
+| 12:35 | 200, Basic's | 2509 | 10 | 0 |
+| 12:38 | 180 (a binary patched to resize the bucket to it; the sizing was not yet committed) | 2279 | 0 | 0 |
+| 12:41 | 200, Basic's | 2513 | 6 | 0 |
+| 12:48 | 180, as committed | 2279 | 0 | 0 |
+
+At Basic's sizing the host refused about 0.3% of calls in both runs, spread over the market and event routes. At 180 it refused none in either run. The 12:48 run is the committed client.
 
 <!-- rate limits end -->
 

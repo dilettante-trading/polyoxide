@@ -1,5 +1,6 @@
 //! The Read throttle: one token bucket, sized at Kalshi's Basic tier until the client has read the
-//! account's own size, and the per-route costs it charges.
+//! account's own size or, holding no key, taken the size the unsigned soak measured, and the
+//! per-route costs it charges.
 //!
 //! Kalshi charges every authenticated request tokens from a Read or a Write bucket, 10 by default.
 //! This module sends reads only. A bucket here holds its published capacity: Kalshi publishes a
@@ -25,6 +26,34 @@ pub(crate) const BASIC_READ_CAPACITY: u32 = 600;
 
 /// Tokens a second the Basic tier's Read bucket refills. No tier's is lower.
 pub(crate) const BASIC_READ_REFILL: u32 = 200;
+
+/// Reciprocal of the share of a measured clean rate the unsigned client leaves unused, as in core's
+/// `RESERVED_FRACTION` and Binance's: the highest rate a host served clean is not a rate to aim at,
+/// because the server's count and the client's never agree exactly. `10` reserves a tenth, so the
+/// client targets 90%.
+const RESERVED_FRACTION: u32 = 10;
+
+/// The highest rate, in requests a second, at which Kalshi's production host served an unsigned
+/// client over distinct URLs with no `429` (`docs/specs/kalshi/OBSERVED.md`, "Rate limits":
+/// "Highest clean stage"). It is Basic's own 20 reads a second, never more: the soak's ramp was
+/// clean there, but the shipped client at exactly that rate drew retried `429`s on the host, so the
+/// owner sized the client a tenth below it.
+pub(crate) const UNSIGNED_CLEAN_RATE: u32 = 20;
+
+/// `measured` less its reserve, and never below one: a bucket that never refills is a panic.
+const fn after_reserve(measured: u32) -> u32 {
+    let kept = measured - measured.div_ceil(RESERVED_FRACTION);
+    if kept == 0 {
+        1
+    } else {
+        kept
+    }
+}
+
+/// Tokens a second the unsigned client's Read bucket refills: its measured clean rate less a tenth,
+/// at the default cost of a read. Its depth stays Basic's: the soak measured a rate and not a
+/// depth, and the validation run held Basic's depth clean on the host.
+pub(crate) const UNSIGNED_READ_REFILL: u32 = after_reserve(UNSIGNED_CLEAN_RATE) * DEFAULT_COST;
 
 /// Charges each request its cost on the Read layer, and holds every request when the retry policy
 /// says to.
@@ -201,16 +230,19 @@ impl Inner {
         }
     }
 
-    /// Sizes the Read bucket from `/account/limits` when the client holds a key, and confirms it
-    /// in every case.
+    /// Sizes the Read bucket from `/account/limits` when the client holds a key, and from the
+    /// unsigned soak's measurement when it holds none. Either way it ends confirmed.
     async fn read_limits(&self) {
         use crate::predictions::request::routes;
         use crate::predictions::types::AccountLimits;
 
         let bucket = self.throttle.bucket();
         if self.auth.is_none() {
-            // No limit for unauthenticated requests is published: Basic's sizing stands.
-            bucket.confirm();
+            // No limit for unauthenticated requests is published: the unsigned soak sized this
+            // bucket (`UNSIGNED_READ_REFILL`, recorded in `docs/specs/kalshi/OBSERVED.md`), and
+            // `resize` confirms it. Only the refill is the soak's: the depth is the bucket's own,
+            // Basic's unless a size was set before the first send.
+            bucket.resize(bucket.capacity(), UNSIGNED_READ_REFILL);
             return;
         }
         let route = routes::ACCOUNT_LIMITS;
@@ -786,5 +818,180 @@ mod tests {
         costs.set(&post, 7);
         assert_eq!(costs.cost(&post), 7);
         assert_eq!(costs.cost(&get), 10);
+    }
+}
+
+#[cfg(test)]
+mod unsigned_sizing_tests {
+    use mockito::{Mock, Server, ServerGuard};
+    use polyoxide_test_support::fixtures;
+
+    use super::*;
+    use crate::predictions::{Credentials, Predictions};
+
+    const COSTS: &str = "/trade-api/v2/account/endpoint_costs";
+    const LIMITS: &str = "/trade-api/v2/account/limits";
+    const STATUS: &str = "/trade-api/v2/exchange/status";
+    const NO_COSTS: &str = r#"{"default_cost":10,"endpoint_costs":[]}"#;
+    const STATUS_BODY: &str = r#"{"exchange_active":true,"trading_active":true}"#;
+
+    /// The highest clean stage of `docs/specs/kalshi/OBSERVED.md`'s "Rate limits" record, in
+    /// requests a second, and what the arithmetic makes of it: less a tenth, at 10 tokens a read.
+    const RECORDED_CLEAN_RATE: u32 = 20;
+    const RECORDED_REFILL_TOKENS: u32 = 180;
+
+    /// The Ed25519 key of the signing vectors, which are throwaway ones.
+    fn keyed() -> Credentials {
+        let vectors = fixtures!("predictions/signing").json("vectors");
+        let body = vectors["ed25519"]["pkcs8_body"]
+            .as_str()
+            .expect("the vectors hold an Ed25519 key body");
+        let label = "PRIVATE KEY";
+        let pem = format!("-----BEGIN {label}-----\n{body}\n-----END {label}-----\n");
+        Credentials::from_pem("test-key", &pem).unwrap()
+    }
+
+    /// A mock answering `path` with `status` and `body`, expected `hits` times.
+    async fn answer(
+        server: &mut ServerGuard,
+        path: &str,
+        status: usize,
+        body: &str,
+        hits: usize,
+    ) -> Mock {
+        server
+            .mock("GET", path)
+            .with_status(status)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .expect(hits)
+            .create_async()
+            .await
+    }
+
+    #[test]
+    fn a_tenth_of_a_measured_rate_is_left_unused() {
+        for (measured, kept) in [
+            (1, 1),
+            (2, 1),
+            (9, 8),
+            (10, 9),
+            (11, 9),
+            (20, 18),
+            (37, 33),
+            (40, 36),
+            (200, 180),
+        ] {
+            assert_eq!(after_reserve(measured), kept, "{measured}");
+        }
+    }
+
+    #[test]
+    fn the_unsigned_refill_is_the_recorded_clean_rate_less_a_tenth_at_ten_tokens_a_read() {
+        assert_eq!(UNSIGNED_CLEAN_RATE, RECORDED_CLEAN_RATE);
+        assert_eq!(UNSIGNED_READ_REFILL, RECORDED_REFILL_TOKENS);
+        assert_eq!(
+            UNSIGNED_READ_REFILL,
+            after_reserve(RECORDED_CLEAN_RATE) * 10
+        );
+    }
+
+    #[test]
+    fn the_measured_sizing_is_below_basics_and_never_raises_it() {
+        // Basic's 200 tokens a second are 20 reads at the default cost. The soak replaces Basic's
+        // sizing with its clean rate less a tenth, and that clean rate is at most Basic's own
+        // (the owner sized it at exactly 20 reads a second), so the sizing it gives is under
+        // Basic's 200 tokens, never over.
+        use std::cmp::Ordering;
+
+        assert_ne!(
+            UNSIGNED_CLEAN_RATE.cmp(&(BASIC_READ_REFILL / DEFAULT_COST)),
+            Ordering::Greater
+        );
+        assert_eq!(
+            UNSIGNED_READ_REFILL.cmp(&BASIC_READ_REFILL),
+            Ordering::Less,
+            "{UNSIGNED_READ_REFILL} tokens a second"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unsigned_client_is_resized_to_the_measured_refill_and_keeps_basics_depth() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        let limits = answer(&mut server, LIMITS, 200, "{}", 0).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .build()
+            .unwrap();
+
+        kalshi.exchange().status().send().await.unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        let bucket = format!("{:?}", kalshi.inner.throttle.bucket());
+        assert!(
+            bucket.contains(&format!("refill_per_sec: {RECORDED_REFILL_TOKENS}")),
+            "{bucket}"
+        );
+        assert!(
+            bucket.contains(&format!("capacity: {BASIC_READ_CAPACITY}")),
+            "{bucket}"
+        );
+        assert!(bucket.contains("provisional: false"), "{bucket}");
+    }
+
+    #[tokio::test]
+    async fn a_keyed_clients_unreadable_limits_leave_basics_refill_not_the_unsigned_one() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        let limits = answer(&mut server, LIMITS, 500, "{}", 1).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .credentials(keyed())
+            .build()
+            .unwrap();
+
+        kalshi.exchange().status().send().await.unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        let bucket = format!("{:?}", kalshi.inner.throttle.bucket());
+        assert!(
+            bucket.contains(&format!("refill_per_sec: {BASIC_READ_REFILL}")),
+            "{bucket}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unsigned_clients_resize_keeps_the_capacity_the_bucket_has() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 200, NO_COSTS, 1).await;
+        let limits = answer(&mut server, LIMITS, 200, "{}", 0).await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .build()
+            .unwrap();
+        // A size set before the first send is kept: only the refill is the soak's.
+        kalshi.inner.throttle.bucket().resize(5, 1);
+
+        // The 10-token read of the costs route cannot be held by a bucket of 5, so it is charged
+        // at the capacity; the status read is then refused for the same reason.
+        let refused = kalshi.exchange().status().send().await.unwrap_err();
+
+        assert!(format!("{refused:?}").contains("Refused"), "{refused:?}");
+        costs.assert_async().await;
+        limits.assert_async().await;
+        let bucket = format!("{:?}", kalshi.inner.throttle.bucket());
+        assert!(bucket.contains("capacity: 5"), "{bucket}");
+        assert!(
+            bucket.contains(&format!("refill_per_sec: {RECORDED_REFILL_TOKENS}")),
+            "{bucket}"
+        );
+        assert!(bucket.contains("provisional: false"), "{bucket}");
     }
 }
