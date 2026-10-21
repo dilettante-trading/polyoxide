@@ -224,10 +224,10 @@ impl Trade {
     }
 }
 
-/// How long a candle spans. Each venue that serves candles serves every
-/// width here, so a venue maps every variant and the enum is exhaustive: a
-/// new width is a breaking change that fails to compile at a venue that does
-/// not map it.
+/// How long a candle spans. A venue serves some or all of these widths, the
+/// ones its [`Candles::intervals`](crate::Candles::intervals) lists, and
+/// handles every variant, since the enum is exhaustive: a new width is a
+/// breaking change that fails to compile at a venue that does not handle it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum CandleInterval {
     /// One minute.
@@ -299,6 +299,76 @@ impl CandleQuery {
     pub fn end(mut self, end: UnixMillis) -> Self {
         self.end = Some(end);
         self
+    }
+
+    /// Checks that the query's width is one of `served`, which a venue takes
+    /// from its [`Candles::intervals`](crate::Candles::intervals). Call it
+    /// before the first request, and convert the refusal with `?`.
+    pub fn ensure_served(&self, served: &'static [CandleInterval]) -> Result<(), UnservedInterval> {
+        if served.contains(&self.interval) {
+            Ok(())
+        } else {
+            Err(UnservedInterval {
+                interval: self.interval,
+                served,
+            })
+        }
+    }
+}
+
+/// A query asked for a candle width the venue does not serve
+/// ([`CandleQuery::ensure_served`]). An
+/// [`InvalidRequest`](Class::InvalidRequest): the caller's misuse, refused
+/// before anything is sent, and no wait or retry cures it.
+///
+/// Only [`CandleQuery::ensure_served`] builds one, since a field may be added
+/// later and a struct literal is refused when the program is built:
+///
+/// ```compile_fail
+/// use polyoxide_venue::{CandleInterval, UnservedInterval};
+///
+/// fn refuse() -> UnservedInterval {
+///     UnservedInterval {
+///         interval: CandleInterval::Minute5,
+///         served: &[],
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct UnservedInterval {
+    /// The width asked for.
+    pub interval: CandleInterval,
+    /// The widths the venue serves, as its
+    /// [`Candles::intervals`](crate::Candles::intervals) lists them.
+    pub served: &'static [CandleInterval],
+}
+
+impl fmt::Display for UnservedInterval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "`{:?}` candles are not served; this venue serves ",
+            self.interval
+        )?;
+        if self.served.is_empty() {
+            return f.write_str("none");
+        }
+        for (index, width) in self.served.iter().enumerate() {
+            if index > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{width:?}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Error for UnservedInterval {}
+
+impl Classify for UnservedInterval {
+    fn class(&self) -> Class {
+        Class::InvalidRequest
     }
 }
 
