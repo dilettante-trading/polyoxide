@@ -1,0 +1,9 @@
+{
+  "type": "error",
+  "id": 3,
+  "msg": {
+    "code": 12,
+    "msg": "Exactly one subscription ID is required"
+  },
+  "sending_ts_ms": 1792578984359
+}

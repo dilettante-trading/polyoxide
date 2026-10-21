@@ -138,4 +138,28 @@ Captured 2026-10-21T09:32:12Z by `scripts/capture_kalshi_predictions.py --candle
 - Spec D6's reading of the wire (every `*_dollars` and `*_fp` a decimal string, `yes_bid` and `yes_ask` carrying exactly the four distribution keys, `end_period_ts` an integer): holds in every captured row.
 <!-- kalshi-candlesticks-capture:end -->
 
+<!-- kalshi-ws-epic9:begin -->
+### The multi-channel socket, as the demo host answers it
+
+Captured 2026-10-21T10:35:57Z by `scripts/capture_kalshi_predictions_ws.py --epic9` from `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2`. `first` `KXRAINSHARD2-26OCT22-NYC` and `second` `KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA` were subscribed, `third` `KXATPCHALLENGERMATCH-26OCT21PDAJAR-JAR` added by the two-`sid` update, and `outside` `KXGOLDD-26OCT2217-T4083` never subscribed. Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.
+
+| Question | Observed |
+|----------|----------|
+| One `subscribe` for the three channels | answered by 3 `subscribed` frames, one for each channel, each with its own `sid`: `orderbook_delta` 1, `ticker` 2, `trade` 3 |
+| A `ticker` frame | on `sid` 2 (the answered 2); carries `seq`: no; required keys absent: none; keys the mirror lacks: none |
+| A `trade` frame | on `sid` 3 (the answered 3); carries `seq`: yes; required keys absent: none; keys the mirror lacks: none |
+| `get_snapshot` for `first` on the order-book `sid`: the frames carrying its id | `orderbook_snapshot` |
+| The snapshot answering it | carries the command's `id`: yes; `sid` 1 (the order-book `sid` is 1); `seq` 28; the last `seq` on that `sid` before it was 27; 1 deltas on the `sid` came between the command and the snapshot |
+| The snapshot's `seq` is the next number of the `sid`'s numbering | yes |
+| The first delta after the snapshot continues from its `seq` | yes: `seq` 29 after 28; 100 deltas captured, 92 of them for a market other than `first` |
+| Spec D9's premise (the answer is on the `sid`'s numbering and the next delta follows it) | holds |
+| One `update_subscription` naming two `sids` (`add_markets` for `third`) | `error` code 12: Exactly one subscription ID is required; a snapshot of `third` followed on the order-book `sid`: no |
+| `get_snapshot` for a ticker outside the subscription (the owner took the host's answer in place of an error fixture, spec 3) | `orderbook_snapshot`; the frame carrying the command's `id`: `orderbook_snapshot` for `KXGOLDD-26OCT2217-T4083`, `sid` 1, `seq` 337 (the last before it 336) |
+| `get_snapshot` on the `ticker` channel's `sid` | `error` code 13 ('Unsupported action'), `id` 5, `sid` 2, `seq` absent |
+| `get_snapshot` on the `trade` channel's `sid` | `error` code 13 ('Unsupported action'), `id` absent, `sid` 3, `seq` 2 |
+| A `subscribe` for `ticker` and `trade` naming no market | `error` code 14: Market Ticker required; 0 frames in 15 s on its `sid`s from 0 markets, 0 of them outside the four chosen: no market beyond the four was seen, so this does not show it means every market |
+| The final `unsubscribe` of every `sid` | `unsubscribed`, `unsubscribed`, `unsubscribed` |
+| Code 27 (too many requests) met | 0 |
+<!-- kalshi-ws-epic9:end -->
+
 <!-- epic 9 findings go above this line -->

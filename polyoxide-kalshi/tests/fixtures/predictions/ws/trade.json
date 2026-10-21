@@ -1,0 +1,19 @@
+{
+  "type": "trade",
+  "sid": 3,
+  "seq": 1,
+  "msg": {
+    "trade_id": "07242628-c0e1-b2c9-1bb8-a77fc6e5d299",
+    "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+    "yes_price_dollars": "0.5200",
+    "no_price_dollars": "0.4800",
+    "count_fp": "2.00",
+    "taker_side": "yes",
+    "taker_outcome_side": "yes",
+    "taker_book_side": "bid",
+    "is_block_trade": false,
+    "ts": 1792578960,
+    "ts_ms": 1792578960491
+  },
+  "sending_ts_ms": 1792578960492
+}

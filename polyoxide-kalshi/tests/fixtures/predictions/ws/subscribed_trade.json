@@ -1,0 +1,9 @@
+{
+  "type": "subscribed",
+  "id": 1,
+  "msg": {
+    "channel": "trade",
+    "sid": 3
+  },
+  "sending_ts_ms": 1792578959173
+}

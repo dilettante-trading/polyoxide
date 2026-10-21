@@ -1,0 +1,23 @@
+{
+  "type": "orderbook_snapshot",
+  "id": 4,
+  "sid": 1,
+  "seq": 337,
+  "msg": {
+    "market_ticker": "KXGOLDD-26OCT2217-T4083",
+    "market_id": "01a15dd1-390c-7571-bf84-ea8828280669",
+    "yes_dollars_fp": [
+      [
+        "0.8100",
+        "150.00"
+      ]
+    ],
+    "no_dollars_fp": [
+      [
+        "0.8700",
+        "150.00"
+      ]
+    ]
+  },
+  "sending_ts_ms": 1792578989953
+}

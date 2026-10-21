@@ -1,0 +1,1502 @@
+[
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 29,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:01.891Z",
+      "ts_ms": 1792578961891
+    },
+    "sending_ts_ms": 1792578961892
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 30,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:01.901Z",
+      "ts_ms": 1792578961901
+    },
+    "sending_ts_ms": 1792578961903
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 31,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:01.941Z",
+      "ts_ms": 1792578961941
+    },
+    "sending_ts_ms": 1792578961943
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 32,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.181Z",
+      "ts_ms": 1792578962181
+    },
+    "sending_ts_ms": 1792578962184
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 33,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.181Z",
+      "ts_ms": 1792578962181
+    },
+    "sending_ts_ms": 1792578962184
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 34,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.181Z",
+      "ts_ms": 1792578962181
+    },
+    "sending_ts_ms": 1792578962184
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 35,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.181Z",
+      "ts_ms": 1792578962181
+    },
+    "sending_ts_ms": 1792578962184
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 36,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.21Z",
+      "ts_ms": 1792578962210
+    },
+    "sending_ts_ms": 1792578962212
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 37,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.698Z",
+      "ts_ms": 1792578962698
+    },
+    "sending_ts_ms": 1792578962700
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 38,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.726Z",
+      "ts_ms": 1792578962726
+    },
+    "sending_ts_ms": 1792578962728
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 39,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:02.745Z",
+      "ts_ms": 1792578962745
+    },
+    "sending_ts_ms": 1792578962746
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 40,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.004Z",
+      "ts_ms": 1792578963004
+    },
+    "sending_ts_ms": 1792578963007
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 41,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.004Z",
+      "ts_ms": 1792578963004
+    },
+    "sending_ts_ms": 1792578963007
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 42,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.004Z",
+      "ts_ms": 1792578963004
+    },
+    "sending_ts_ms": 1792578963007
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 43,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.004Z",
+      "ts_ms": 1792578963004
+    },
+    "sending_ts_ms": 1792578963007
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 44,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.024Z",
+      "ts_ms": 1792578963024
+    },
+    "sending_ts_ms": 1792578963025
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 45,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.515Z",
+      "ts_ms": 1792578963515
+    },
+    "sending_ts_ms": 1792578963517
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 46,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.541Z",
+      "ts_ms": 1792578963541
+    },
+    "sending_ts_ms": 1792578963542
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 47,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.542Z",
+      "ts_ms": 1792578963542
+    },
+    "sending_ts_ms": 1792578963543
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 48,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:03.783Z",
+      "ts_ms": 1792578963783
+    },
+    "sending_ts_ms": 1792578963784
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 49,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 50,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 51,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 52,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 53,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 54,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 55,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.027Z",
+      "ts_ms": 1792578964027
+    },
+    "sending_ts_ms": 1792578964031
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 56,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.286Z",
+      "ts_ms": 1792578964286
+    },
+    "sending_ts_ms": 1792578964287
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 57,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.322Z",
+      "ts_ms": 1792578964322
+    },
+    "sending_ts_ms": 1792578964323
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 58,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.324Z",
+      "ts_ms": 1792578964324
+    },
+    "sending_ts_ms": 1792578964325
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 59,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.607Z",
+      "ts_ms": 1792578964607
+    },
+    "sending_ts_ms": 1792578964608
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 60,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.4800",
+      "delta_fp": "100.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.868Z",
+      "ts_ms": 1792578964868
+    },
+    "sending_ts_ms": 1792578964869
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 61,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.5200",
+      "delta_fp": "100.00",
+      "side": "no",
+      "ts": "2026-10-21T10:36:04.868Z",
+      "ts_ms": 1792578964868
+    },
+    "sending_ts_ms": 1792578964869
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 62,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.4800",
+      "delta_fp": "100.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:04.868Z",
+      "ts_ms": 1792578964868
+    },
+    "sending_ts_ms": 1792578964869
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 63,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.5200",
+      "delta_fp": "100.00",
+      "side": "no",
+      "ts": "2026-10-21T10:36:04.868Z",
+      "ts_ms": 1792578964868
+    },
+    "sending_ts_ms": 1792578964870
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 64,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.085Z",
+      "ts_ms": 1792578965085
+    },
+    "sending_ts_ms": 1792578965088
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 65,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.085Z",
+      "ts_ms": 1792578965085
+    },
+    "sending_ts_ms": 1792578965088
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 66,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.085Z",
+      "ts_ms": 1792578965085
+    },
+    "sending_ts_ms": 1792578965088
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 67,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.085Z",
+      "ts_ms": 1792578965085
+    },
+    "sending_ts_ms": 1792578965088
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 68,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.085Z",
+      "ts_ms": 1792578965085
+    },
+    "sending_ts_ms": 1792578965088
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 69,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.121Z",
+      "ts_ms": 1792578965121
+    },
+    "sending_ts_ms": 1792578965123
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 70,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.127Z",
+      "ts_ms": 1792578965127
+    },
+    "sending_ts_ms": 1792578965129
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 71,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.149Z",
+      "ts_ms": 1792578965149
+    },
+    "sending_ts_ms": 1792578965150
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 72,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.392Z",
+      "ts_ms": 1792578965392
+    },
+    "sending_ts_ms": 1792578965393
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 73,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.6100",
+      "delta_fp": "51.00",
+      "side": "no",
+      "ts": "2026-10-21T10:36:05.883Z",
+      "ts_ms": 1792578965883
+    },
+    "sending_ts_ms": 1792578965884
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 74,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.901Z",
+      "ts_ms": 1792578965901
+    },
+    "sending_ts_ms": 1792578965902
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 75,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.903Z",
+      "ts_ms": 1792578965903
+    },
+    "sending_ts_ms": 1792578965904
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 76,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:05.926Z",
+      "ts_ms": 1792578965926
+    },
+    "sending_ts_ms": 1792578965927
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 77,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.178Z",
+      "ts_ms": 1792578966178
+    },
+    "sending_ts_ms": 1792578966181
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 78,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.178Z",
+      "ts_ms": 1792578966178
+    },
+    "sending_ts_ms": 1792578966181
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 79,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.178Z",
+      "ts_ms": 1792578966178
+    },
+    "sending_ts_ms": 1792578966181
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 80,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.178Z",
+      "ts_ms": 1792578966178
+    },
+    "sending_ts_ms": 1792578966181
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 81,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.229Z",
+      "ts_ms": 1792578966229
+    },
+    "sending_ts_ms": 1792578966230
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 82,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.7Z",
+      "ts_ms": 1792578966700
+    },
+    "sending_ts_ms": 1792578966702
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 83,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.726Z",
+      "ts_ms": 1792578966726
+    },
+    "sending_ts_ms": 1792578966727
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 84,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.735Z",
+      "ts_ms": 1792578966735
+    },
+    "sending_ts_ms": 1792578966736
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 85,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:06.993Z",
+      "ts_ms": 1792578966993
+    },
+    "sending_ts_ms": 1792578966994
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 86,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.003Z",
+      "ts_ms": 1792578967003
+    },
+    "sending_ts_ms": 1792578967006
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 87,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.003Z",
+      "ts_ms": 1792578967003
+    },
+    "sending_ts_ms": 1792578967006
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 88,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.003Z",
+      "ts_ms": 1792578967003
+    },
+    "sending_ts_ms": 1792578967006
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 89,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.003Z",
+      "ts_ms": 1792578967003
+    },
+    "sending_ts_ms": 1792578967006
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 90,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.5200",
+      "delta_fp": "-100.00",
+      "side": "no",
+      "ts": "2026-10-21T10:36:07.017Z",
+      "ts_ms": 1792578967017
+    },
+    "sending_ts_ms": 1792578967021
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 91,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.4800",
+      "delta_fp": "-100.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.017Z",
+      "ts_ms": 1792578967017
+    },
+    "sending_ts_ms": 1792578967021
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 92,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.5200",
+      "delta_fp": "-98.00",
+      "side": "no",
+      "ts": "2026-10-21T10:36:07.017Z",
+      "ts_ms": 1792578967017
+    },
+    "sending_ts_ms": 1792578967021
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 93,
+    "msg": {
+      "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+      "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+      "price_dollars": "0.4800",
+      "delta_fp": "-100.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.017Z",
+      "ts_ms": 1792578967017
+    },
+    "sending_ts_ms": 1792578967021
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 94,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.496Z",
+      "ts_ms": 1792578967496
+    },
+    "sending_ts_ms": 1792578967497
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 95,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.506Z",
+      "ts_ms": 1792578967506
+    },
+    "sending_ts_ms": 1792578967508
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 96,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.507Z",
+      "ts_ms": 1792578967507
+    },
+    "sending_ts_ms": 1792578967508
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 97,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:07.826Z",
+      "ts_ms": 1792578967826
+    },
+    "sending_ts_ms": 1792578967827
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 98,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 99,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 100,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 101,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 102,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 103,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 104,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.14Z",
+      "ts_ms": 1792578968140
+    },
+    "sending_ts_ms": 1792578968144
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 105,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.302Z",
+      "ts_ms": 1792578968302
+    },
+    "sending_ts_ms": 1792578968303
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 106,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.326Z",
+      "ts_ms": 1792578968326
+    },
+    "sending_ts_ms": 1792578968327
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 107,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.342Z",
+      "ts_ms": 1792578968342
+    },
+    "sending_ts_ms": 1792578968343
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 108,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:08.622Z",
+      "ts_ms": 1792578968622
+    },
+    "sending_ts_ms": 1792578968623
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 109,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.084Z",
+      "ts_ms": 1792578969084
+    },
+    "sending_ts_ms": 1792578969087
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 110,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.084Z",
+      "ts_ms": 1792578969084
+    },
+    "sending_ts_ms": 1792578969087
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 111,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.084Z",
+      "ts_ms": 1792578969084
+    },
+    "sending_ts_ms": 1792578969087
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 112,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.084Z",
+      "ts_ms": 1792578969084
+    },
+    "sending_ts_ms": 1792578969087
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 113,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.084Z",
+      "ts_ms": 1792578969084
+    },
+    "sending_ts_ms": 1792578969087
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 114,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.117Z",
+      "ts_ms": 1792578969117
+    },
+    "sending_ts_ms": 1792578969118
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 115,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.137Z",
+      "ts_ms": 1792578969137
+    },
+    "sending_ts_ms": 1792578969139
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 116,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.178Z",
+      "ts_ms": 1792578969178
+    },
+    "sending_ts_ms": 1792578969179
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 117,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.428Z",
+      "ts_ms": 1792578969428
+    },
+    "sending_ts_ms": 1792578969429
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 118,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.894Z",
+      "ts_ms": 1792578969894
+    },
+    "sending_ts_ms": 1792578969895
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 119,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.911Z",
+      "ts_ms": 1792578969911
+    },
+    "sending_ts_ms": 1792578969912
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 120,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:09.944Z",
+      "ts_ms": 1792578969944
+    },
+    "sending_ts_ms": 1792578969946
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 121,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.179Z",
+      "ts_ms": 1792578970179
+    },
+    "sending_ts_ms": 1792578970182
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 122,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.179Z",
+      "ts_ms": 1792578970179
+    },
+    "sending_ts_ms": 1792578970182
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 123,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.179Z",
+      "ts_ms": 1792578970179
+    },
+    "sending_ts_ms": 1792578970182
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 124,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "-10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.179Z",
+      "ts_ms": 1792578970179
+    },
+    "sending_ts_ms": 1792578970182
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 125,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.189Z",
+      "ts_ms": 1792578970189
+    },
+    "sending_ts_ms": 1792578970191
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 126,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.692Z",
+      "ts_ms": 1792578970692
+    },
+    "sending_ts_ms": 1792578970693
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 127,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.728Z",
+      "ts_ms": 1792578970728
+    },
+    "sending_ts_ms": 1792578970730
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 128,
+    "msg": {
+      "market_ticker": "KXATPCHALLENGERMATCH-26OCT21PDAJAR-PDA",
+      "market_id": "01a15dd1-60cc-740a-9c06-51c67eda144c",
+      "price_dollars": "0.0100",
+      "delta_fp": "10.00",
+      "side": "yes",
+      "ts": "2026-10-21T10:36:10.729Z",
+      "ts_ms": 1792578970729
+    },
+    "sending_ts_ms": 1792578970731
+  }
+]

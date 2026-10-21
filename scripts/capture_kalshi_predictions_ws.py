@@ -24,6 +24,17 @@ fixtures as they were. It writes subscribed, snapshot, deltas, ok, unsubscribed 
 under polyoxide-kalshi/tests/fixtures/predictions/ws/, with PROVENANCE.md, and writes one
 section into docs/specs/kalshi/OBSERVED.md directly above its anchor line, replacing the
 one an earlier run wrote. Review the diff before committing.
+
+Epic 9 adds two options, each its own mode:
+
+    uv run scripts/capture_kalshi_predictions_ws.py --epic9 [--ticker TICKER] [--seconds 60]
+    uv run scripts/capture_kalshi_predictions_ws.py --check-epic9
+
+`--epic9` signs one demo session and writes ten more files under the same ws/ directory, a block
+of PROVENANCE.md between its epic9 markers, and a block of OBSERVED.md above its Epic 9 anchor
+(`<!-- epic 9 findings go above this line -->`). --seconds is how long it waits for a `ticker`
+frame and a `trade` frame. `--check-epic9` makes no connection: it re-reads the files and exits 1
+naming what is wrong.
 """
 from __future__ import annotations
 
@@ -61,6 +72,45 @@ ANSWERS = ("subscribed", "ok", "unsubscribed", "error")
 ANCHOR = "<!-- capture findings go above this line -->"
 BEGIN = "<!-- kalshi-ws-capture:begin -->"
 END = "<!-- kalshi-ws-capture:end -->"
+
+# The open listing is paged: quoted markets can sit thousands of rows in (9 pages on 2026-10-21).
+MAX_PAGES = 30
+EPIC9_ANCHOR = "<!-- epic 9 findings go above this line -->"
+EPIC9_BEGIN = "<!-- kalshi-ws-epic9:begin -->"
+EPIC9_END = "<!-- kalshi-ws-epic9:end -->"
+PROV_BEGIN = "<!-- epic9:begin -->"
+PROV_END = "<!-- epic9:end -->"
+CHANNELS = ("orderbook_delta", "ticker", "trade")
+EPIC9_FILES = (
+    "subscribed_ticker.json",
+    "subscribed_trade.json",
+    "ticker.json",
+    "trade.json",
+    "snapshot_answer.json",
+    "deltas_after_snapshot.json",
+    "snapshot_outside.json",
+    "error_snapshot_ticker_sid.json",
+    "error_snapshot_trade_sid.json",
+    "multi_sid_answer.json",
+)
+# A command's answer is complete when this long passes with no further frame carrying its id.
+SETTLE_SECONDS = 2.0
+# Pause before each command: Kalshi refuses a subscription that sends too fast (code 27).
+PACE_SECONDS = 0.3
+# How long the capture reads after get_snapshot, and after the subscribe with no market.
+SNAPSHOT_SECONDS = 20.0
+EMPTY_SECONDS = 15.0
+EMPTY_FRAMES = 20
+# `tickerPayload.msg` and `tradePayload.msg` required keys in docs/specs/kalshi/asyncapi.yaml.
+TICKER_REQUIRED = (
+    "market_id", "market_ticker", "price_dollars", "yes_bid_dollars", "yes_ask_dollars", "volume_fp",
+    "open_interest_fp", "dollar_volume", "dollar_open_interest", "yes_bid_size_fp", "yes_ask_size_fp",
+    "last_trade_size_fp", "ts", "ts_ms", "time",
+)
+TRADE_REQUIRED = (
+    "trade_id", "market_ticker", "yes_price_dollars", "no_price_dollars", "count_fp", "taker_side",
+    "taker_outcome_side", "taker_book_side", "is_block_trade", "ts", "ts_ms",
+)
 
 
 def require_key() -> None:
@@ -412,11 +462,561 @@ def write_fixtures(capture: Capture, stamp: str, seconds: float) -> None:
     )
 
 
+def choose_four(wanted: str | None) -> tuple[str, str, str, str]:
+    """`first` (the market asked for, else the first quoted open one with a two-sided book), then
+    three more quoted open markets: `second`, `third` and `outside`."""
+    tickers: list[str] = []
+    cursor = None
+    for _page in range(MAX_PAGES):
+        params: dict[str, Any] = {"status": "open", "mve_filter": "exclude", "limit": 1000}
+        if cursor:
+            params["cursor"] = cursor
+        listing = fetch_ok("/trade-api/v2/markets", **params)
+        tickers += [market["ticker"] for market in listing["markets"] if quoted(market)]
+        cursor = listing.get("cursor")
+        if not cursor or len(tickers) >= CANDIDATES + 3:
+            break
+    first = wanted or next((t for t in tickers[:CANDIDATES] if two_sided(t)), None)
+    if first is None:
+        raise SystemExit(
+            f"none of the first {CANDIDATES} quoted open demo markets has a two-sided book: pass --ticker"
+        )
+    others = [t for t in tickers if t != first]
+    if len(others) < 3:
+        raise SystemExit("the demo host lists fewer than four quoted open markets")
+    return first, others[0], others[1], others[2]
+
+
+async def exchange(tape: Tape, command: dict[str, Any]) -> list[Seen]:
+    """Sends `command` and returns every frame that carries its id, read until SETTLE_SECONDS pass
+    after the last one. Exits when none arrives in ANSWER_SECONDS. Frames with other ids stay on the
+    tape."""
+    await asyncio.sleep(PACE_SECONDS)
+    await tape.ws.send(json.dumps(command))
+    got: list[Seen] = []
+    give_up = time.monotonic() + ANSWER_SECONDS
+    settle: float | None = None
+    while True:
+        remaining = (give_up if settle is None else settle) - time.monotonic()
+        if remaining <= 0:
+            break
+        seen = await tape.read(remaining)
+        if seen is None:
+            break
+        if seen.frame.get("id") == command["id"]:
+            got.append(seen)
+            settle = time.monotonic() + SETTLE_SECONDS
+    if not got:
+        raise SystemExit(f"no frame answered {command['cmd']} (id {command['id']}) in {ANSWER_SECONDS:.0f} s")
+    return got
+
+
+async def exchange_on_sid(tape: Tape, command: dict[str, Any], sid: int) -> list[Seen]:
+    """Sends `command` and returns the frames that answer it: those carrying its id, and an `error` on
+    `sid` without one (the host answers `get_snapshot` on the `trade` channel's `sid` with an `error`
+    that has no `id`). Reads ANSWER_SECONDS / 2, and returns what it found, none included: an
+    unanswered command is a finding, not an exit."""
+    await asyncio.sleep(PACE_SECONDS)
+    mark = len(tape.log)
+    await tape.ws.send(json.dumps(command))
+    await tape.read_for(ANSWER_SECONDS / 2)
+    return [
+        seen
+        for seen in tape.log[mark:]
+        if seen.frame.get("id") == command["id"]
+        or (seen.frame.get("type") == "error" and seen.frame.get("sid") == sid)
+    ]
+
+
+def detail(frames: list[Seen]) -> str:
+    """Each frame's type, error code and message, `id`, `sid` and `seq`, or that none arrived."""
+    if not frames:
+        return "no frame carrying the id or an `error` on the `sid` within the wait"
+    parts = []
+    for seen in frames:
+        frame = seen.frame
+        msg = frame.get("msg") or {}
+        what = f"`{frame.get('type')}`"
+        if frame.get("type") == "error":
+            what += f" code {msg.get('code')} ({msg.get('msg')!r})"
+        parts.append(
+            f"{what}, `id` {frame.get('id', 'absent')}, `sid` {frame.get('sid', 'absent')}, `seq` {frame.get('seq', 'absent')}"
+        )
+    return "; ".join(parts)
+
+
+def outcome(frames: list[Seen]) -> str:
+    """The frames' types, and an error's code and message."""
+    parts = []
+    for seen in frames:
+        msg = seen.frame.get("msg") or {}
+        if seen.frame.get("type") == "error":
+            parts.append(f"`error` code {msg.get('code')}: {msg.get('msg')}")
+        else:
+            parts.append(f"`{seen.frame.get('type')}`")
+    return ", ".join(parts)
+
+
+def is_snapshot_of(seen: Seen, ticker: str) -> bool:
+    return seen.frame.get("type") == "orderbook_snapshot" and (seen.frame.get("msg") or {}).get("market_ticker") == ticker
+
+
+@dataclass
+class Epic9:
+    tickers: tuple[str, str, str, str]
+    sids: dict[str, int]
+    subscribed: dict[str, Seen]
+    ticker: Seen
+    trade: Seen
+    answer_frames: list[Seen]
+    answer: Seen
+    has_id: bool
+    between: int
+    deltas_after: list[Seen]
+    multi: list[Seen]
+    third_snapshot: bool
+    outside: list[Seen]
+    on_ticker_sid: list[Seen]
+    on_trade_sid: list[Seen]
+    empty_answers: list[Seen]
+    empty_tickers: list[str]
+    empty_count: int
+    final: list[Seen]
+    too_fast: int
+
+
+async def run_epic9(tickers: tuple[str, str, str, str], seconds: float) -> Epic9:
+    first, second, third, outside = tickers
+    ids = iter(range(1, 1000))
+    async with capture_common.ws_session(WS, headers=signed) as ws:
+        tape = Tape(ws)
+
+        subscribe = {
+            "id": next(ids),
+            "cmd": "subscribe",
+            "params": {"channels": list(CHANNELS), "market_tickers": [first, second], "use_yes_price": True},
+        }
+        answers = await exchange(tape, subscribe)
+        subscribed: dict[str, Seen] = {}
+        for seen in answers:
+            expect(seen, "subscribed", "the three-channel subscribe")
+            channel = (seen.frame.get("msg") or {}).get("channel")
+            if channel is None:
+                raise SystemExit(f"a `subscribed` answer names no channel: {seen.text}")
+            subscribed[channel] = seen
+        if sorted(subscribed) != sorted(CHANNELS):
+            raise SystemExit(f"the three-channel subscribe was answered for {sorted(subscribed)}: {[s.text for s in answers]}")
+        sids = {channel: seen.frame["msg"]["sid"] for channel, seen in subscribed.items()}
+
+        def logged(kind: str) -> Seen | None:
+            return next((s for s in tape.log if s.frame.get("type") == kind), None)
+
+        deadline = time.monotonic() + seconds
+        while (logged("ticker") is None or logged("trade") is None) and time.monotonic() < deadline:
+            if await tape.read(deadline - time.monotonic()) is None:
+                break
+        ticker, trade = logged("ticker"), logged("trade")
+        if ticker is None or trade is None:
+            missing = [name for name, seen in (("ticker", ticker), ("trade", trade)) if seen is None]
+            raise SystemExit(
+                f"no {' and no '.join(missing)} frame for {first} or {second} in {seconds:.0f} s: "
+                "rerun with a larger --seconds, or --ticker of a busier market"
+            )
+
+        book = sids["orderbook_delta"]
+        mark = len(tape.log)
+        command = {
+            "id": next(ids),
+            "cmd": "update_subscription",
+            "params": {"sid": book, "action": "get_snapshot", "market_tickers": [first]},
+        }
+        answer_frames = await exchange(tape, command)
+        await tape.read_for(SNAPSHOT_SECONDS)
+        window = tape.log[mark:]
+        index = next((i for i, seen in enumerate(window) if is_snapshot_of(seen, first)), None)
+        if index is None:
+            raise SystemExit(
+                f"get_snapshot for {first} was answered with {outcome(answer_frames)}, and no snapshot of it arrived"
+            )
+        answer = window[index]
+        between = sum(
+            1 for seen in window[:index] if seen.frame.get("type") == "orderbook_delta" and seen.frame.get("sid") == book
+        )
+        deltas_after = [
+            seen for seen in window[index + 1 :] if seen.frame.get("type") == "orderbook_delta" and seen.frame.get("sid") == book
+        ][:MAX_DELTAS]
+        if not deltas_after:
+            raise SystemExit(
+                f"no orderbook_delta followed the snapshot in {SNAPSHOT_SECONDS:.0f} s: rerun with --ticker of a busier market"
+            )
+
+        mark = len(tape.log)
+        command = {
+            "id": next(ids),
+            "cmd": "update_subscription",
+            "params": {"sids": [book, sids["ticker"]], "action": "add_markets", "market_tickers": [third]},
+        }
+        multi = await exchange(tape, command)
+        await tape.read_for(ADDED_SECONDS)
+        third_snapshot = any(is_snapshot_of(seen, third) for seen in tape.log[mark:])
+
+        command = {
+            "id": next(ids),
+            "cmd": "update_subscription",
+            "params": {"sid": book, "action": "get_snapshot", "market_tickers": [outside]},
+        }
+        refused_frames = await exchange(tape, command)
+        # The owner's decision of 2026-10-21 (spec 3): the demo host does not refuse an outside ticker, so
+        # whatever it answers is written as snapshot_outside.json and recorded; it is not an exit.
+
+        on_ticker_sid = await exchange_on_sid(
+            tape,
+            {
+                "id": next(ids),
+                "cmd": "update_subscription",
+                "params": {"sid": sids["ticker"], "action": "get_snapshot", "market_tickers": [first]},
+            },
+            sids["ticker"],
+        )
+        on_trade_sid = await exchange_on_sid(
+            tape,
+            {
+                "id": next(ids),
+                "cmd": "update_subscription",
+                "params": {"sid": sids["trade"], "action": "get_snapshot", "market_tickers": [first]},
+            },
+            sids["trade"],
+        )
+        for name, frames in (("ticker", on_ticker_sid), ("trade", on_trade_sid)):
+            if not any(seen.frame.get("type") == "error" for seen in frames):
+                raise SystemExit(
+                    f"get_snapshot on the {name} channel's sid was answered with {detail(frames)}, not an error: "
+                    "no error fixture can be captured from it, so report this to the owner"
+                )
+
+        mark = len(tape.log)
+        empty_answers = await exchange(
+            tape, {"id": next(ids), "cmd": "subscribe", "params": {"channels": ["ticker", "trade"]}}
+        )
+        fresh = [
+            seen.frame["msg"]["sid"]
+            for seen in empty_answers
+            if seen.frame.get("type") == "subscribed" and isinstance((seen.frame.get("msg") or {}).get("sid"), int)
+        ]
+
+        def fresh_frames() -> list[Seen]:
+            return [
+                seen
+                for seen in tape.log[mark:]
+                if seen.frame.get("type") in ("ticker", "trade") and seen.frame.get("sid") in fresh
+            ]
+
+        deadline = time.monotonic() + EMPTY_SECONDS
+        while fresh and len(fresh_frames()) < EMPTY_FRAMES and time.monotonic() < deadline:
+            if await tape.read(deadline - time.monotonic()) is None:
+                break
+        seen_on_fresh = fresh_frames()
+        empty_tickers = sorted({(seen.frame.get("msg") or {}).get("market_ticker") for seen in seen_on_fresh} - {None})
+
+        final = await exchange(
+            tape, {"id": next(ids), "cmd": "unsubscribe", "params": {"sids": [*sids.values(), *fresh]}}
+        )
+        too_fast = sum(
+            1
+            for seen in tape.log
+            if seen.frame.get("type") == "error" and (seen.frame.get("msg") or {}).get("code") == 27
+        )
+        return Epic9(
+            tickers, sids, subscribed, ticker, trade, answer_frames, answer,
+            any(seen is answer for seen in answer_frames), between, deltas_after, multi,
+            third_snapshot, refused_frames, on_ticker_sid, on_trade_sid, empty_answers, empty_tickers,
+            len(seen_on_fresh), final, too_fast,
+        )
+
+
+def shape(frame: dict[str, Any], required: tuple[str, ...]) -> str:
+    msg = frame.get("msg") or {}
+    missing = [key for key in required if key not in msg]
+    extra = sorted(key for key in msg if key not in required)
+    absent = ", ".join(f"`{key}`" for key in missing) or "none"
+    more = ", ".join(f"`{key}`" for key in extra) or "none"
+    return f"required keys absent: {absent}; keys the mirror lacks: {more}"
+
+
+def section9(c: Epic9, stamp: str) -> str:
+    first, second, third, outside = c.tickers
+    book = c.sids["orderbook_delta"]
+    seq, previous = c.answer.frame.get("seq"), c.answer.previous
+    first_delta = c.deltas_after[0].frame.get("seq")
+    on_numbering = isinstance(seq, int) and previous is not None and seq == previous + 1
+    continues = isinstance(seq, int) and first_delta == seq + 1
+    elsewhere = sum(
+        1 for seen in c.deltas_after if (seen.frame.get("msg") or {}).get("market_ticker") != first
+    )
+    d9 = "holds" if continues else "**DOES NOT HOLD. Report this to the owner before Story 5 runs.**"
+    beyond = [t for t in c.empty_tickers if t not in c.tickers]
+    rows = [
+        (
+            "One `subscribe` for the three channels",
+            f"answered by {len(c.subscribed)} `subscribed` frames, one for each channel, each with its own `sid`: "
+            + ", ".join(f"`{channel}` {sid}" for channel, sid in c.sids.items()),
+        ),
+        (
+            "A `ticker` frame",
+            f"on `sid` {c.ticker.frame.get('sid')} (the answered {c.sids['ticker']}); carries `seq`: "
+            f"{'yes' if 'seq' in c.ticker.frame else 'no'}; {shape(c.ticker.frame, TICKER_REQUIRED)}",
+        ),
+        (
+            "A `trade` frame",
+            f"on `sid` {c.trade.frame.get('sid')} (the answered {c.sids['trade']}); carries `seq`: "
+            f"{'yes' if 'seq' in c.trade.frame else 'no'}; {shape(c.trade.frame, TRADE_REQUIRED)}",
+        ),
+        ("`get_snapshot` for `first` on the order-book `sid`: the frames carrying its id", outcome(c.answer_frames)),
+        (
+            "The snapshot answering it",
+            f"carries the command's `id`: {'yes' if c.has_id else 'no'}; `sid` {c.answer.frame.get('sid')} "
+            f"(the order-book `sid` is {book}); `seq` {seq}; the last `seq` on that `sid` before it was {previous}; "
+            f"{c.between} deltas on the `sid` came between the command and the snapshot",
+        ),
+        (
+            "The snapshot's `seq` is the next number of the `sid`'s numbering",
+            "yes" if on_numbering else f"no: {previous} before it, {seq} on it",
+        ),
+        (
+            "The first delta after the snapshot continues from its `seq`",
+            f"{'yes' if continues else 'no'}: `seq` {first_delta} after {seq}; {len(c.deltas_after)} deltas captured, "
+            f"{elsewhere} of them for a market other than `first`",
+        ),
+        ("Spec D9's premise (the answer is on the `sid`'s numbering and the next delta follows it)", d9),
+        (
+            "One `update_subscription` naming two `sids` (`add_markets` for `third`)",
+            f"{outcome(c.multi)}; a snapshot of `third` followed on the order-book `sid`: {'yes' if c.third_snapshot else 'no'}",
+        ),
+        (
+            "`get_snapshot` for a ticker outside the subscription (the owner took the host's answer in place of an error fixture, spec 3)",
+            f"{outcome(c.outside)}; the frame carrying the command's `id`: "
+            + ", ".join(
+                f"`{seen.frame.get('type')}` for `{(seen.frame.get('msg') or {}).get('market_ticker')}`, "
+                f"`sid` {seen.frame.get('sid')}, `seq` {seen.frame.get('seq')} (the last before it {seen.previous})"
+                for seen in c.outside
+                if seen.frame.get("id") is not None
+            ),
+        ),
+        ("`get_snapshot` on the `ticker` channel's `sid`", detail(c.on_ticker_sid)),
+        ("`get_snapshot` on the `trade` channel's `sid`", detail(c.on_trade_sid)),
+        (
+            "A `subscribe` for `ticker` and `trade` naming no market",
+            f"{outcome(c.empty_answers)}; {c.empty_count} frames in {EMPTY_SECONDS:.0f} s on its `sid`s from "
+            f"{len(c.empty_tickers)} markets, {len(beyond)} of them outside the four chosen: "
+            + ("it means every market" if beyond else "no market beyond the four was seen, so this does not show it means every market"),
+        ),
+        ("The final `unsubscribe` of every `sid`", outcome(c.final)),
+        ("Code 27 (too many requests) met", str(c.too_fast)),
+    ]
+    lines = [
+        "### The multi-channel socket, as the demo host answers it",
+        "",
+        f"Captured {stamp} by `scripts/capture_kalshi_predictions_ws.py --epic9` from `{WS}`. `first` `{first}` and "
+        f"`second` `{second}` were subscribed, `third` `{third}` added by the two-`sid` update, and `outside` `{outside}` "
+        "never subscribed. Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.",
+        "",
+        *capture_common.provenance_table(("Question", "Observed"), rows),
+    ]
+    return "\n".join(lines)
+
+
+def record_block(path: Path, begin: str, end: str, anchor: str | None, text: str) -> None:
+    """Writes `text` into `path` between `begin` and `end`, replacing an earlier run's block, or
+    directly above `anchor` (the end of the file when `anchor` is None) when there is none."""
+    current = path.read_text(encoding="utf-8")
+    block = f"{begin}\n{text.rstrip()}\n{end}"
+    if begin in current and end in current:
+        head, rest = current.split(begin, 1)
+        _, tail = rest.split(end, 1)
+        current = head + block + tail
+    elif anchor is None:
+        current = current.rstrip("\n") + f"\n\n{block}\n"
+    else:
+        current = current.replace(anchor, f"{block}\n\n{anchor}", 1)
+    capture_common.write_raw(path, current)
+
+
+def write_epic9(c: Epic9, stamp: str, seconds: float) -> None:
+    first, second, third, outside = c.tickers
+    multi = c.multi[0].frame if len(c.multi) == 1 else [seen.frame for seen in c.multi]
+    files = [
+        ("subscribed_ticker.json", c.subscribed["ticker"].frame, "the `subscribed` answer for the `ticker` channel, from the three-channel `subscribe`"),
+        ("subscribed_trade.json", c.subscribed["trade"].frame, "the `subscribed` answer for the `trade` channel, from the same `subscribe`"),
+        ("ticker.json", c.ticker.frame, "the first `ticker` frame of the session"),
+        ("trade.json", c.trade.frame, "the first `trade` frame of the session"),
+        ("snapshot_answer.json", c.answer.frame, "the `orderbook_snapshot` answering `get_snapshot` for `first`, with its `id`, `sid` and `seq`"),
+        (
+            "deltas_after_snapshot.json",
+            [seen.frame for seen in c.deltas_after],
+            f"{len(c.deltas_after)} `orderbook_delta` frames on that `sid` after it, as an array, in wire order (every market of the `sid`, not only `first`)",
+        ),
+        ("snapshot_outside.json", next(s for s in c.outside if s.frame.get("id") is not None).frame, f"the answer to `get_snapshot` for `{outside}`, a ticker outside the subscription: an `orderbook_snapshot` carrying the command's `id`, as the host sent it"),
+        ("error_snapshot_ticker_sid.json", next(s for s in c.on_ticker_sid if s.frame.get("type") == "error").frame, "the `error` answering `get_snapshot` on the `ticker` channel's `sid`"),
+        ("error_snapshot_trade_sid.json", next(s for s in c.on_trade_sid if s.frame.get("type") == "error").frame, "the `error` answering `get_snapshot` on the `trade` channel's `sid`, which carries no `id`"),
+        ("multi_sid_answer.json", multi, "the answer to one `update_subscription` naming two `sids` (an array when there is more than one frame)"),
+    ]
+    for name, value, _what in files:
+        capture_common.write_json(OUT / name, value, ensure_ascii=True)
+    lines = [
+        "## Epic 9 captures",
+        "",
+        f"Captured {stamp} by `scripts/capture_kalshi_predictions_ws.py --epic9` from `{WS}` (the demo host), the "
+        "handshake signed as above. A `subscribe` for `orderbook_delta`, `ticker` and `trade` on "
+        f"`{first}` and `{second}` (`use_yes_price: true`), up to {seconds:.0f} s for a `ticker` and a `trade` "
+        f"frame, then the commands of spec §3 in order. `{third}` was added by the two-`sid` update and `{outside}` "
+        "was never subscribed.",
+        "",
+        *capture_common.provenance_table(
+            ("Fixture", "What it is"), [(f"`{name}`", what) for name, _value, what in files]
+        ),
+    ]
+    record_block(OUT / "PROVENANCE.md", PROV_BEGIN, PROV_END, None, "\n".join(lines))
+
+
+def capture_epic9(args: argparse.Namespace) -> None:
+    require_key()
+    if EPIC9_ANCHOR not in OBSERVED.read_text(encoding="utf-8"):
+        raise SystemExit(f"{OBSERVED} has no anchor line {EPIC9_ANCHOR!r}: Task 1.2 writes it")
+    tickers = choose_four(args.ticker)
+    stamp = capture_common.stamp()
+    try:
+        capture = asyncio.run(run_epic9(tickers, args.seconds))
+    except InvalidHandshake as err:
+        raise SystemExit(
+            f"the demo host refused the signed handshake ({err}): check the key id, and that the key is the demo environment's"
+        ) from err
+    except ConnectionClosed as err:
+        raise SystemExit(f"the demo host closed the connection: {err}") from err
+    write_epic9(capture, stamp, args.seconds)
+    record_block(OBSERVED, EPIC9_BEGIN, EPIC9_END, EPIC9_ANCHOR, section9(capture, stamp))
+    print(f"captured {len(EPIC9_FILES)} fixtures for {tickers[0]} into {OUT}")
+    print(f"recorded the findings in {OBSERVED}")
+
+
+def check_epic9() -> None:
+    """Re-reads Epic 9's ten fixtures, PROVENANCE.md and OBSERVED.md, and exits 1 naming each
+    thing that is wrong."""
+    problems: list[str] = []
+
+    def load(name: str) -> Any:
+        try:
+            return json.loads((OUT / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as err:
+            problems.append(f"{name}: {err}")
+            return None
+
+    def is_frame(value: Any, kind: str, name: str) -> bool:
+        if not isinstance(value, dict) or value.get("type") != kind:
+            problems.append(f"{name}: expected a `{kind}` frame")
+            return False
+        return True
+
+    sids: dict[str, Any] = {}
+    for channel in ("ticker", "trade"):
+        name = f"subscribed_{channel}.json"
+        frame = load(name)
+        if frame is not None and is_frame(frame, "subscribed", name):
+            msg = frame.get("msg") or {}
+            if msg.get("channel") != channel or not isinstance(msg.get("sid"), int):
+                problems.append(f"{name}: expected `msg.channel` {channel!r} and an integer `msg.sid`")
+            if not isinstance(frame.get("id"), int):
+                problems.append(f"{name}: expected an integer `id` on the frame")
+            sids[channel] = msg.get("sid")
+    if len(sids) == 2 and sids["ticker"] == sids["trade"]:
+        problems.append("subscribed_ticker.json and subscribed_trade.json carry the same `sid`")
+
+    for kind in ("ticker", "trade"):
+        name = f"{kind}.json"
+        frame = load(name)
+        if frame is not None and is_frame(frame, kind, name):
+            if not isinstance(frame.get("sid"), int) or not isinstance(frame.get("msg"), dict):
+                problems.append(f"{name}: expected an integer `sid` and a `msg` object")
+            elif sids.get(kind) is not None and frame["sid"] != sids[kind]:
+                problems.append(f"{name}: `sid` {frame['sid']} is not the {kind} answer's {sids[kind]}")
+            if kind == "ticker" and "seq" in frame:
+                problems.append(f"{name}: the `ticker` channel carries no `seq`, but this frame has one")
+            if kind == "trade" and not isinstance(frame.get("seq"), int):
+                problems.append(f"{name}: expected an integer `seq` on the `trade` frame")
+
+    answer = load("snapshot_answer.json")
+    answer_sid = answer_seq = None
+    if answer is not None and is_frame(answer, "orderbook_snapshot", "snapshot_answer.json"):
+        answer_sid, answer_seq = answer.get("sid"), answer.get("seq")
+        for key in ("id", "sid", "seq"):
+            if not isinstance(answer.get(key), int):
+                problems.append(f"snapshot_answer.json: expected an integer `{key}`")
+    deltas = load("deltas_after_snapshot.json")
+    if deltas is not None:
+        if not isinstance(deltas, list) or not deltas:
+            problems.append("deltas_after_snapshot.json: expected a non-empty array")
+        else:
+            seqs = [d.get("seq") if isinstance(d, dict) else None for d in deltas]
+            if not all(isinstance(d, dict) and d.get("type") == "orderbook_delta" for d in deltas):
+                problems.append("deltas_after_snapshot.json: every item must be an `orderbook_delta` frame")
+            elif answer_sid is not None and any(d.get("sid") != answer_sid for d in deltas):
+                problems.append("deltas_after_snapshot.json: a delta is not on the snapshot answer's `sid`")
+            elif not all(isinstance(s, int) for s in seqs) or seqs != sorted(set(seqs)):
+                problems.append("deltas_after_snapshot.json: `seq` must be integers in strictly increasing order")
+            elif isinstance(answer_seq, int) and seqs[0] <= answer_seq:
+                problems.append("deltas_after_snapshot.json: the first delta's `seq` does not come after the answer's")
+    outside = load("snapshot_outside.json")
+    if outside is not None and is_frame(outside, "orderbook_snapshot", "snapshot_outside.json"):
+        for key in ("id", "sid", "seq"):
+            if not isinstance(outside.get(key), int):
+                problems.append(f"snapshot_outside.json: expected an integer `{key}`")
+        if not (outside.get("msg") or {}).get("market_ticker"):
+            problems.append("snapshot_outside.json: expected a `msg.market_ticker`")
+    for channel in ("ticker", "trade"):
+        name = f"error_snapshot_{channel}_sid.json"
+        refusal = load(name)
+        if refusal is not None and is_frame(refusal, "error", name):
+            if not isinstance((refusal.get("msg") or {}).get("code"), int):
+                problems.append(f"{name}: expected an integer `msg.code`")
+            if sids.get(channel) is not None and refusal.get("sid") != sids[channel]:
+                problems.append(f"{name}: `sid` is not the {channel} answer's {sids[channel]}")
+    multi = load("multi_sid_answer.json")
+    if multi is not None and not (
+        (isinstance(multi, dict) and multi) or (isinstance(multi, list) and multi and all(isinstance(f, dict) for f in multi))
+    ):
+        problems.append("multi_sid_answer.json: expected a frame or a non-empty array of frames")
+
+    try:
+        provenance = (OUT / "PROVENANCE.md").read_text(encoding="utf-8")
+    except OSError as err:
+        problems.append(f"PROVENANCE.md: {err}")
+    else:
+        absent = [name for name in EPIC9_FILES if name not in provenance]
+        if absent:
+            problems.append("PROVENANCE.md does not mention " + ", ".join(absent))
+    observed = OBSERVED.read_text(encoding="utf-8")
+    if EPIC9_BEGIN not in observed or EPIC9_END not in observed:
+        problems.append(f"{OBSERVED} holds no block between {EPIC9_BEGIN} and {EPIC9_END}")
+
+    for problem in problems:
+        print(f"  {problem}")
+    if problems:
+        raise SystemExit(f"{len(problems)} problem(s) in {OUT}")
+    print(f"ok: {len(EPIC9_FILES)} Epic 9 socket fixtures in {OUT}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture the order-book socket's demo frames.")
     parser.add_argument("--ticker", help="the demo market to subscribe (default: the first open one with a two-sided book)")
     parser.add_argument("--seconds", type=float, default=60.0, help="how long to read deltas (default 60)")
+    parser.add_argument("--check-epic9", action="store_true", help="re-read Epic 9's fixtures and exit 1 on a fault; no connection")
+    parser.add_argument("--epic9", action="store_true", help="capture Epic 9's multi-channel frames (--seconds is the wait for a ticker and a trade frame)")
     args = parser.parse_args()
+    if args.check_epic9:
+        check_epic9()
+        return
+    if args.epic9:
+        capture_epic9(args)
+        return
     require_key()
     require_anchor()
     first, second = choose(args.ticker)
