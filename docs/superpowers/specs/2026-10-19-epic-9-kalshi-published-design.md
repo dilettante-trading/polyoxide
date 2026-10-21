@@ -140,8 +140,10 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
     the change is answered once every command is, and the first refusal fails the change and
     undoes it, as Epic 8's does. Story 1 records what a several-`sids` command does, for a later
     epic.
-  - **An empty ticker set never subscribes.** Kalshi reads a `ticker` or `trade` subscribe with no
-    markets as "every market", so the protocol sends no `subscribe` while the set is empty, emptying
+  - **An empty ticker set never subscribes.** Kalshi refuses a `ticker` or `trade` subscribe with
+    no markets (code 14, "Market Ticker required", on the demo host, 2026-10-21, Story 1's capture,
+    which corrects this spec's first reading that it means "every market"; the probe wins, §1.4), so
+    the protocol sends no `subscribe` while the set is empty, emptying
     the set sends `unsubscribe` for every `sid`, and the first ticker added afterwards sends a fresh
     `subscribe`. Epic 8's rule for the order-book channel becomes the rule for all three.
   - New events: `Event::Ticker(TickerUpdate)` and `Event::Trade(PublicTrade)`.
@@ -276,8 +278,8 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
   - `spine-amendments/epic-9.md`, in `epic-8.md`'s format: A9-1, the spine's S3 row says "the
     Kalshi skeleton (`publish = false`)" and the crate is now published and in the umbrella; A9-2,
     `Candles::intervals()` and the refusal resolve A8-3; A9-3, `Protocol::follow_up` lets a protocol
-    send from `decode`; A9-4, an empty subscription means "every market" on some channels, so a
-    venue's empty membership must not subscribe; plus any gap the run meets. Merging them into the
+    send from `decode`; A9-4, a venue's empty membership must not subscribe, since a venue may
+    refuse an empty subscription or read it as every market; plus any gap the run meets. Merging them into the
     spine and regenerating `docs/ARCHITECTURE.md` is an owner session.
   - `deferred-work.md`: close the entries this epic settles (the anonymous soak, the signed-bucket
     probe, the local book and channels, A8-10, A8-3, and the doc debt), each with the commit that
