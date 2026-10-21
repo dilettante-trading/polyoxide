@@ -172,7 +172,8 @@ pub struct TradeData {
     /// Quantity in the base asset (one contract is one unit). Wire key `qty`.
     #[serde(rename = "qty", with = "rust_decimal::serde::str")]
     pub quantity: Decimal,
-    /// Settlement trade. On the wire, not in the schema.
+    /// Whether this trade closed a position at the instrument's permanent settlement, at the
+    /// final settlement price. The AsyncAPI lists it as required since drift #57.
     #[serde(default)]
     pub settlement: Option<bool>,
     /// Trade time, Unix ms. Wire key `ts`.
@@ -220,7 +221,8 @@ pub struct StatisticsData {
     /// 24-hour volume in the quote asset (USD): the hourly klines' quantities times their prices. Wire key `vol`.
     #[serde(rename = "vol", with = "rust_decimal::serde::str")]
     pub volume: Decimal,
-    /// Price 24 hours ago. Wire key `open`.
+    /// Opening price of the earliest candle in the rolling 24-hour window, whose start is
+    /// rounded down to the minute; `0` when the window holds no candle. Wire key `open`.
     #[serde(rename = "open", with = "rust_decimal::serde::str")]
     pub open_price: Decimal,
     /// Hourly candles for the last 24 hours.

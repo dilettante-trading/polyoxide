@@ -247,7 +247,7 @@
               },
               "exp": {
                 "type": "integer",
-                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "description": "Command-processing deadline in Unix milliseconds, not an order auto-cancel time; the server caps it at now + 5 s, clamps larger values to that cap, and uses that 5 s default when omitted. Values at or before the server's clock are rejected with HTTP 400 (command expired).",
                 "example": 1767225600000
               }
             },
@@ -336,7 +336,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       },
                       "oid": {
@@ -436,7 +436,7 @@
               },
               "exp": {
                 "type": "integer",
-                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "description": "Command-processing deadline in Unix milliseconds, not an order auto-cancel time; the server caps it at now + 5 s, clamps larger values to that cap, and uses that 5 s default when omitted. Values at or before the server's clock are rejected with HTTP 400 (command expired).",
                 "example": 1767225600000
               }
             },
@@ -528,7 +528,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         },
                         "ts": {
@@ -643,7 +643,7 @@
               },
               "exp": {
                 "type": "integer",
-                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "description": "Command-processing deadline in Unix milliseconds, not an order auto-cancel time; the server caps it at now + 5 s, clamps larger values to that cap, and uses that 5 s default when omitted. Values at or before the server's clock are rejected with HTTP 400 (command expired).",
                 "example": 1767225600000
               }
             },
@@ -735,7 +735,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         },
                         "ts": {
@@ -851,7 +851,7 @@
               },
               "exp": {
                 "type": "integer",
-                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "description": "Command-processing deadline in Unix milliseconds, not an order auto-cancel time; the server caps it at now + 5 s, clamps larger values to that cap, and uses that 5 s default when omitted. Values at or before the server's clock are rejected with HTTP 400 (command expired).",
                 "example": 1767225600000
               }
             },
@@ -911,7 +911,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1051,7 +1051,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1201,7 +1201,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1389,7 +1389,7 @@
                             },
                             "error": {
                               "type": "string",
-                              "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                              "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                               "example": "insufficient_margin"
                             }
                           }
@@ -1406,7 +1406,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -1593,7 +1593,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1736,7 +1736,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1832,7 +1832,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -1930,7 +1930,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -1961,7 +1961,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -2014,9 +2014,22 @@
                     "description": "On-chain transaction hash, \"0x\" if not yet mined",
                     "default": "0x",
                     "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                  },
+                  "settlement": {
+                    "type": "boolean",
+                    "description": "Whether this fill closes a position during permanent instrument settlement. Settlement fills use the final settlement price and have no fees or liquidation penalties; they are not normal market trades or ADL."
                   }
                 },
-                "required": ["tid", "iid", "side", "p", "qty", "ts", "hash"]
+                "required": [
+                  "tid",
+                  "iid",
+                  "side",
+                  "p",
+                  "qty",
+                  "ts",
+                  "settlement",
+                  "hash"
+                ]
               }
             },
             "required": ["ch", "ts", "sq", "data"]
@@ -2128,7 +2141,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2226,7 +2239,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2257,7 +2270,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -2410,7 +2423,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         },
                         "arts": {
@@ -2524,7 +2537,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         },
                         "arts": {
@@ -2570,7 +2583,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -2724,7 +2737,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2822,7 +2835,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2853,7 +2866,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -2993,7 +3006,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3091,7 +3104,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3122,7 +3135,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -3302,7 +3315,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3400,7 +3413,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3431,7 +3444,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -3455,12 +3468,12 @@
                   },
                   "vol": {
                     "type": "string",
-                    "description": "24-hour trading volume in contracts",
+                    "description": "24-hour trading volume in quote-asset notional (sum of price times quantity), as a numeric string",
                     "example": "1000.00"
                   },
                   "open": {
                     "type": "string",
-                    "description": "Opening price from 24 hours ago",
+                    "description": "Opening price of the earliest populated candle in the rolling 24-hour window, whose start is rounded down to the minute. Returns \"0\" when the window has no candles.",
                     "example": "100.50"
                   },
                   "klines": {
@@ -3600,7 +3613,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3698,7 +3711,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3729,7 +3742,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -3825,6 +3838,10 @@
                     "maxLength": 32,
                     "pattern": "^[0-9a-f]{32}$",
                     "example": "550e8400e29b41d4a716446655440000"
+                  },
+                  "settlement": {
+                    "type": "boolean",
+                    "description": "Whether this fill closes a position during permanent instrument settlement. Settlement fills use the final settlement price and have no fees or liquidation penalties; they are not normal market trades or ADL."
                   }
                 },
                 "required": [
@@ -3841,6 +3858,7 @@
                   "pep",
                   "pnl",
                   "ts",
+                  "settlement",
                   "liq",
                   "adl"
                 ]
@@ -3962,7 +3980,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4060,7 +4078,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4091,7 +4109,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -4273,7 +4291,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4371,7 +4389,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4402,7 +4420,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -4626,7 +4644,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4724,7 +4742,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4755,7 +4773,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -4918,7 +4936,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5016,7 +5034,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5047,7 +5065,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -5186,7 +5204,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5284,7 +5302,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5315,7 +5333,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -5617,7 +5635,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5715,7 +5733,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5746,7 +5764,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -5894,7 +5912,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5992,7 +6010,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -6023,7 +6041,7 @@
             "properties": {
               "ch": {
                 "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
                 "example": "trades::1"
               },
               "ts": {
@@ -6106,6 +6124,330 @@
                     "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                   }
                 ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "tpsl": {
+      "address": "/v1/ws",
+      "title": "TP/SL",
+      "summary": "Real-time TP/SL lifecycle transitions. Requires authentication, see [Auth](/ws/auth).",
+      "messages": {
+        "SubscribeRequest": {
+          "name": "TpslSubscribeRequest",
+          "title": "Subscribe",
+          "summary": "Subscribe to private TP/SL updates (requires prior auth)",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "TP/SL private channel: \"tpsl\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["tpsl"]
+                },
+                "example": ["tpsl"]
+              }
+            },
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+          },
+          "examples": [
+            {
+              "name": "SubscribeRequest Example",
+              "payload": {
+                "req": "sub",
+                "chs": ["tpsl"]
+              }
+            }
+          ]
+        },
+        "SubscribeResponse": {
+          "name": "TpslSubscribeResponse",
+          "title": "Subscribe Response",
+          "summary": "Response to TP/SL subscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "SubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "UnsubscribeRequest": {
+          "name": "TpslUnsubscribeRequest",
+          "title": "Unsubscribe",
+          "summary": "Unsubscribe from private TP/SL updates",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "TP/SL private channel: \"tpsl\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["tpsl"]
+                },
+                "example": ["tpsl"]
+              }
+            },
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeRequest Example",
+              "payload": {
+                "req": "unsub",
+                "chs": ["tpsl"]
+              }
+            }
+          ]
+        },
+        "UnsubscribeResponse": {
+          "name": "TpslUnsubscribeResponse",
+          "title": "Unsubscribe Response",
+          "summary": "Response to TP/SL unsubscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "Update": {
+          "name": "TpslUpdate",
+          "title": "Update",
+          "summary": "TP/SL lifecycle transitions for authenticated users",
+          "contentType": "application/json",
+          "payload": {
+            "title": "TP/SL Update",
+            "description": "A lifecycle transition for one of the authenticated account's TP/SL legs, one frame per transition. The frame carries only the new state; read the leg's full order, including its live trigger price, from open orders.",
+            "type": "object",
+            "properties": {
+              "ch": {
+                "type": "string",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
+                "example": "trades::1"
+              },
+              "ts": {
+                "description": "Server send time, Unix milliseconds",
+                "type": "integer",
+                "example": 1767225600000
+              },
+              "ets": {
+                "type": "integer",
+                "description": "Event timestamp — the newest event this update reflects, in Unix milliseconds. Distinct from `ts`, which is the server send time; `ts - ets` is time spent inside the exchange after the event. `ets=0` means no event horizon is attested, and consumers must treat the horizon as unknown.",
+                "example": 1767225600000
+              },
+              "sq": {
+                "type": "integer",
+                "description": "Sequence number",
+                "example": 1234567890
+              },
+              "data": {
+                "type": "object",
+                "required": ["oid", "st"],
+                "properties": {
+                  "oid": {
+                    "type": "integer",
+                    "description": "Order ID",
+                    "example": 1234567890
+                  },
+                  "st": {
+                    "type": "string",
+                    "enum": [
+                      "untriggered",
+                      "armed",
+                      "activated",
+                      "cancelled",
+                      "expired"
+                    ],
+                    "description": "New state of the leg. `untriggered`: accepted and waiting for its parent order to fill. `armed`: live and watching its trigger. `activated`: a trailing stop reached its activation price and started trailing. `cancelled`: cancelled by the account. `expired`: left the book for any other reason, including firing; `reason` says which."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why the leg left the book. Present only when `st` is `expired`. One of `triggered`, `parent_cancelled`, `position_closed`, `position_flipped`, `good_til_time_elapsed`, `reduce_only_invalid_at_trigger`, `instrument_close_only`, `instrument_settled` or `unknown`. Treat other values as `unknown`."
+                  }
+                }
+              }
+            },
+            "required": ["ch", "ts", "ets", "sq", "data"]
+          },
+          "examples": [
+            {
+              "name": "Leg armed",
+              "payload": {
+                "ch": "tpsl::12345",
+                "ts": 1767225600002,
+                "ets": 1767225600000,
+                "sq": 1234567890,
+                "data": {
+                  "oid": 1234567890,
+                  "st": "armed"
+                }
+              }
+            },
+            {
+              "name": "Leg triggered",
+              "payload": {
+                "ch": "tpsl::12345",
+                "ts": 1767225660002,
+                "ets": 1767225660000,
+                "sq": 1234568012,
+                "data": {
+                  "oid": 1234567890,
+                  "st": "expired",
+                  "reason": "triggered"
+                }
               }
             }
           ]
@@ -6195,7 +6537,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -6293,7 +6635,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -6833,7 +7175,7 @@
               },
               "exp": {
                 "type": "integer",
-                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "description": "Command-processing deadline in Unix milliseconds, not an order auto-cancel time; the server caps it at now + 5 s, clamps larger values to that cap, and uses that 5 s default when omitted. Values at or before the server's clock are rejected with HTTP 400 (command expired).",
                 "example": 1767225600000
               }
             },
@@ -7009,7 +7351,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -7144,7 +7486,7 @@
               },
               "exp": {
                 "type": "integer",
-                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "description": "Command-processing deadline in Unix milliseconds, not an order auto-cancel time; the server caps it at now + 5 s, clamps larger values to that cap, and uses that 5 s default when omitted. Values at or before the server's clock are rejected with HTTP 400 (command expired).",
                 "example": 1767225600000
               }
             },
@@ -7320,7 +7662,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -8442,6 +8784,66 @@
       "messages": [
         {
           "$ref": "#/channels/withdrawals/messages/Update"
+        }
+      ]
+    },
+    "TpslSubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "Subscribe to TP/SL updates",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/SubscribeRequest"
+        }
+      ]
+    },
+    "TpslSubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "TP/SL subscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/SubscribeResponse"
+        }
+      ]
+    },
+    "TpslUnsubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "Unsubscribe from TP/SL updates",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/UnsubscribeRequest"
+        }
+      ]
+    },
+    "TpslUnsubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "TP/SL unsubscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/UnsubscribeResponse"
+        }
+      ]
+    },
+    "TpslUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "Receive TP/SL updates",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/Update"
         }
       ]
     },
