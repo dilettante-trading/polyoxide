@@ -1,10 +1,10 @@
 # Self-Healing API Maintenance
 
-Polyoxide tracks venues it does not control. Polymarket and Binance ship schema
+Polyoxide tracks venues it does not control. Polymarket, Binance and Kalshi ship schema
 changes, new endpoints, and behavioral tweaks without notice; this document
 describes the machinery that detects that drift every night and reports it
 without a human in the loop. Polymarket publishes specs, so its drift shows two
-ways, in the live tests and against the vendored mirrors; Binance publishes none
+ways, in the live tests and against the vendored mirrors, and so does Kalshi's; Binance publishes none
 for USDⓈ-M, so its live suites are its only drift check.
 
 ## The loop at a glance
@@ -186,8 +186,8 @@ file a false-positive issue.
   (the repository-level setting answers `409 Conflict` while the org policy
   stands), and because one `curl` is all an adoption needs.
 - **Enabling authenticated coverage** (CLOB's authenticated tests, the
-  session-key round trip and relay's credentialed tests): set the
-  `POLYMARKET_*`, `BUILDER_*` and `RELAYER_*` repo secrets each target declares.
+  session-key round trip, relay's credentialed tests and Kalshi's demo-host tests): set the
+  `POLYMARKET_*`, `BUILDER_*`, `RELAYER_*` and `KALSHI_DEMO_*` repo secrets each target declares.
   The loaders find them and the tests light up with no other changes; until
   then each fails as `auth-gated` and is skipped.
 - **Adding a new spec to watch**: add a spec (`id`, `kind`, `url`,

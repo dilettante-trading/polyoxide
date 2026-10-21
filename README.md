@@ -1,6 +1,6 @@
 # Polyoxide
 
-Multi-venue Rust SDK toolkit: Polymarket's APIs and Binance's USDⓈ-M futures market data, one
+Multi-venue Rust SDK toolkit: Polymarket's APIs, Binance's USDⓈ-M futures market data and Kalshi's event-contract market data, one
 crate per venue. It includes library crates for use in your projects, the `polyoxide` umbrella
 over them, and a standalone CLI.
 
@@ -32,8 +32,8 @@ over them, and a standalone CLI.
 cargo add polyoxide
 ```
 
-Its features are named for each venue and module, `polymarket-<module>` and `binance-<module>`,
-and its paths too: `polyoxide::polymarket` and `polyoxide::binance`. Or install individual APIs:
+Its features are named for each venue and module, `polymarket-<module>`, `binance-<module>` and `kalshi-<module>`,
+and its paths too: `polyoxide::polymarket`, `polyoxide::binance` and `polyoxide::kalshi`. Or install individual APIs:
 
 ```bash
 # Market data only
@@ -53,6 +53,9 @@ cargo add polyoxide --no-default-features --features polymarket-relay
 
 # Binance USDⓈ-M futures market data and its streams
 cargo add polyoxide --no-default-features --features binance-usdm-ws
+
+# Kalshi event-contract market data and its streams
+cargo add polyoxide --no-default-features --features kalshi-predictions-ws
 ```
 
 ### CLI
