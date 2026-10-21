@@ -8,13 +8,13 @@ use futures_util::StreamExt;
 use polyoxide_kalshi::predictions::{
     key::Ticker,
     ws::{
-        Channel, DisconnectReason, Event, PredictionsMembership, PredictionsWsBuilder,
+        Books, Channel, DisconnectReason, Event, PredictionsMembership, PredictionsWsBuilder,
         PredictionsWsError, SupervisedPredictionsWs,
     },
     Credentials,
 };
 use polyoxide_test_support::fixtures;
-use polyoxide_venue::{Class, Classify};
+use polyoxide_venue::{Class, Classify, Level};
 use polyoxide_ws::test_server::{next_event, next_item, WINDOW};
 use ring::signature::{UnparsedPublicKey, ED25519};
 use rust_decimal::Decimal;
@@ -1578,5 +1578,108 @@ async fn a_refusal_of_the_first_command_keeps_the_connection() {
     // Only the order book's update was sent: the change stopped at the first refusal.
     let requests = server.requests();
     assert_eq!(requests.len(), 2, "{requests:?}");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_gaps_resnapshot_rebuilds_the_local_book_end_to_end() {
+    // Bug: a book that survives its market's gap, or one rebuilt from anything but the
+    // snapshot that answers the request, so the consumer trades on levels the venue no
+    // longer holds. The socket's events and `Books` are each pinned against the `Event`
+    // contract alone; this feeds the one into the other.
+    fn book_delta(seq: u64, side: &str, price: &str, size: &str) -> String {
+        let mut frame = delta(1, seq, A);
+        frame["msg"]["side"] = json!(side);
+        frame["msg"]["price_dollars"] = json!(price);
+        frame["msg"]["delta_fp"] = json!(size);
+        frame.to_string()
+    }
+    fn level(price: &str, size: &str) -> Level {
+        Level::new(price.parse().unwrap(), size.parse().unwrap())
+    }
+    let server = KalshiServer::start(vec![Script {
+        // The snapshot is seq 1. The first delta adds 100 to the YES bid at 0.22; the
+        // second is seq 4, which skips 3.
+        pushes: vec![
+            book_delta(2, "yes", "0.2200", "100.00"),
+            book_delta(4, "no", "0.5000", "9.00"),
+        ],
+        // The snapshot that answers the request is number 10; the delta after it, 11, adds 5
+        // to the NO bid at 0.54, an ask in YES pricing.
+        snapshot_seq: Some(10),
+        after_snapshot: vec![book_delta(11, "no", "0.5400", "5.00")],
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let mut books = Books::new();
+
+    // The snapshot, then a delta on it.
+    let event = next_event(&mut ws).await;
+    assert!(matches!(event, Event::Snapshot(_)), "{event:?}");
+    books.apply(&event);
+    let event = next_event(&mut ws).await;
+    assert!(matches!(event, Event::Delta(_)), "{event:?}");
+    books.apply(&event);
+    let book = books.get(A).expect("A has a book");
+    assert_eq!(
+        book.bids(),
+        [level("0.2200", "433.00"), level("0.0800", "300.00")]
+    );
+    assert_eq!(
+        book.asks(),
+        [level("0.5400", "20.00"), level("0.5600", "146.00")]
+    );
+
+    // The gap drops A's book, and the delta behind it never reaches it.
+    let event = next_event(&mut ws).await;
+    match &event {
+        Event::Resyncing { tickers } => assert_eq!(tickers, &[A]),
+        other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
+    }
+    books.apply(&event);
+    assert!(
+        books.get(A).is_none(),
+        "the gap left A's stale book in place"
+    );
+
+    // The re-snapshot: a book of the answer alone, with none of the 100 added before the gap.
+    let event = next_event(&mut ws).await;
+    match &event {
+        Event::Snapshot(book) => assert_eq!(book.market_ticker, A),
+        other => panic!("expected the snapshot that answers the request, got {other:?}"),
+    }
+    books.apply(&event);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A]})
+    );
+    let book = books.get(A).expect("A has a book again");
+    assert_eq!(
+        book.bids(),
+        [level("0.2200", "333.00"), level("0.0800", "300.00")]
+    );
+
+    // The delta after it lands on the new book, and the book is exactly the answer plus it.
+    let event = next_event(&mut ws).await;
+    assert!(matches!(event, Event::Delta(_)), "{event:?}");
+    books.apply(&event);
+    let book = books.get(A).expect("A has a book");
+    assert_eq!(
+        book.bids(),
+        [level("0.2200", "333.00"), level("0.0800", "300.00")]
+    );
+    assert_eq!(
+        book.asks(),
+        [level("0.5400", "25.00"), level("0.5600", "146.00")]
+    );
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    // Repaired in place: one connection, so no `Disconnected` can have been yielded.
+    assert_eq!(server.connection_count(), 1);
     ws.close().await.expect("close");
 }
