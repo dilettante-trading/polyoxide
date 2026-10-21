@@ -311,7 +311,8 @@ pub struct Statistic {
     /// 24-hour volume in the quote asset (USD): the hourly klines' quantities times their prices.
     #[serde(with = "rust_decimal::serde::str")]
     pub volume: Decimal,
-    /// Price 24 hours ago.
+    /// Opening price of the earliest candle in the rolling 24-hour window, whose start is
+    /// rounded down to the minute; `0` when the window holds no candle.
     #[serde(with = "rust_decimal::serde::str")]
     pub open_price: Decimal,
     /// Hourly candles for the last 24 hours.
