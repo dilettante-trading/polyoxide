@@ -56,7 +56,9 @@ impl MarketsApi {
     /// that end between `start_ts` and `end_ts`, both inclusive and in Unix seconds.
     ///
     /// Kalshi selects a candlestick by when it ends, so a span of open times is shifted forward
-    /// by one width. The route answers up to 10,000 candlesticks across the markets asked for.
+    /// by one width. Kalshi refuses a request over 10,000 candlesticks across the markets asked
+    /// for with a `400` rather than truncating it, so a caller keeps its span within 10,000
+    /// periods.
     /// A market that settled before Kalshi's historical cutoff has candlesticks only on
     /// `GET /historical/markets/{ticker}/candlesticks`, which this client does not call.
     pub fn candlesticks(

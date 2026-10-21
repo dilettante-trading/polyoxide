@@ -29,7 +29,10 @@
 //! the time it ends and the trait by the time it opens, so the request's span is
 //! the query's moved forward by one width: `start` rounded up to the second, and
 //! `end` (or now) rounded down to the second, each plus the width. A candle opens
-//! at its end less one width, and one opening outside the query is dropped. Its
+//! at its end less one width, and one opening outside the query is dropped. Kalshi
+//! refuses a request over 10,000 candlesticks rather than truncating it, so a span
+//! past 10,000 periods is clamped to its first 10,000 (`end` is sent no later than
+//! `start` plus 9,999 widths) and the rest is not read. Its
 //! prices are the trade prices, and a `no` key's are each turned into *1 - price*
 //! with its high and low swapped. A period with no trade closes at the last price
 //! before it (`previous`) and has no open, high or low, and a period with no
@@ -302,6 +305,10 @@ const SERVED: &[CandleInterval] = &[
     CandleInterval::Day1,
 ];
 
+/// The most candlesticks Kalshi answers in one request: it refuses a request for more with a
+/// `400` ("max candlesticks: 10000") rather than truncating it.
+const MAX_PERIODS_PER_REQUEST: i64 = 10_000;
+
 /// The first, highest, lowest and last price of one side's offers over a candle's period, in
 /// dollars.
 #[derive(Debug, Clone, PartialEq)]
@@ -438,7 +445,8 @@ impl Candles for Predictions {
     }
 
     /// The market's candles of one served width opening in the query's span, oldest first, in
-    /// one request: up to 10,000 of them, which a minute query spans in a week.
+    /// one request. Kalshi refuses a request over 10,000 candlesticks rather than truncating it,
+    /// so a span past 10,000 periods is clamped to its first 10,000 and the rest is not read.
     async fn candles(
         &self,
         key: &MarketKey,
@@ -449,14 +457,14 @@ impl Candles for Predictions {
         let period = wire_period(query.interval)?;
         let width = period.seconds();
         let end = query.end.unwrap_or_else(UnixMillis::now);
+        let start_ts = seconds_up(query.start).saturating_add(width);
+        // 10,000 periods, both ends inclusive, are 9,999 widths apart.
+        let end_ts = seconds_down(end)
+            .saturating_add(width)
+            .min(start_ts.saturating_add(MAX_PERIODS_PER_REQUEST.saturating_sub(1) * width));
         let response = self
             .markets()
-            .candlesticks(
-                &id.ticker,
-                period,
-                seconds_up(query.start).saturating_add(width),
-                seconds_down(end).saturating_add(width),
-            )
+            .candlesticks(&id.ticker, period, start_ts, end_ts)
             .send()
             .await?;
         let Some(market) = response

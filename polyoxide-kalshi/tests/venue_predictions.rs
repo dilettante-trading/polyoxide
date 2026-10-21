@@ -1282,6 +1282,49 @@ async fn the_span_is_the_query_rounded_inward_to_the_second_and_moved_forward_by
 }
 
 #[tokio::test]
+async fn a_span_past_10_000_periods_is_clamped_to_its_first_10_000() {
+    let ticker = test_ticker();
+    let key = key::key(&ticker, Outcome::Yes);
+    for (interval, width, minutes) in [
+        (CandleInterval::Minute1, 60, 1),
+        (CandleInterval::Hour1, 3_600, 60),
+        (CandleInterval::Day1, 86_400, 1440),
+    ] {
+        // Kalshi refuses a request over 10,000 candlesticks rather than truncating it. The start
+        // sent is T0 + width, so the last end that keeps the request within 10,000 periods, both
+        // ends inclusive, is that plus 9,999 widths. A query that ends exactly there is sent as
+        // it is, and each one that ends later is cut back to it.
+        let last = T0 + 10_000 * width;
+        for (query_end, sent_end) in [
+            (T0 + 9_998 * width, last - width),
+            (T0 + 9_999 * width, last),
+            (T0 + 10_000 * width, last),
+            (T0 + 20_000 * width, last),
+        ] {
+            let mut server = start().await;
+            let mock = route(
+                &mut server,
+                CANDLES,
+                candles_query(&ticker, T0 + width, sent_end, minutes),
+                &batch_body(&ticker, vec![]),
+                1,
+            )
+            .await;
+            let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+            let query =
+                CandleQuery::new(interval, UnixMillis(ms(T0))).end(UnixMillis(ms(query_end)));
+            let candles = venue.candles(&key, &query).await.unwrap();
+            mock.assert_async().await;
+            assert!(
+                candles.is_empty(),
+                "{interval:?} ending at T0 + {}",
+                query_end - T0
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_query_with_no_end_reads_up_to_now_and_sends_no_latest_before_start() {
     let key = key::key(&test_ticker(), Outcome::Yes);
     let before = UnixMillis::now().0 / 1000;
