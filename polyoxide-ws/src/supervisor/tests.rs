@@ -4,7 +4,7 @@
 //! protocol pings. It counts any frame as liveness, as one venue does, and
 //! skips a frame that is not JSON.
 
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -1338,8 +1338,6 @@ async fn the_default_connect_reports_a_handshake_that_cannot_be_built() {
     assert_eq!(server.connection_count(), 0);
 }
 
-use std::collections::VecDeque;
-
 /// A protocol that sends a frame after the ones it decodes, through
 /// `follow_up`: for each data event it decodes it holds `reply(n)`, and it
 /// returns the held frames one per call. `reset` forgets what is held. The
@@ -1440,8 +1438,12 @@ impl Protocol for Followed {
         <Feed as Protocol>::is_retriable(err)
     }
 
+    /// A frame that does not decode reconnects, where `Feed` skips it.
     fn recover(&self, err: &TestError) -> Recovery {
-        self.feed.recover(err)
+        match err {
+            TestError::Bad(_) => Recovery::Reconnect,
+            err => self.feed.recover(err),
+        }
     }
 
     fn disconnected(&mut self, outage: Outage<TestError>) -> Option<Ev> {
@@ -1469,6 +1471,25 @@ impl Protocol for Followed {
     }
 }
 
+/// A server that answers the replay and nothing else. An answer is a frame,
+/// and each decoded frame would send the next held reply, so it does not
+/// answer an acknowledgement.
+async fn server_silent_on_acks(scripts: Vec<Script>) -> ScriptedServer {
+    ScriptedServer::start_answering(scripts, |_| {
+        let mut inner = answer(false);
+        move |request: &str| {
+            if request.contains(r#""ack""#) {
+                Vec::new()
+            } else {
+                inner(request)
+            }
+        }
+    })
+    .await
+}
+
+// `connect` and `quiet` above are protected test items (the test-bodies gate
+// pairs them with v0.40.0's), so these are their copies for `Followed`.
 async fn connect_followed(
     protocol: Followed,
     timing: Timing,
@@ -1534,35 +1555,27 @@ async fn follow_up_sends_one_frame_per_decode_and_leaves_the_rest_to_reset() {
     // out. The server then closes; the protocol's `reset` clears the other
     // two before the next connection, whose own event gets its own reply.
     let burst = vec![text(json!({"burst": [3, 4, 5]}))];
-    // The server does not answer an acknowledgement: an answer is a frame, and
-    // each decoded frame would send the next held reply.
-    let server = ScriptedServer::start_answering(
-        vec![
-            after_replay(burst).drop_after(Duration::from_millis(150)),
-            after_replay(data([9])),
-        ],
-        |_| {
-            let mut inner = answer(false);
-            move |request: &str| {
-                if request.contains(r#""ack""#) {
-                    Vec::new()
-                } else {
-                    inner(request)
-                }
-            }
-        },
-    )
+    let server = server_silent_on_acks(vec![
+        after_replay(burst).drop_after(Duration::from_millis(150)),
+        after_replay(data([9])),
+    ])
     .await;
     // No pings either: a pong is a frame, and each decoded frame would send
-    // the next held reply.
+    // the next held reply. Staleness is wide so that the second connection,
+    // quiet after its event, is not replaced while the test looks at it.
     let timing = Timing {
         ping_interval: None,
+        stale_after: Duration::from_secs(2),
         ..fast()
     };
     let mut ws = connect_followed(followed(&server, ack), timing, topics(&["a"])).await;
     for n in [3, 4, 5] {
         assert_eq!(next_event(&mut ws).await, Ev::Data(n));
     }
+    // The close is read as a frame and decoded, and `follow_up` is not called
+    // after it: this also pins the `is_finished()` guard. Without it the
+    // decode of the server's Close would send a held frame on a closed
+    // socket, and the outage would be `Disconnected("error")`.
     assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
     assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
     assert_eq!(next_event(&mut ws).await, Ev::Data(9));
@@ -1573,6 +1586,42 @@ async fn follow_up_sends_one_frame_per_decode_and_leaves_the_rest_to_reset() {
         .await;
     quiet_followed(&mut ws, Duration::from_millis(150)).await;
     assert_eq!(acks(&server), [r#"{"ack":3}"#, r#"{"ack":9}"#]);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn follow_up_is_not_called_after_a_decode_error_that_reconnects() {
+    // One frame carries two events, so two replies are held and one goes out.
+    // The next frame does not decode, and this protocol reconnects on that:
+    // the other reply stays held, and `reset` clears it.
+    let server = server_silent_on_acks(vec![
+        after_replay(vec![
+            text(json!({"burst": [1, 2]})),
+            Message::Text("not json".into()),
+        ]),
+        Script::hold(),
+    ])
+    .await;
+    let timing = Timing {
+        ping_interval: None,
+        stale_after: Duration::from_secs(2),
+        ..fast()
+    };
+    let mut ws = connect_followed(followed(&server, ack), timing, topics(&["a"])).await;
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Data(2));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("error"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    server
+        .wait_for("the second connection's replay", |s| {
+            s.client_frames()
+                .iter()
+                .filter(|frame| frame.contains(r#""op":"sub""#))
+                .count()
+                == 2
+        })
+        .await;
+    assert_eq!(acks(&server), [r#"{"ack":1}"#]);
     ws.close().await.expect("close");
 }
 

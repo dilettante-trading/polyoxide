@@ -233,8 +233,11 @@ pub trait Protocol: Send + Sized + 'static {
     /// follows.
     ///
     /// A protocol with several frames to send returns one for each call, so
-    /// the rest go out after later frames. What it still holds when the
-    /// connection ends stays with it, and is cleared in
+    /// the rest go out after later frames. Every frame the connection yields
+    /// is decoded, the server's pings, pongs and unsolicited answers
+    /// included, so a held frame goes out after the next frame of any kind,
+    /// and on a connection that receives nothing it waits. What it still
+    /// holds when the connection ends stays with it, and is cleared in
     /// [`reset`](Self::reset).
     fn follow_up(&mut self) -> Option<Message> {
         None
