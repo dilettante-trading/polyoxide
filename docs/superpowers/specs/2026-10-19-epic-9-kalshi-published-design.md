@@ -204,7 +204,12 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
     `GET /events/{event_ticker}`), each path probed once on the host first. The measured clean rate,
     with a tenth reserved (`RESERVED_FRACTION`), replaces the unsigned client's provisional Basic
     sizing in `throttle.rs`, and `OBSERVED.md`'s `## Rate limits` records the runs. If no rate below
-    Basic's 200/s refuses, the sizing stays Basic's and is marked confirmed.
+    Basic's 200/s refuses, the sizing stays Basic's and is marked confirmed. **Sized** (the owner,
+    2026-10-21, Story 7's runs): the ramp was clean at 20 reads/s, but the shipped client at
+    exactly Basic's refill (200 tokens/s, 20 reads/s) drew retried 429s on ~0.3% of calls and at
+    180 none, so the unsigned refill is 180 tokens/s (20 reads/s less `RESERVED_FRACTION`) at
+    depth 600. The plan's new pin reads `UNSIGNED_CLEAN_RATE <= 20`, and the unsigned arm resizes
+    with the bucket's current capacity, so the existing `request.rs` test that sets (5, 1) holds.
   - **The signed-bucket probe**, on demo, with `KALSHI_DEMO_API_KEY_ID` and
     `KALSHI_DEMO_PRIVATE_KEY`: drain the key's Read bucket past its capacity on a public route over
     distinct URLs and see whether the 429 follows the key's bucket. If it does, a keyed client's
