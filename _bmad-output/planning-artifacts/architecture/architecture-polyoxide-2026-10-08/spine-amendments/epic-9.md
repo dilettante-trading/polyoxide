@@ -41,7 +41,7 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
 - **Why:**
   - **Kalshi's recovery from a gap needs it.** A gap in the order-book sequence is seen in `decode`, and the cheaper recovery is a `get_snapshot` on the same connection. `replay` and `apply` run only for a membership change, and a ping only on its schedule, so reconnecting was the only recovery the kit allowed.
   - **It is additive and venue-neutral.** The default changes no existing protocol, and the kit's docs name no venue.
-- **Follow-up in the code:** Story 4 adds the method and its call, with three tests in `polyoxide-ws/src/supervisor/tests.rs`, and Story 5 uses it for the re-snapshot. The merge session edits AD-11 and the guide.
+- **Follow-up in the code:** Story 4 adds the method and its call, with five tests in `polyoxide-ws/src/supervisor/tests.rs`, and Story 5 uses it for the re-snapshot. The merge session edits AD-11 and the guide.
 
 ## A9-4: a venue's empty membership must not subscribe (amends AD-11)
 

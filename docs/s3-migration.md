@@ -168,5 +168,5 @@ default build, `polymarket`, gains no crate.
   `Supervisor` calls it once after each `decode` that leaves the connection up and sends the
   frame it returns, bounded by `stale_after`. A `Protocol` written before it is unchanged.
 
-No dependency tree of an existing build changes. `kalshi-predictions` builds core's HTTP stack,
+No existing build gains a third-party crate; `full` gains `polyoxide-kalshi`. `kalshi-predictions` builds core's HTTP stack,
 as the other venues' HTTP modules do, and `kalshi-predictions-ws` adds the socket kit.
