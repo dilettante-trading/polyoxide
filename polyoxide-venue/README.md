@@ -31,7 +31,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-venue = "0.41"
+polyoxide-venue = "0.42"
 ```
 
 ## Usage

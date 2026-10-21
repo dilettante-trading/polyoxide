@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-21
+
+Kalshi's first release on crates.io (Epic 9), product classes (ADR 0001), a CLOB fix (#70), and
+upstream drift adopted for data v2 (#67), perps (#56, #57) and Kalshi's mirrors (#68, #69).
+Three changes are major-level, so the 0.x minor rises: the CLOB's batch reads change their
+return types (#70), three perps fields lose their `Option` and `LeaderboardSort` gains a variant
+(#56), and `KeySpace` gains a required `CLASS` (ADR 0001), which only a crate implementing it
+outside the workspace notices. Nothing is removed or renamed, and
+[`docs/s3-removals.md`](docs/s3-removals.md) still lists nothing. Epic 9 and ADR 0001 are
+summarized by their consumer-impact notes from [`docs/s3-migration.md`](docs/s3-migration.md).
+
 - **CLOB batch reads decode (#70).** `Markets::prices`, `midpoints` and `spreads` declared a
   `Vec` return, but the CLOB answers a map keyed by token id, so every call failed to decode.
   They now return `HashMap<String, HashMap<OrderSide, Decimal>>` (token, side, price) and
@@ -37,6 +48,179 @@
     address)` and `widget()`, with `CompetitionId`, `CompetitionStatus` and `CompetitionRowState` in
     `perps::types`. No competition has existed yet, so the competition types are modelled from the
     spec alone.
+
+**Epic 9: Kalshi published.** Additive; `polyoxide-kalshi` is new on crates.io, and the
+umbrella's default build, `polymarket`, gains no crate.
+
+- `polyoxide-kalshi`, first published in 0.42.0 (it was `publish = false`). The module
+  `predictions`, feature `predictions` (on by default): `Predictions` and `PredictionsBuilder`,
+  for Kalshi's production and demo hosts, with optional `Credentials` that sign a keyed client's
+  requests; the namespaces `health`, `exchange`, `markets` (`list`, `get`, `orderbook`, `trades`,
+  `candlesticks` and `series_candlesticks`), `events` and `account`; `PredictionsError`;
+  `predictions::key`, whose keys read `kalshi.predictions:<TICKER>:yes|no`; and
+  `predictions::venue`, whose `Predictions` implements `MarketData`, `Trades`, `EventGroups`
+  and `Candles` with `InstrumentExt`, `TradeExt`, `EventGroupExt` and `CandleExt`. Its candles
+  come at one minute, one hour and one day (any other width is refused before a request), and a
+  span can return fewer candles than it has periods, since the venue's route leaves out a period
+  with no row at all.
+- `polyoxide-kalshi`, with `predictions-ws`: `PredictionsWsBuilder` connects a
+  `SupervisedPredictionsWs` on the three channels `orderbook_delta`, `ticker` and `trade`
+  (`Channel`, chosen with `channels`, the order book by default). It yields `Event::Snapshot`,
+  `Delta`, `Ticker`, `Trade`, `Resyncing`, `Disconnected` and `Reconnected`. A gap in the
+  order-book sequence asks Kalshi for fresh snapshots on the same connection instead of
+  reconnecting (`PredictionsMembership::snapshot` asks on demand), and `ws::book::Books` keeps
+  each ticker's ladder from the events. The handshake needs `Credentials`, public data
+  included.
+- The Read throttle: a client with no credentials has one bucket, depth 600 refilling 180 tokens
+  a second (20 reads a second measured clean, less a tenth); a keyed client's public reads draw on
+  a second bucket sized the same, and only `GET /account/limits` draws on the key's bucket.
+- The umbrella: the features `kalshi`, `kalshi-predictions` and `kalshi-predictions-ws`, all in
+  `full` and none in the default; `polyoxide::kalshi`; `polyoxide::parse_key` names
+  `kalshi.predictions` under `kalshi-predictions`; and the prelude names `Predictions`,
+  `PredictionsBuilder`, `PredictionsError`, `KalshiCredentials`, `PredictionsEvent`,
+  `PredictionsWsBuilder`, `SupervisedPredictionsWs`, `PredictionsWsError`,
+  `PredictionsMembership`, `PredictionsChannel` and `PredictionsBooks`.
+- `polyoxide-venue`, feature `market`: `Candles::intervals()`, a provided method that returns
+  the widths a venue serves, `CandleInterval::ALL` by default, so every existing implementation
+  keeps its behaviour and `DynCandles` forwards it. `CandleQuery::ensure_served` and the new
+  `UnservedInterval` (`InvalidRequest`, a fault) let a venue that serves fewer widths refuse
+  another before it sends anything.
+- `polyoxide-ws`: `Protocol::follow_up`, a provided method that returns no frame by default. The
+  `Supervisor` calls it once after each `decode` that leaves the connection up and sends the
+  frame it returns, bounded by `stale_after`. A `Protocol` written before it is unchanged.
+
+No existing build gains a third-party crate; `full` gains `polyoxide-kalshi`. `kalshi-predictions`
+builds core's HTTP stack, as the other venues' HTTP modules do, and `kalshi-predictions-ws` adds the
+socket kit.
+
+**ADR 0001: product classes.** One line for an outside `KeySpace`; code that only uses keys
+and the market-data traits builds unchanged.
+
+- `polyoxide-venue`, feature `keys`: `ProductClass` (`EventContract`, `PerpetualFuture`;
+  `#[non_exhaustive]`; `as_str` and `Display` spell it as a registration does), the required
+  `KeySpace::CLASS`, and `MarketKey::class()`. The class follows from the venue and product, so a
+  key's text form, equality and hash are unchanged.
+- `polyoxide-venue`, feature `market`: the class bundles `PerpetualMarket` (`MarketData + Funding`)
+  and `EventContractMarket` (`MarketData + EventGroups`), each implemented for every type that
+  implements its members. Polymarket's `Perps` and Binance's `Usdm` are perpetual markets;
+  Polymarket's `Clob` (with `gamma`) and Kalshi's `Predictions` are event-contract markets.
+
+### 🚀 Features
+
+- *(kalshi)* The candlestick fixtures and their findings (Epic 9, Story 1)
+- *(venue)* UnservedInterval and CandleQuery::ensure_served (Epic 9, Story 2)
+- *(venue)* Candles::intervals, forwarded by DynCandles (Epic 9, Story 2)
+- *(kalshi)* The route table holds the two candlestick routes (Epic 9, Story 3)
+- *(kalshi)* PeriodInterval and the candlestick types (Epic 9, Story 3)
+- *(kalshi)* Markets().candlesticks and series_candlesticks (Epic 9, Story 3)
+- *(kalshi)* Candles on Predictions, with CandleExt and Ohlc (Epic 9, Story 3)
+- *(kalshi)* Clamp the candle span to 10,000 periods (Epic 9, Story 3)
+- *(ws)* Protocol::follow_up sends a frame after a decode (Epic 9, Story 4)
+- *(kalshi)* The multi-channel socket fixtures and their findings (Epic 9, Story 1)
+- *(kalshi)* The channel enum, the ticker and trade types and the two new socket errors (Epic 9, Story 5)
+- *(kalshi)* The socket carries ticker and trade, empties to nothing and re-snapshots a gap in place (Epic 9, Story 5)
+- *(kalshi)* A local order book kept from snapshots and deltas (Epic 9, Story 6)
+- *(kalshi)* Resyncing drops its tickers' books and Reconnected drops all (Epic 9, Story 6)
+- *(kalshi)* Read_soak's arguments, URL supply and the signed probe's verdict (Epic 9, Story 7)
+- *(kalshi)* Read_soak's drivers, the ramp, the shipped-client validation and the signed probe (Epic 9, Story 7)
+- *(kalshi)* Size the unsigned Read bucket from the soak, a tenth below the clean rate (Epic 9, Story 7)
+- *(kalshi)* A keyed client's public reads draw on the unsigned bucket, not the key's (Epic 9, Story 7)
+- *(kalshi)* Publish polyoxide-kalshi and add the umbrella's kalshi features (Epic 9, Story 8)
+- *(umbrella)* Polyoxide::kalshi, parse_key's Kalshi arm and the prelude's Kalshi names (Epic 9, Story 8)
+- *(umbrella)* The venue-neutral example and its mock suite read Kalshi (Epic 9, Story 8)
+- *(polyoxide)* The Kalshi prelude adds PredictionsMembership and Channel as PredictionsChannel (Epic 9, final review M5)
+- *(data)* ActivityType::Migration, adopting drift issue [#67](https://github.com/dilettante-trading/polyoxide/pull/67)
+- *(perps)* Adopt the perps spec drift ([#56](https://github.com/dilettante-trading/polyoxide/issues/56))
+- *(venue)* Every product declares its ProductClass, and every key carries it (ADR 0001)
+- *(registry)* Each crate registers its products' classes, held to KeySpace::CLASS (ADR 0001)
+- *(venue)* PerpetualMarket and EventContractMarket, with each product pinned to its bundle (ADR 0001)
+
+### 🐛 Bug Fixes
+
+- *(clob)* Markets::{prices, midpoints, spreads} decode the token-keyed map ([#70](https://github.com/dilettante-trading/polyoxide/issues/70))
+- *(kalshi)* D8's one-sid membership answers, the unknown and outside ticker records, tighter checks (Epic 9, Story 1 review)
+- *(kalshi)* A re-snapshot that empties re-anchors the numbering, and a snapshot request leaves no follow-up behind (Epic 9, Story 5 review)
+- *(kalshi)* A change refused after a command was accepted replaces the connection (Epic 9, Story 5 follow-up)
+- *(kalshi)* Removing the last market awaited keeps a numbering a snapshot set (Epic 9, Story 5 follow-up)
+- *(kalshi)* Pin the public bucket's size and the key's routes, and print both buckets (Epic 9, Story 7 review fix)
+- *(kalshi)* A soak worker parked in the pacer stops at the first 429 (Epic 9, Story 7 review fix)
+- *(perps)* Review fixes for the [#56](https://github.com/dilettante-trading/polyoxide/pull/56) adoption
+- *(registry)* The perps AsyncAPI row counts 28 channels, as its region does ([#57](https://github.com/dilettante-trading/polyoxide/issues/57))
+
+### 🚜 Refactor
+
+- *(kalshi)* The local book matches its remaining variants by name (Epic 9, Story 6 follow-up)
+- *(kalshi)* Wire_period refuses an unserved width as ensure_served does (Epic 9, final review)
+
+### 📚 Documentation
+
+- *(spec)* Epic 9, Kalshi published: design
+- *(plan)* Epic 9, Kalshi published: the skeleton, and the spec's probe and re-split
+- *(spec)* Epic 9, the owner lets Story 3 edit the four eight-route tests
+- *(spec)* Epic 9, the owner lets Story 5 rewrite two gap tests and the protocol unit tests
+- *(plan)* Epic 9, the skeleton follows the owner's §13 exceptions and settles three contract names
+- *(spec)* Epic 9, the owner admits ci.yml's comment for Story 8 and pre-grants Story 7's two signed-bucket tests
+- *(plan)* Epic 9, Kalshi published: the nine stories drafted
+- *(kalshi)* The Epic 9 section of OBSERVED.md and its anchor (Epic 9, Story 1)
+- *(spec)* Epic 9, the owner clamps Kalshi's candle span to 10,000 periods; Story 1's width-5 finding
+- *(kalshi)* Period_interval=5 on the batch route answers the daily candles (Epic 9, Story 1)
+- *(spec)* Epic 9, the owner takes the host's outside-ticker snapshot in place of the error fixture
+- *(spec)* Epic 9, an empty ticker or trade subscribe is refused, not every market; the rule stands
+- *(kalshi)* The batch candlestick route omits idle periods; restore the 2026-10-19 width-5 statement (Epic 9, Story 1 review)
+- *(kalshi)* The Story 1 records state only what was observed (Epic 9, Story 1 record fix)
+- *(spec)* Epic 9, the owner reconnects on a change refused partway across sids
+- *(kalshi)* The unsigned read soak on production (Epic 9, Story 7)
+- *(kalshi)* The signed-bucket probe on the demo host (Epic 9, Story 7)
+- *(spec)* Epic 9, the owner sizes Kalshi's unsigned refill at 180 tokens a second
+- *(kalshi)* Correct the Epic 8 rate-limit notes and bound the signed-probe verdict (Epic 9, Story 7 review fix)
+- *(kalshi)* The crate docs and READMEs describe a published crate, and the umbrella's README names Kalshi (Epic 9, Story 8)
+- *(spec)* Epic 9, polyoxide-kalshi's keywords and categories
+- *(claude)* Kalshi is a published venue, with its intervals, channels, re-snapshot and book (Epic 9, Story 9)
+- The README, spec index, SELF-HEALING and .env.example name a published Kalshi (Epic 9, Story 9)
+- *(migration)* Epic 9's consumer-impact notes (Epic 9, Story 9)
+- *(spine)* Epic 9's amendments A9-1 to A9-5 (Epic 9, Story 9)
+- *(deferred-work)* Close what Epic 9 settled, and file two open Kalshi rate-limit entries (Epic 9, Story 9)
+- *(kalshi)* A refusal partway yields to code 9, and the daily candle's clock-change question (Epic 9, Story 9)
+- Epic 9 review fixes, the CLI's venues, A9-3's five tests, the migration note, Kalshi's drift and the Books/OrderBook split (Epic 9, Story 9)
+- *(kalshi)* The throttle's sizing, Snapshot answered once sent and the snapshot's cases (Epic 9, final review)
+- *(kalshi)* Rewrap the predictions module's throttle paragraph at 100 columns
+- *(spec)* Epic 9, D9's snapshot() is answered once the command is sent
+- *(kalshi)* The demo host accepts the re-snapshot's command ids (Epic 9, final review M7)
+- *(specs)* Adopt Kalshi's OpenAPI drift ([#69](https://github.com/dilettante-trading/polyoxide/issues/69))
+- *(spec)* Adopt Kalshi's AsyncAPI drift ([#68](https://github.com/dilettante-trading/polyoxide/issues/68))
+- *(mutants)* Re-cite and re-prove rows (e), case and (e), only a 400
+- *(specs)* Adopt Kalshi's OpenAPI drift ([#69](https://github.com/dilettante-trading/polyoxide/issues/69))
+- *(spec)* Adopt the perps AsyncAPI drift ([#57](https://github.com/dilettante-trading/polyoxide/issues/57))
+- *(perps)* Statistic::open_price is the window's earliest candle open ([#57](https://github.com/dilettante-trading/polyoxide/issues/57))
+- *(decisions)* ADR 0001, product classes over one capability core (proposed)
+- *(decisions)* ADR 0001 follows Epic 9, both class bundles have two implementers
+- *(plans)* ADR 0001's implementation plan, product classes and their bundles
+- Product classes in the standing rules, the S3 notes and the spine amendments; ADR 0001 accepted
+- *(spine)* The guide says Kalshi is published and in the umbrella (A9-1)
+
+### 🧪 Testing
+
+- *(kalshi)* Live_predictions_venue reads candles at each served width (Epic 9, Story 3)
+- *(kalshi)* Look through the busiest hundred markets for an established one (Epic 9, Story 3)
+- *(kalshi)* The live candles test fails on a missing NO candle or an unreadable open time (Epic 9, Story 3)
+- *(ws)* Follow_up's tests pin the error path and stop racing staleness (Epic 9, Story 4)
+- *(kalshi)* The scripted answer carries several channels and answers get_snapshot (Epic 9, Story 5)
+- *(kalshi)* The supervised socket's channels, empty-set rule and re-snapshot on the scripted server (Epic 9, Story 5)
+- *(kalshi)* Wire agreement for ticker, trade and the requested snapshot, and the live suite for all three channels (Epic 9, Story 5)
+- *(kalshi)* The requested-snapshot live test fails untagged and ignores a replayed snapshot; reword the socket docs (Epic 9, Story 5 review)
+- *(kalshi)* The local book replays the captured snapshot and deltas (Epic 9, Story 6)
+- *(kalshi)* Widen the parked-worker soak test's slot to 1 s (Epic 9, Story 7 review fix)
+- *(umbrella)* Live_venue reads Kalshi's Predictions, and its nightly job builds it (Epic 9, Story 8)
+- *(ci)* The classify sweep knows Kalshi's error types and the candle refusal (Epic 9, Story 9)
+- *(kalshi)* Pin the unknown-ticker snapshot fixture (Epic 9, final review)
+- *(kalshi)* A gap's re-snapshot rebuilds the local book end to end (Epic 9, final review M6)
+- *(polyoxide)* Every product the umbrella builds keys its own class (ADR 0001)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(epic-9)* The touch-set gate every story ends with (Epic 9, Story 1)
+- *(umbrella)* Allowlists for kalshi-predictions and kalshi-predictions-ws; the trees the two new umbrella features build, no existing file moves (Epic 9, Story 8)
+- *(kalshi)* Keywords and categories, and the manifest comments name the three channels (Epic 9, Story 9)
 
 ## [0.41.1] - 2026-10-19
 
