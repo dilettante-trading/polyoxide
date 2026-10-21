@@ -17,12 +17,17 @@
 #[allow(dead_code)]
 mod common;
 
+use std::{cmp::Reverse, collections::HashMap};
+
 use polyoxide_kalshi::predictions::{
     key::{self, Outcome, Ticker},
     Predictions,
 };
 use polyoxide_test_support::{environmental, transient, ClassifiedResultExt, ResultExt};
-use polyoxide_venue::{Book, EventGroups, Level, MarketData, MarketKey, Quote, SizeUnit, Trades};
+use polyoxide_venue::{
+    Book, CandleInterval, CandleQuery, Candles, EventGroups, Level, MarketData, MarketKey, Quote,
+    SizeUnit, Trades, UnixMillis,
+};
 use rust_decimal::Decimal;
 
 /// How many times a read that moved is tried again.
@@ -167,5 +172,167 @@ async fn live_the_event_group_holds_both_outcomes_of_the_market() {
             "the event {} does not hold {each}",
             group.id
         );
+    }
+}
+
+/// The days a market must have been open for the check across outcomes to hold a completed
+/// daily candle: it skips a candle younger than two periods, so the 15-minute crypto markets
+/// that dominate the trades list, which open minutes before they trade, have no completed hourly
+/// candle and no completed daily one.
+const ESTABLISHED_DAYS: i64 = 3;
+
+/// How many of the busiest markets are looked at for one that qualifies.
+const CANDIDATES: usize = 30;
+
+/// The market with the most trades in the host's latest 1000 among those opened at least
+/// `ESTABLISHED_DAYS` ago. With none among the busiest `CANDIDATES`, the test is an
+/// `environmental` skip.
+async fn busiest_established_market(client: &Predictions) -> Ticker {
+    let page = client
+        .markets()
+        .trades()
+        .limit(1000)
+        .send()
+        .await
+        .or_fail("recent trades");
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for trade in &page.trades {
+        *counts.entry(trade.ticker.as_str()).or_default() += 1;
+    }
+    let mut busiest: Vec<(&str, usize)> = counts.into_iter().collect();
+    busiest.sort_by_key(|(ticker, count)| (Reverse(*count), *ticker));
+    let latest_open = chrono::Utc::now() - chrono::Duration::days(ESTABLISHED_DAYS);
+    for (name, _) in busiest.into_iter().take(CANDIDATES) {
+        let ticker = Ticker::new(name).or_fail("name a recently traded market");
+        let market = client
+            .markets()
+            .get(&ticker)
+            .send()
+            .await
+            .or_fail("read a recently traded market")
+            .market;
+        if let Ok(opened) = chrono::DateTime::parse_from_rfc3339(&market.open_time) {
+            if opened <= latest_open {
+                return ticker;
+            }
+        }
+    }
+    environmental(&format!(
+        "none of the busiest {CANDIDATES} markets in the latest trades opened {ESTABLISHED_DAYS} days ago"
+    ))
+}
+
+/// How far back each served width is read: enough for several candles of it.
+const LOOKBACKS: [(CandleInterval, u64); 3] = [
+    (CandleInterval::Minute1, 3 * 60 * 60 * 1000),
+    (CandleInterval::Hour1, 3 * 24 * 60 * 60 * 1000),
+    (CandleInterval::Day1, 14 * 24 * 60 * 60 * 1000),
+];
+
+#[tokio::test]
+#[ignore = "hits the live host"]
+async fn live_candles_at_each_served_width_are_ordered_aligned_and_mirror_each_other() {
+    let client = client();
+    assert_eq!(
+        client.intervals(),
+        [
+            CandleInterval::Minute1,
+            CandleInterval::Hour1,
+            CandleInterval::Day1
+        ]
+    );
+    let ticker = busiest_established_market(&client).await;
+    let yes = key::key(&ticker, Outcome::Yes);
+    let no = key::key(&ticker, Outcome::No);
+
+    let mut widths_compared = 0;
+    for (width, lookback) in LOOKBACKS {
+        let step = width.duration().as_secs() * 1000;
+        let now = UnixMillis::now();
+        let query = CandleQuery::new(width, UnixMillis(now.0 - lookback)).end(now);
+        let candles = client.candles(&yes, &query).await.or_fail("YES candles");
+        if candles.is_empty() {
+            environmental(&format!("{yes}: no {width:?} candle in the lookback"));
+        }
+        for candle in &candles {
+            assert_eq!(candle.key, yes);
+            assert_eq!(candle.interval, width);
+            assert!(
+                candle.open_time >= query.start && candle.open_time <= now,
+                "{yes}: a {width:?} candle opens at {:?}, outside the query",
+                candle.open_time
+            );
+            // Minute and hourly candles open on their own boundary, and the daily candle ends at
+            // 04:00 UTC, so it opens on an hour.
+            let boundary = if width == CandleInterval::Day1 {
+                3_600_000
+            } else {
+                step
+            };
+            assert_eq!(
+                candle.open_time.0 % boundary,
+                0,
+                "{yes}: a {width:?} candle opens off its boundary"
+            );
+            assert!(
+                candle.close >= Decimal::ZERO && candle.close <= Decimal::ONE,
+                "{yes}: a close of {} is not a price in dollars",
+                candle.close
+            );
+            if let (Some(open), Some(high), Some(low)) = (candle.open, candle.high, candle.low) {
+                assert!(
+                    low <= open && open <= high && low <= candle.close && candle.close <= high,
+                    "{yes}: {width:?} candle at {:?} has open {open}, high {high}, low {low}, close {}",
+                    candle.open_time,
+                    candle.close
+                );
+            }
+        }
+        assert!(
+            candles
+                .windows(2)
+                .all(|pair| pair[0].open_time < pair[1].open_time),
+            "{yes}: the {width:?} candles are not strictly oldest first"
+        );
+
+        // The two outcomes are one market read from both sides: a completed candle's closes sum
+        // to one, and one outcome's high is one less the other's low.
+        let others = client.candles(&no, &query).await.or_fail("NO candles");
+        let mut compared = 0;
+        for own in &candles {
+            if own.open_time.0 + 2 * step + 60_000 >= now.0 {
+                continue;
+            }
+            let Some(other) = others.iter().find(|c| c.open_time == own.open_time) else {
+                continue;
+            };
+            assert_eq!(
+                own.close + other.close,
+                Decimal::ONE,
+                "{ticker}: {width:?} closes at {:?}",
+                own.open_time
+            );
+            if let (Some(high), Some(low)) = (own.high, other.low) {
+                assert_eq!(
+                    high + low,
+                    Decimal::ONE,
+                    "{ticker}: {width:?} high against the other outcome's low at {:?}",
+                    own.open_time
+                );
+            }
+            compared += 1;
+        }
+        if compared == 0 {
+            eprintln!("{ticker}: no completed {width:?} candle to compare across outcomes");
+        } else {
+            widths_compared += 1;
+        }
+    }
+    // A width the market is too young for is left out of the comparison; with none compared the
+    // test proved nothing about the mirroring.
+    if widths_compared == 0 {
+        environmental(&format!(
+            "{ticker}: no completed candle at any width to compare across outcomes"
+        ));
     }
 }
