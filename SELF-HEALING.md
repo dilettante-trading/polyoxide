@@ -45,10 +45,10 @@ and that is when North American leagues and weekend soccer are on.
 | Crate | Test binaries |
 |-------|---------------|
 | polyoxide-binance | `live_usdm` (built with `--features usdm`), `live_usdm_ws` (built with `--features usdm-ws`) |
+| polyoxide-kalshi | `live_predictions` (built with `--features predictions`), `live_predictions_account` (built with `--features predictions`), `live_predictions_venue` (built with `--features predictions`), `live_predictions_ws` (built with `--features predictions-ws`) |
 | polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_trading` (built with `--features clob-ws,data,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
 | polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm`) |
 | polyoxide-cli | `live_api` |
-| polyoxide-kalshi | `live_predictions` (built with `--features predictions`), `live_predictions_account` (built with `--features predictions`), `live_predictions_venue` (built with `--features predictions`), `live_predictions_ws` (built with `--features predictions-ws`) |
 <!-- generated:end selfheal-behavioral -->
 
 Failures are classified by `.github/scripts/classify_failures.py`. It reads one

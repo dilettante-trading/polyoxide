@@ -52,7 +52,7 @@ Not Polymarket hosts. Read by a polyoxide crate for consumers that trade both ve
 | API | Base URL | Description | Crate |
 |-----|----------|-------------|-------|
 | [Binance USDⓈ-M](binance/INDEX.md) | `https://fapi.binance.com`, `wss://fstream.binance.com` | Futures public market data and market streams. No published spec, so not a mirror | `polyoxide-binance` (streams behind `usdm-ws`) |
-| [Kalshi](kalshi/OBSERVED.md) | `https://external-api.kalshi.com`, `https://external-api.demo.kalshi.co`, `wss://external-api-ws.kalshi.com/trade-api/ws/v2`, `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` | Event-contract market data and its order-book stream. A walking skeleton, in a crate that is not published | `polyoxide-kalshi` |
+| [Kalshi](kalshi/OBSERVED.md) | `https://external-api.kalshi.com`, `https://external-api.demo.kalshi.co`, `wss://external-api-ws.kalshi.com/trade-api/ws/v2`, `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` | Event-contract market data and its order-book, ticker and trade streams | `polyoxide-kalshi` |
 <!-- generated:end index-other-venues -->
 
 ## Hosts with no upstream spec
@@ -109,5 +109,5 @@ entirely.
 | [rtds/asyncapi-live-data.json](rtds/asyncapi-live-data.json) | RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md) | `polyoxide-polymarket` |
 | [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (27 channels) — six public channels implemented (`perps-ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md) | `polyoxide-polymarket` |
 | [combos-rfq/asyncapi.json](combos-rfq/asyncapi.json) | RFQ quoter gateway — not implemented | — |
-| [kalshi/asyncapi.yaml](kalshi/asyncapi.yaml) | Trade API WebSocket (15 channels); `orderbook_delta` is implemented | `polyoxide-kalshi` |
+| [kalshi/asyncapi.yaml](kalshi/asyncapi.yaml) | Trade API WebSocket (15 channels); `orderbook_delta`, `ticker` and `trade` are implemented | `polyoxide-kalshi` |
 <!-- generated:end index-asyncapi -->

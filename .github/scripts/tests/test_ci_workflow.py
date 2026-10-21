@@ -537,3 +537,20 @@ def test_the_removals_job_caches_only_the_semver_baseline() -> None:
     """`check` builds no path diff, so S2's rustdoc JSON cache went with the manifest
     run."""
     assert sorted(_caches("removals")) == ["target/semver-checks/git-*"]
+
+
+def test_kalshi_is_published_and_the_umbrellas_full_turns_on_its_modules() -> None:
+    """Kalshi is a published venue crate the umbrella builds, so nothing exempts it from `full`.
+    `unpublished` is left empty: a `publish = false` that came back, a Kalshi feature `full`
+    forgot, or an umbrella that stopped depending on the crate fails here."""
+    metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
+    packages = {p["name"]: p for p in metadata["packages"]}
+    kalshi, umbrella = packages["polyoxide-kalshi"], packages[UMBRELLA]
+    assert kalshi.get("publish") != [], "polyoxide-kalshi is still `publish = false`"
+    built = {dep["name"] for dep in umbrella["dependencies"] if dep["kind"] is None}
+    assert "polyoxide-kalshi" in built, f"the umbrella does not depend on Kalshi: {sorted(built)}"
+    modules = http_modules(metadata)
+    assert ("polyoxide-kalshi", "predictions") in modules, modules
+    enabled = umbrella_enables(umbrella["features"], "full")
+    assert {"polyoxide-kalshi/predictions", "polyoxide-kalshi/predictions-ws"} <= enabled, enabled
+    assert umbrella_missing(umbrella, modules, enabled) == []

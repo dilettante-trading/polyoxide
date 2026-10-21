@@ -59,6 +59,21 @@ jobs:
           suite: usdm
           flags: "--no-default-features --features usdm,usdm-ws --test live_usdm --test live_usdm_ws"
 
+  live-polyoxide-kalshi-predictions:
+    name: Live tests (polyoxide-kalshi, predictions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KALSHI_DEMO_API_KEY_ID: ${{ secrets.KALSHI_DEMO_API_KEY_ID }}
+      KALSHI_DEMO_PRIVATE_KEY: ${{ secrets.KALSHI_DEMO_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-kalshi
+          suite: predictions
+          flags: "--no-default-features --features predictions,predictions-ws --test live_predictions --test live_predictions_account --test live_predictions_venue --test live_predictions_ws"
+
   live-polyoxide-polymarket-clob:
     name: Live tests (polyoxide-polymarket, clob)
     runs-on: ubuntu-latest
@@ -198,21 +213,6 @@ jobs:
           crate: polyoxide-cli
           suite: live
           flags: "--no-default-features --test live_api"
-
-  live-polyoxide-kalshi-predictions:
-    name: Live tests (polyoxide-kalshi, predictions)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      KALSHI_DEMO_API_KEY_ID: ${{ secrets.KALSHI_DEMO_API_KEY_ID }}
-      KALSHI_DEMO_PRIVATE_KEY: ${{ secrets.KALSHI_DEMO_PRIVATE_KEY }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-kalshi
-          suite: predictions
-          flags: "--no-default-features --features predictions,predictions-ws --test live_predictions --test live_predictions_account --test live_predictions_venue --test live_predictions_ws"
   # generated:end nightly-live-jobs
 
   aggregate:
@@ -220,6 +220,7 @@ jobs:
     # generated:begin nightly-aggregate-needs
     needs:
       - live-polyoxide-binance-usdm
+      - live-polyoxide-kalshi-predictions
       - live-polyoxide-polymarket-clob
       - live-polyoxide-polymarket-clob-session-keys
       - live-polyoxide-polymarket-gamma
@@ -230,7 +231,6 @@ jobs:
       - live-polyoxide-polymarket-sports
       - live-polyoxide-venue
       - live-polyoxide-cli-live
-      - live-polyoxide-kalshi-predictions
     # generated:end nightly-aggregate-needs
     if: always()
     runs-on: ubuntu-latest

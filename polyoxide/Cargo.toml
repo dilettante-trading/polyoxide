@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Multi-venue Rust toolkit: Polymarket (CLOB, Gamma, Data, Relay, Perps, RTDS, Sports) and Binance USDⓈ-M futures, each venue behind features named for it"
+description = "Multi-venue Rust toolkit: Polymarket (CLOB, Gamma, Data, Relay, Perps, RTDS, Sports), Binance USDⓈ-M futures and Kalshi's event-contract market data, each venue behind features named for it"
 keywords = ["polymarket", "binance", "prediction-markets", "trading", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
@@ -32,6 +32,9 @@ polymarket-sports = ["dep:polyoxide-polymarket", "polyoxide-polymarket/sports"]
 binance = ["binance-usdm"]
 binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm", "polyoxide-venue/market"]
 binance-usdm-ws = ["binance-usdm", "polyoxide-binance/usdm-ws"]
+kalshi = ["kalshi-predictions"]
+kalshi-predictions = ["dep:polyoxide-kalshi", "polyoxide-kalshi/predictions", "polyoxide-venue/market"]
+kalshi-predictions-ws = ["kalshi-predictions", "polyoxide-kalshi/predictions-ws"]
 full = [
     "polymarket",
     "polymarket-clob",
@@ -46,6 +49,9 @@ full = [
     "binance",
     "binance-usdm",
     "binance-usdm-ws",
+    "kalshi",
+    "kalshi-predictions",
+    "kalshi-predictions-ws",
     "keychain",
 ]
 keychain = ["polyoxide-polymarket?/keychain"]
@@ -56,6 +62,8 @@ polyoxide-venue = { workspace = true }
 polyoxide-polymarket = { workspace = true, optional = true }
 # Binance's modules, under the `binance-<module>` features.
 polyoxide-binance = { workspace = true, optional = true }
+# Kalshi's modules, under the `kalshi-<module>` features.
+polyoxide-kalshi = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
@@ -97,7 +105,7 @@ features = ["full"]
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude`"
+readme = "The multi-venue umbrella: `polyoxide::polymarket`, `polyoxide::binance` and `polyoxide::kalshi` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude`"
 
 [package.metadata.polyoxide.live.live_venue]
 suite = "venue"
