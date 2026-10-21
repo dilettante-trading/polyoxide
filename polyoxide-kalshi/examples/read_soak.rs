@@ -585,6 +585,11 @@ async fn drive(
                     break;
                 }
                 pacer.wait().await;
+                // A worker parked in the pacer when another was told 429 wakes after it, so the
+                // stop is read again before sending.
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
                 let reply = send(&client, &target, signer.as_deref()).await;
                 let throttled = matches!(reply, Reply::Throttled { .. });
                 lock(&replies).push((start.elapsed(), reply));
@@ -1674,5 +1679,33 @@ mod drive_tests {
         assert_eq!(listing.tickers[0], "KXUAEPLSPREAD-26OCT18KHFALW-ALW4");
         assert_eq!(listing.events.len(), 5);
         assert_eq!(listing.events[0], "KXUAEPLSPREAD-26OCT18KHFALW");
+    }
+
+    #[tokio::test]
+    async fn a_worker_parked_in_the_pacer_when_the_429_lands_sends_nothing_more() {
+        let log = Log::default();
+        let (server, _mock) = host(
+            &log,
+            |_| 429,
+            |_| {
+                r#"{"error":{"code":"too_many_requests","message":"too many requests"}}"#.to_owned()
+            },
+        )
+        .await;
+        let base = server.url();
+        let targets: Vec<Target> = ids(4)
+            .iter()
+            .map(|id| Route::Market.target(&base, id))
+            .collect();
+        let http = http_client().unwrap();
+
+        // Four workers share a slot every 200 ms: the first sends at once, and the other three are
+        // parked in the pacer, until 200, 400 and 600 ms, when the first has long since been told
+        // `429`. None of them may send after it.
+        let replies = drive(&http, targets, None, 5.0, 5, 4).await;
+
+        assert_eq!(replies.len(), 1, "{replies:?}");
+        assert!(first_throttle(&replies).is_some());
+        assert_eq!(log.all().len(), 1, "{:?}", log.all());
     }
 }
