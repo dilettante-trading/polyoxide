@@ -183,7 +183,10 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    use crate::predictions::ws::{DisconnectReason, OrderbookDelta};
+    use polyoxide_test_support::fixtures;
+    use serde_json::Value;
+
+    use crate::predictions::ws::{frames, DisconnectReason, OrderbookDelta};
 
     fn level(price: &str, size: &str) -> Level {
         Level::new(price.parse().unwrap(), size.parse().unwrap())
@@ -445,5 +448,178 @@ mod tests {
             books.get("A-1").unwrap().bids(),
             ladder(&[("0.40", "10.00")])
         );
+    }
+
+    const CAPTURED: &str = "KXBTCD-26OCT2317-T81999.99";
+
+    fn captured_snapshot() -> Event {
+        let frame = fixtures!("predictions/ws").json("snapshot");
+        let msg: frames::SnapshotMsg = serde_json::from_value(frame["msg"].clone()).unwrap();
+        Event::Snapshot(OrderbookSnapshot::from(msg))
+    }
+
+    fn captured_deltas() -> Vec<Event> {
+        let frames_on_wire: Value = fixtures!("predictions/ws").json("deltas");
+        frames_on_wire
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|frame| {
+                let msg: frames::DeltaMsg = serde_json::from_value(frame["msg"].clone()).unwrap();
+                Event::Delta(OrderbookDelta::from(msg))
+            })
+            .collect()
+    }
+
+    fn assert_ladders(book: &OrderBook, bids: &[(&str, &str)], asks: &[(&str, &str)]) {
+        assert_eq!(book.bids(), ladder(bids));
+        assert_eq!(book.asks(), ladder(asks));
+    }
+
+    #[test]
+    fn the_captured_snapshot_is_the_ladder_its_frame_lists() {
+        let mut books = Books::new();
+        let book = books.apply(&captured_snapshot()).unwrap();
+        assert_eq!(book.market_ticker(), CAPTURED);
+        assert_ladders(
+            book,
+            &[
+                ("0.4500", "19999.98"),
+                ("0.4400", "145830.30"),
+                ("0.4300", "149222.15"),
+                ("0.4200", "96030.44"),
+                ("0.0100", "24580.00"),
+            ],
+            &[
+                ("0.4600", "86177.72"),
+                ("0.4700", "136521.00"),
+                ("0.4800", "76041.18"),
+                ("0.4900", "25849.88"),
+                ("0.5000", "25333.08"),
+            ],
+        );
+        assert_eq!(book.best_bid(), Some(level("0.45", "19999.98")));
+        assert_eq!(book.best_ask(), Some(level("0.46", "86177.72")));
+    }
+
+    #[test]
+    fn replaying_the_captured_deltas_gives_the_ladder_they_sum_to() {
+        let deltas = captured_deltas();
+        assert_eq!(deltas.len(), 44);
+        // Every captured delta is for the snapshot's market, so none of them is ignored.
+        assert!(deltas.iter().all(|event| matches!(
+            event,
+            Event::Delta(delta) if delta.market_ticker == CAPTURED
+        )));
+
+        let mut books = Books::new();
+        books.apply(&captured_snapshot());
+        for (index, event) in deltas.iter().enumerate() {
+            let book = books.apply(event).unwrap();
+            // The book never crosses: the best bid stays under the best ask.
+            assert!(
+                book.best_bid().unwrap().price < book.best_ask().unwrap().price,
+                "crossed after delta {index}"
+            );
+            match index + 1 {
+                // The first four deltas (seq 2 to 5) take 716.91 off the 0.46 ask.
+                4 => assert_ladders(
+                    book,
+                    &[
+                        ("0.4500", "19999.98"),
+                        ("0.4400", "145830.30"),
+                        ("0.4300", "149222.15"),
+                        ("0.4200", "96030.44"),
+                        ("0.0100", "24580.00"),
+                    ],
+                    &[
+                        ("0.4600", "85460.81"),
+                        ("0.4700", "136521.00"),
+                        ("0.4800", "76041.18"),
+                        ("0.4900", "25849.88"),
+                        ("0.5000", "25333.08"),
+                    ],
+                ),
+                // Four more (seq 6 to 9) add to the 0.45 bid and the 0.48 to 0.50 asks.
+                8 => assert_ladders(
+                    book,
+                    &[
+                        ("0.4500", "20370.35"),
+                        ("0.4400", "145830.30"),
+                        ("0.4300", "149222.15"),
+                        ("0.4200", "96030.44"),
+                        ("0.0100", "24580.00"),
+                    ],
+                    &[
+                        ("0.4600", "85460.81"),
+                        ("0.4700", "136521.00"),
+                        ("0.4800", "76388.40"),
+                        ("0.4900", "26190.01"),
+                        ("0.5000", "25666.41"),
+                    ],
+                ),
+                _ => {}
+            }
+        }
+
+        let book = books.get(CAPTURED).unwrap();
+        assert_ladders(
+            book,
+            &[
+                ("0.4500", "21111.09"),
+                ("0.4400", "145830.30"),
+                ("0.4300", "149222.15"),
+                ("0.4200", "96030.44"),
+                ("0.0100", "24560.00"),
+            ],
+            &[
+                ("0.4600", "84026.99"),
+                ("0.4700", "136521.00"),
+                ("0.4800", "77082.84"),
+                ("0.4900", "26870.27"),
+                ("0.5000", "26333.07"),
+            ],
+        );
+        // The NO outcome's view of the same book: every price at 1 minus, best first.
+        let (no_bids, no_asks) = book.levels(Outcome::No);
+        assert_eq!(
+            no_bids,
+            ladder(&[
+                ("0.54", "84026.99"),
+                ("0.53", "136521.00"),
+                ("0.52", "77082.84"),
+                ("0.51", "26870.27"),
+                ("0.50", "26333.07"),
+            ])
+        );
+        assert_eq!(
+            no_asks,
+            ladder(&[
+                ("0.55", "21111.09"),
+                ("0.56", "145830.30"),
+                ("0.57", "149222.15"),
+                ("0.58", "96030.44"),
+                ("0.99", "24560.00"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_reconnect_then_the_same_snapshot_rebuilds_the_captured_book() {
+        let mut books = Books::new();
+        books.apply(&captured_snapshot());
+        for event in captured_deltas() {
+            books.apply(&event);
+        }
+        books.apply(&Event::Reconnected);
+        assert!(books.get(CAPTURED).is_none());
+        // Deltas that arrive before the new snapshot are dropped, and the snapshot alone
+        // gives back the book it lists: none of the 44 deltas is carried over.
+        for event in captured_deltas() {
+            assert!(books.apply(&event).is_none());
+        }
+        let book = books.apply(&captured_snapshot()).unwrap();
+        assert_eq!(book.best_ask(), Some(level("0.46", "86177.72")));
+        assert_eq!(book.best_bid(), Some(level("0.45", "19999.98")));
     }
 }
