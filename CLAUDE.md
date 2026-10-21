@@ -79,7 +79,7 @@ Ten crates, in publish order, each with the workspace crates its build needs. Cr
 <!-- generated:end claude-crate-count -->
 
 <!-- generated:begin claude-graph -->
-- `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey` and the `KeySpace` a venue implements per product), the market-data traits with the records they return and their typed `Extensions` (feature `market`), and the `Trading` trait with its order, fill, position and balance records and its `TradingEvents` stream (feature `trading`); needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency
+- `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey`, the `KeySpace` a venue implements per product and the `ProductClass` it declares), the market-data traits and their class bundles, with the records they return and their typed `Extensions` (feature `market`), and the `Trading` trait with its order, fill, position and balance records and its `TradingEvents` stream (feature `trading`); needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency
 - `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; the send loop and its hooks, the HTTP client, window quotas, capacity buckets, holds, errors, macros and the keychain; it names no venue, which `scripts/venue_gate.py` holds
 - `polyoxide-ws` — The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`); needs: nothing in the workspace; depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls
 - `polyoxide-binance` — Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`; needs: `polyoxide-core` (under `usdm`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `usdm-ws`)
@@ -311,9 +311,16 @@ without leading zeros) is built with `perps`. A clob key names one outcome token
 `RawKey::parse` splits text at its first `:` and then the part before it at its first `.`, so an
 id may hold either; `RawKey` round-trips through serde as text, `MarketKey` serializes as text
 only, and `polyoxide::parse_key` hands a `RawKey` to the constructors of whichever enabled
-product it names. Every `KeyError` is an `InvalidRequest`. Each venue crate's
-`the_ids_are_the_ones_the_crate_registers` test holds its `VENUE` and product constants to its
-`[package.metadata.polyoxide]`, read with `polyoxide_test_support::registration!()`.
+product it names. Every `KeyError` is an `InvalidRequest`.
+Each `KeySpace` also declares its product's `ProductClass` as `CLASS` (ADR 0001):
+`EventContract` (the clob and Kalshi's `predictions`) or `PerpetualFuture` (perps and USDⓈ-M),
+`#[non_exhaustive]`, with a variant added only when a product of that class lands. Every key
+carries it as `MarketKey::class()`. It follows from the venue and product, so the text form,
+`Eq` and `Hash` are unchanged. Each venue crate's `the_ids_are_the_ones_the_crate_registers`
+test holds its `VENUE`, product and class constants to its `[package.metadata.polyoxide]`, read
+with `polyoxide_test_support::registration!()`: `products`, and `classes`, a table of
+product = class for each product with a `KeySpace`, which `gen_registry.py` checks names only
+the crate's products.
 
 **Market-data records** — `polyoxide-venue`'s `market` feature holds the records market data is
 read into: `Instrument`, the one record that carries tick size, minimum size and `SizeUnit`
@@ -364,6 +371,18 @@ Kalshi's `predictions::venue` implements `MarketData`, `Trades`, `EventGroups` a
 A live test unwraps a trait's `Result<_, ClassifiedError>` with test-support's
 `ClassifiedResultExt::or_fail` (or `fail_classified`), since `ClassifiedError` does not implement
 `Classify`; `ResultExt::or_fail` and it may be in scope together.
+
+**Class bundles** — the `market` feature also holds one bundle per `ProductClass` (ADR 0001):
+`PerpetualMarket` is `MarketData + Funding`, and `EventContractMarket` is
+`MarketData + EventGroups`. Each has a blanket impl and no `Dyn` wrapper, so a class-generic
+function needs one bound, and code that holds trait objects holds one per member. A bundle holds
+only what defines its class, and a capability other classes share, such as `Candles`, stays out,
+so a bundle never has to lose a member. Each venue crate's `lib.rs` pins its products to their
+bundles in a `const _` beside its `Classify` assertions: `Perps` (`perps`) and `Usdm` (`usdm`) to
+`PerpetualMarket`, and `Clob` (`all(clob, gamma)`) and `Predictions` (`predictions`) to
+`EventContractMarket`. `polyoxide/tests/parse_key.rs` checks every product's class. A class fact
+joins a shared record, a capability trait or a bundle only when two products of the class supply
+it; until then it rides in the product's `<Record>Ext`.
 
 **The trading trait** — `polyoxide-venue`'s `trading` feature (which turns on `market`; Story 7.3)
 holds `Trading`, the one interface a venue with signed order routes implements so a consumer

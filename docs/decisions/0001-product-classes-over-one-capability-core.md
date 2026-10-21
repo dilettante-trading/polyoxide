@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-21
 ---
 
@@ -187,13 +187,13 @@ Described under Decision Outcome.
 
 ## More Information
 
-**Relation to the spine.** If accepted, this ADR becomes an amendment to AD-6 (product classes and
-bundles) and AD-4/AD-13 (the class is registered with the product). It enters the spine as a
-`spine-amendments/` entry merged through `bmad-architecture`, and `docs/ARCHITECTURE.md` is
-regenerated with `python3 scripts/gen_registry.py --write`. Epic 9's A9-2 also amends AD-6
-(`Candles::intervals()` and the refusal of an unserved width), and A8-1..A8-11 and A9-1..A9-5 are
-still awaiting their spine merge. This amendment is written against AD-6 as A9-2 leaves it, and
-merges after those.
+**Relation to the spine.** This ADR is recorded as `spine-amendments/adr-0001.md`: ADR1-1
+amends AD-4 and AD-13 (the class is registered with the product), and ADR1-2 amends AD-6 (class
+bundles and the promotion rule). The file is merged into the spine through `bmad-architecture`,
+and `docs/ARCHITECTURE.md` is regenerated with `python3 scripts/gen_registry.py --write`. Epic
+9's A9-2 also amends AD-6 (`Candles::intervals()` and the refusal of an unserved width), and
+A8-1..A8-11 and A9-1..A9-5 are still awaiting their spine merge. This amendment is written
+against AD-6 as A9-2 leaves it, and merges after those.
 
 **Facts the event-contract class must hold**, from `venue-landscape.md` and
 `kalshi-trading-mapping.md`:

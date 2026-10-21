@@ -171,3 +171,19 @@ default build, `polymarket`, gains no crate.
 
 No existing build gains a third-party crate; `full` gains `polyoxide-kalshi`. `kalshi-predictions` builds core's HTTP stack,
 as the other venues' HTTP modules do, and `kalshi-predictions-ws` adds the socket kit.
+
+## ADR 0001: product classes
+
+**Consumer impact: one line for an outside `KeySpace`.** `KeySpace` gains a required
+`const CLASS: ProductClass`, so a crate outside the workspace that implements it adds that line.
+Code that only uses keys and the market-data traits builds unchanged. This is a major-level change
+for such an implementer, and it ships in a 0.x minor release.
+
+- `polyoxide-venue`, feature `keys`: `ProductClass` (`EventContract`, `PerpetualFuture`;
+  `#[non_exhaustive]`; `as_str` and `Display` spell it as a registration does), the required
+  `KeySpace::CLASS`, and `MarketKey::class()`. The class follows from the venue and product, so a
+  key's text form, equality and hash are unchanged.
+- `polyoxide-venue`, feature `market`: the class bundles `PerpetualMarket` (`MarketData + Funding`)
+  and `EventContractMarket` (`MarketData + EventGroups`), each implemented for every type that
+  implements its members. Polymarket's `Perps` and Binance's `Usdm` are perpetual markets;
+  Polymarket's `Clob` (with `gamma`) and Kalshi's `Predictions` are event-contract markets.
