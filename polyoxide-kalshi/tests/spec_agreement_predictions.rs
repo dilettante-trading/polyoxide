@@ -622,3 +622,48 @@ fn the_period_intervals_are_the_widths_the_mirror_documents() {
     // A width outside the set does not parse, so the native client cannot send it.
     assert!("5".parse::<PeriodInterval>().is_err());
 }
+
+#[tokio::test]
+async fn the_candle_builders_send_exactly_the_documented_query_keys() {
+    let spec = mirror();
+    let batch = keys_of("/markets/candlesticks", "candlesticks/batch_60", |p| {
+        Box::pin(async move {
+            let ticker = polyoxide_kalshi::predictions::key::Ticker::new("KXTEST-1").unwrap();
+            p.markets()
+                .candlesticks(&ticker, PeriodInterval::Hour1, 1, 2)
+                .include_latest_before_start(true)
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    assert_eq!(
+        Some(batch),
+        query::documented_parameters(&spec, "/markets/candlesticks")
+    );
+
+    let series = keys_of(
+        "/series/KXSER-1/markets/KXTEST-1/candlesticks",
+        "candlesticks/series_60",
+        |p| {
+            Box::pin(async move {
+                let ticker = polyoxide_kalshi::predictions::key::Ticker::new("KXTEST-1").unwrap();
+                p.markets()
+                    .series_candlesticks("KXSER-1", &ticker, PeriodInterval::Hour1, 1, 2)
+                    .include_latest_before_start(true)
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        },
+    )
+    .await;
+    assert_eq!(
+        Some(series),
+        query::documented_parameters(
+            &spec,
+            "/series/{series_ticker}/markets/{ticker}/candlesticks"
+        )
+    );
+}

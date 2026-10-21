@@ -12,11 +12,15 @@ use polyoxide_core::RetryConfig;
 use polyoxide_kalshi::predictions::{
     key::Ticker,
     request::{route_templates, template_matches},
-    types::{MarketStatus, MarketStatusFilter, MveFilter, OutcomeSide},
+    types::{
+        MarketCandlestick, MarketStatus, MarketStatusFilter, MveFilter, OutcomeSide,
+        PeriodInterval, PriceDistribution,
+    },
     Predictions, PredictionsError,
 };
 use polyoxide_test_support::fixtures;
 use polyoxide_venue::{Class, Classify};
+use rust_decimal::Decimal;
 use serde_json::Value;
 
 /// A schedule that retries nothing and holds the client for about a millisecond after a 429.
@@ -556,4 +560,188 @@ fn templates_match_segment_by_segment_and_a_star_takes_the_rest() {
         "/trade-api/v2/other/a/b",
         "/trade-api/v2/cfbenchmarks/*endpoint"
     ));
+}
+
+// ── candlesticks ────────────────────────────────────────────────
+
+/// A candlestick's `price` field by its wire key.
+fn price_of(price: &PriceDistribution, key: &str) -> Option<Decimal> {
+    match key {
+        "open_dollars" => price.open_dollars,
+        "low_dollars" => price.low_dollars,
+        "high_dollars" => price.high_dollars,
+        "close_dollars" => price.close_dollars,
+        "mean_dollars" => price.mean_dollars,
+        "previous_dollars" => price.previous_dollars,
+        "min_dollars" => price.min_dollars,
+        "max_dollars" => price.max_dollars,
+        other => panic!("{other} is not a price field"),
+    }
+}
+
+/// Every decoded candlestick holds the digits and the presence of the captured row it came from.
+fn rows_agree(candles: &[MarketCandlestick], rows: &[Value], what: &str) {
+    assert_eq!(candles.len(), rows.len(), "{what}");
+    assert!(!rows.is_empty(), "{what}: the capture holds no candlestick");
+    for (candle, row) in candles.iter().zip(rows) {
+        assert_eq!(
+            candle.end_period_ts,
+            row["end_period_ts"].as_i64().unwrap(),
+            "{what}"
+        );
+        assert_eq!(
+            candle.volume_fp.to_string(),
+            row["volume_fp"].as_str().unwrap(),
+            "{what}"
+        );
+        assert_eq!(
+            candle.open_interest_fp.to_string(),
+            row["open_interest_fp"].as_str().unwrap(),
+            "{what}"
+        );
+        for (side, offers) in [("yes_bid", &candle.yes_bid), ("yes_ask", &candle.yes_ask)] {
+            for (key, value) in [
+                ("open_dollars", offers.open_dollars),
+                ("low_dollars", offers.low_dollars),
+                ("high_dollars", offers.high_dollars),
+                ("close_dollars", offers.close_dollars),
+            ] {
+                assert_eq!(
+                    value.to_string(),
+                    row[side][key].as_str().unwrap(),
+                    "{what} {side}.{key}"
+                );
+            }
+        }
+        for key in [
+            "open_dollars",
+            "low_dollars",
+            "high_dollars",
+            "close_dollars",
+            "mean_dollars",
+            "previous_dollars",
+            "min_dollars",
+            "max_dollars",
+        ] {
+            assert_eq!(
+                price_of(&candle.price, key).map(|price| price.to_string()),
+                row["price"][key].as_str().map(str::to_owned),
+                "{what} price.{key}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_batch_candlesticks_send_their_query_and_decode_each_captured_width() {
+    for (file, period, minutes) in [
+        ("batch_1", PeriodInterval::Minute1, "1"),
+        ("batch_60", PeriodInterval::Hour1, "60"),
+        ("batch_1440", PeriodInterval::Day1, "1440"),
+    ] {
+        let name = format!("candlesticks/{file}");
+        let sent = wire(&name);
+        let market = sent["markets"][0]["market_ticker"].as_str().unwrap();
+        let mut server = Server::new_async().await;
+        let mock = route(
+            &mut server,
+            "/trade-api/v2/markets/candlesticks",
+            &format!(
+                "market_tickers={market}&start_ts=100&end_ts=200&period_interval={minutes}&include_latest_before_start=true"
+            ),
+            &fixture(&name),
+        )
+        .await;
+        let read = client(&server)
+            .markets()
+            .candlesticks(&ticker(market), period, 100, 200)
+            .include_latest_before_start(true)
+            .send()
+            .await
+            .unwrap();
+        mock.assert_async().await;
+
+        assert_eq!(
+            read.markets.len(),
+            sent["markets"].as_array().unwrap().len(),
+            "{file}"
+        );
+        assert_eq!(read.markets[0].market_ticker, market, "{file}");
+        rows_agree(
+            &read.markets[0].candlesticks,
+            sent["markets"][0]["candlesticks"].as_array().unwrap(),
+            file,
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_series_candlesticks_send_their_path_and_query_and_decode_the_captured_body() {
+    let sent = wire("candlesticks/series_60");
+    let market = sent["ticker"].as_str().unwrap();
+    let mut server = Server::new_async().await;
+    let mock = route(
+        &mut server,
+        &format!("/trade-api/v2/series/KXSER-1/markets/{market}/candlesticks"),
+        "start_ts=100&end_ts=200&period_interval=60",
+        &fixture("candlesticks/series_60"),
+    )
+    .await;
+    let read = client(&server)
+        .markets()
+        .series_candlesticks("KXSER-1", &ticker(market), PeriodInterval::Hour1, 100, 200)
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
+    assert_eq!(read.ticker, market);
+    rows_agree(
+        &read.candlesticks,
+        sent["candlesticks"].as_array().unwrap(),
+        "series_60",
+    );
+}
+
+#[tokio::test]
+async fn a_width_the_series_route_refuses_is_the_venues_400() {
+    let body = wire("candlesticks/error_width");
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock(
+            "GET",
+            "/trade-api/v2/series/KXSER-1/markets/KXTEST-1/candlesticks",
+        )
+        .match_query(Matcher::Any)
+        .with_status(400)
+        .with_body(fixture("candlesticks/error_width"))
+        .create_async()
+        .await;
+    let err = client_with_retries(&server, NO_RETRIES)
+        .markets()
+        .series_candlesticks(
+            "KXSER-1",
+            &ticker("KXTEST-1"),
+            PeriodInterval::Hour1,
+            100,
+            200,
+        )
+        .send()
+        .await
+        .unwrap_err();
+    let PredictionsError::Venue(venue) = &err else {
+        panic!("not a venue error: {err:?}");
+    };
+    // The body's own message, whichever of the three shapes the host used.
+    let message = body["msg"]
+        .as_str()
+        .or_else(|| body["error"].as_str())
+        .or_else(|| body["error"]["message"].as_str())
+        .unwrap();
+    assert_eq!(usize::from(venue.status), 400);
+    assert_eq!(venue.message, message);
+    assert!(
+        matches!(err.class(), Class::VenueRefusal { .. }),
+        "{:?}",
+        err.class()
+    );
 }
