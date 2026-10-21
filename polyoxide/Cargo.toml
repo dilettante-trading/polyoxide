@@ -87,10 +87,10 @@ required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
 name = "live_venue"
 required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
 
-# `parse_key` across both venues' products.
+# `parse_key` across the three venues' products.
 [[test]]
 name = "parse_key"
-required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
 
 [[test]]
 name = "venue_neutral"
