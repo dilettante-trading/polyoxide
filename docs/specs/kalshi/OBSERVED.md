@@ -181,4 +181,38 @@ Found in review of Story 1, from the committed fixtures `batch_1.json`, `batch_6
 
 At width 1 the gaps are one to three periods long: the first is `end_period_ts` 1792568160 (07:36Z) to 1792568340 (07:39Z), two periods (07:37Z and 07:38Z) with no row. At width 60 the one gap is the hour ending 2026-10-15 09:00Z (`end_period_ts` 1792054800), between rows ending 1792051200 and 1792058400. So the rows' `end_period_ts` do not run at every multiple of the width, which `describe()`'s offset column (the remainder of `end_period_ts` by the width, 0 at widths 1 and 60, and 14400 at width 1440, whose periods end at 04:00Z) does not show. This does not contradict D6: a period absent from the answer yields no candle (D6's mapping, as Story 3 implements it), so `Candles::candles` may skip periods, and a caller that needs a regular grid fills the gaps itself.
 
+### Rate limits
+
+Measured with `polyoxide-kalshi/examples/read_soak.rs` (Epic 9, Story 7). Every URL of a run was distinct, because a repeated URL can be answered from a cache without reaching the origin, and each route was probed once on the host before any stage. A stage is requests a second: Basic's Read bucket refills 200 tokens a second, which is 20 reads at the default cost of 10.
+
+**The paths, probed first** (2026-10-21 12:22Z and 12:26Z, from the development workstation `fresco` over its ordinary network connection, unsigned):
+
+| Route | Path | Answered |
+|---|---|---|
+| market | `GET /trade-api/v2/markets/{ticker}` | 2xx |
+| event | `GET /trade-api/v2/events/{event_ticker}` | 2xx |
+
+**The unsigned ramp** on production, `--stage-secs 60 --cooldown-secs 30` unless a row says otherwise. The market ramp started at 12:22:18Z, the event ramp at 12:26:18Z and the event rerun at 12:30:16Z. The `code` column is what the harness printed: it reads a flat `{"error":"<text>"}`, and the body the host sent is nested (below), so it prints `unknown`.
+
+| Route | Stage (requests a second) | Replies | Verdict | First 429, seconds into the stage, and its body |
+|---|---|---|---|---|
+| market | 10 | 601 | Clean | |
+| market | 20 | 1201 | Clean | |
+| market | 40 | 169 (151 from the origin, 18 throttled) | Throttled | 3.26 s, code `unknown` |
+| event | 10 | 601 | Clean | |
+| event | 20 | 1201 | Clean | |
+| event | 40, `--stage-secs 30` (a rerun, see below) | 179 (162 from the origin, 17 throttled) | Throttled | 3.51 s, code `unknown` |
+
+The market ramp stopped at its first refused stage, 40, and ran no higher. The event ramp stopped before its stage of 40 at 60 s, with `2401 more distinct URLs are needed and the listing walk left 2083`: the walk found 3886 event tickers and the first two stages and the probe spent 1803 of them. It was rerun from 40 with a 30 s window, which needs 1201.
+
+Highest clean stage: 20 requests a second (market). The host refused 40 requests a second after 3.26 s with `{"error":{"code":"too_many_requests","message":"too many requests"}}`.
+
+The event route was clean at 20 requests a second and refused 40 after 3.51 s, so it is refused no earlier than the market route and the two read as one limit.
+
+**Where the refusal fell.** A bucket of 600 tokens refilling 200 a second, read at 10 tokens, takes 600 / (40 × 10 − 200) = 3.0 s to empty at 40 reads a second. The host's first 429 came at 3.26 s on the market route and 3.51 s on the event route, and a 24-worker burst of about 34 reads a second against distinct tickers was served 156 reads before its first 429 at 4.97 s (a bucket of that size empties after 600 / (34 × 10 − 200) = 4.3 s). The unsigned host behaves as Basic's Read bucket.
+
+**The 429 as the host sent it.** A 429 was provoked on purpose once more, with a 24-worker burst of at most 250 reads that stopped issuing reads at its first refusal (13 refusals in all, the reads already in flight included): `{"error":{"code":"too_many_requests","message":"too many requests"}}`, `Content-Type: application/json; charset=utf-8`, `cache-control: no-store`, with no `Retry-After` and no `X-RateLimit-*` header. That is the nested shape of Kalshi's other errors and not the flat `{"error":"too many requests"}` the rate-limit page documents, and `tests/fixtures/predictions/error_rate_limited.json` is the flat one, written from the page and not captured.
+
+<!-- rate limits end -->
+
 <!-- epic 9 findings go above this line -->
