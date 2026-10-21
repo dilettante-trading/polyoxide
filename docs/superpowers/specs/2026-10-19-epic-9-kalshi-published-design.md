@@ -59,7 +59,10 @@ for `KXMLBGAME-26OCT192008CLETB-TB` at 1, 60 and 1440 answered `200` with
 `close`, `mean` and `previous` (`_dollars`), the first traded period no `previous`; an untraded
 period after a trade held only `previous_dollars`; a period before any trade held `price: {}`.
 `min_dollars` and `max_dollars` never appeared. `period_interval=5` answered `200` with no rows on
-the batch route and `400` (a validation `msg`) on the series route. Hourly candles end on the hour;
+the batch route and `400` (a validation `msg`) on the series route. (Corrected by Story 1's capture,
+2026-10-21: the batch route answered `period_interval=5` with `200` and the daily candles, and a
+request over 10,000 candlesticks is refused with `400`, "max candlesticks: 10000", not truncated;
+`OBSERVED.md` holds the capture.) Hourly candles end on the hour;
 the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with its captures.
 
 ## 2. Decisions (binding)
@@ -92,6 +95,11 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
   - The request sends `start_ts` = `query.start` rounded up to the second plus *w*, and `end_ts` =
     (`query.end`, or now) rounded down to the second plus *w*, since Kalshi selects candlesticks by
     their end and the trait by their open. `include_latest_before_start` is not sent.
+  - **The span is clamped** (the owner, 2026-10-21): Kalshi refuses a request over 10,000
+    candlesticks with `400` rather than truncating it, so `end_ts` is sent no later than
+    `start_ts` + 9,999 × *w* (10,000 periods, both ends inclusive), as the CLOB's `candles` clamps
+    its window to 14 days. A long query returns its first 10,000 periods, oldest first. A test pins
+    the `end_ts` sent for a span past the cap, and the docs say so.
   - `open_time` = `end_period_ts` − *w*. Rows whose `open_time` falls outside the query are
     dropped. The list is oldest first.
   - Prices are the trade price, `price.{open,high,low,close}_dollars`. For a `no` key each price
@@ -108,8 +116,9 @@ the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with 
     the live route passes through as the venue gave it (an empty list or a `VenueRefusal`), and the
     module docs say so.
   - A width outside D4 is refused by `ensure_served` before any request. The batch route itself
-    does not check `period_interval` (it answers `5` with `200` and no rows, §1.6), so the refusal
-    is the only guard; the native `markets().candlesticks(..)` takes a `PeriodInterval`
+    does not check `period_interval` (Story 1 found it answers `5` with `200` and the daily
+    candles, so an unserved width would silently read as daily), so the refusal is the only
+    guard; the native `markets().candlesticks(..)` takes a `PeriodInterval`
     (`wire_enum!`-style closed set `Minute1` → `1`, `Hour1` → `60`, `Day1` → `1440`, sent as its
     number), so it cannot send another width either.
 - **D7. `Protocol::follow_up`.** `polyoxide-ws`'s `Protocol` gains a provided method
