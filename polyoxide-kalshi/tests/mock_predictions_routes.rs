@@ -496,7 +496,7 @@ async fn a_429_with_no_retry_left_still_holds_the_next_request() {
 // ── the route table ─────────────────────────────────────────────
 
 #[test]
-fn the_route_table_holds_the_eight_routes_in_endpoint_costs_spelling() {
+fn the_route_table_holds_the_ten_routes_in_endpoint_costs_spelling() {
     let mut routes: Vec<(String, &str)> = route_templates()
         .map(|(method, template)| (method.to_ascii_uppercase(), template))
         .collect();
@@ -509,7 +509,12 @@ fn the_route_table_holds_the_eight_routes_in_endpoint_costs_spelling() {
         ("GET", "/trade-api/v2/markets"),
         ("GET", "/trade-api/v2/markets/:ticker"),
         ("GET", "/trade-api/v2/markets/:ticker/orderbook"),
+        ("GET", "/trade-api/v2/markets/candlesticks"),
         ("GET", "/trade-api/v2/markets/trades"),
+        (
+            "GET",
+            "/trade-api/v2/series/:series_ticker/markets/:ticker/candlesticks",
+        ),
     ];
     let expected: Vec<(String, &str)> = expected
         .into_iter()

@@ -577,5 +577,5 @@ fn every_route_the_crate_holds_is_a_documented_operation() {
             "{method} {template} is not an operation of the mirror at {path}"
         );
     }
-    assert_eq!(count, 8, "the route table holds eight routes");
+    assert_eq!(count, 10, "the route table holds ten routes");
 }
