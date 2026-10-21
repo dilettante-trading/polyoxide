@@ -1693,16 +1693,16 @@ mod drive_tests {
         )
         .await;
         let base = server.url();
-        let targets: Vec<Target> = ids(4)
+        let targets: Vec<Target> = ids(2)
             .iter()
             .map(|id| Route::Market.target(&base, id))
             .collect();
         let http = http_client().unwrap();
 
-        // Four workers share a slot every 200 ms: the first sends at once, and the other three are
-        // parked in the pacer, until 200, 400 and 600 ms, when the first has long since been told
-        // `429`. None of them may send after it.
-        let replies = drive(&http, targets, None, 5.0, 5, 4).await;
+        // Two workers share a slot every second: the first sends at once, and the other is parked
+        // in the pacer until one second has passed, by which time the first has been told `429`.
+        // It may not send after it.
+        let replies = drive(&http, targets, None, 1.0, 5, 2).await;
 
         assert_eq!(replies.len(), 1, "{replies:?}");
         assert!(first_throttle(&replies).is_some());
