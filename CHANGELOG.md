@@ -1,5 +1,61 @@
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-22
+
+Kalshi's catalog routes (#71): the reads a catalog kept in sync needs, and the market-data traits
+reading markets that settled before Kalshi's historical cutoff. Everything is new API in
+`polyoxide-kalshi`, so the 0.x minor rises for the features alone. Nothing is removed or renamed,
+no existing type changes, [`docs/s3-removals.md`](docs/s3-removals.md) still lists nothing, and no
+build gains a crate.
+
+- **Markets.** `markets().list().tickers(..)` reads a named set of markets in one request, and
+  `markets().orderbooks(..)` up to 100 books (`MAX_ORDERBOOK_TICKERS`, `OrderbooksResponse`).
+  `markets().window(MarketWindow)` lists the markets created, closing or settled in a span, one
+  timestamp family per request since Kalshi refuses two, each with the states it allows
+  (`CreatedStatus`); `markets().updated(min_ts)` lists those whose metadata changed since, which a
+  price move alone does not, with multivariate combinations excluded.
+- **The tickers budget.** A ticker set is refused before anything is sent when it is empty or its
+  query would pass `TICKERS_QUERY_BUDGET` (8,000 bytes, half the request target Kalshi answers
+  `414` past), on `ListMarkets`, `ListMarketWindow` and `ListEvents` and in
+  `HistoricalSelection::Tickers`. `ticker_chunks` splits a larger set into requests that fit.
+- **Series and events.** The namespace `series()`: `list()` reads every series a category, tags
+  or update time admits, in one body (`SeriesList`), and `get(ticker)` one `Series`, with its
+  volume on request. `events().list()` pages events (`EventsPage`) by status
+  (`EventStatusFilter`), series, tickers, nested markets, and close and update times; milestones
+  are kept as raw JSON.
+- **The archive.** The namespace `historical()` reads what Kalshi has moved past its cutoff:
+  `cutoff()` (`HistoricalCutoff`), `markets(HistoricalSelection)` (every archived market, all but
+  the multivariate combinations, a set of tickers, or one event's; Kalshi refuses two selections
+  at once), `market(ticker)`, `candlesticks(..)` in the archive's own shape
+  (`HistoricalCandlestick`, whose every price key is sent, `null` when empty) and `trades()`.
+- **The venue traits read the archive.** `predictions::venue`'s `instrument`, `candles`, `trades`
+  and `event_group` read live first and ask the archive only when the live answer says the market
+  is not there: `instrument` on the live route's `404`, `candles` when the batch answer leaves the
+  market out (clamped to 5,000 periods, the archive's cap), `trades` when the live route has none,
+  and `event_group` when the live event does not nest the key's market. A market settled before
+  the cutoff, which was `NotListed`, now resolves; a ticker neither knows is still `NotListed`
+  (the archive's `404`), one request later.
+
+### 🚀 Features
+
+- *(kalshi)* The tickers budget, ticker_chunks and nine catalog routes ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 2)
+- *(kalshi)* Markets tickers, timestamp windows, updated and orderbooks ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 3)
+- *(kalshi)* The series namespace ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 4)
+- *(kalshi)* The events listing ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 5)
+- *(kalshi)* The historical namespace ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 6)
+- *(kalshi)* The venue traits read archived markets from the archive ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 7)
+
+### 📚 Documentation
+
+- *(spec)* Kalshi catalog routes design ([#71](https://github.com/dilettante-trading/polyoxide/issues/71))
+- *(plan)* Kalshi catalog routes implementation plan ([#71](https://github.com/dilettante-trading/polyoxide/issues/71))
+- *(spec)* The archive's candle route caps at 5,000, so its read is clamped there ([#71](https://github.com/dilettante-trading/polyoxide/issues/71))
+
+### 🧪 Testing
+
+- *(kalshi)* Capture the catalog and historical routes ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 1)
+- *(kalshi)* Live catalog and archive suites, and the records ([#71](https://github.com/dilettante-trading/polyoxide/issues/71), Story 8)
+
 ## [0.42.0] - 2026-10-21
 
 Kalshi's first release on crates.io (Epic 9), product classes (ADR 0001), a CLOB fix (#70), and
