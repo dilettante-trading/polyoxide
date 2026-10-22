@@ -385,3 +385,53 @@ const MARKETS_CATALOG_CASES: &[Case] = &[
 async fn every_markets_catalog_setter_sends_its_key_and_value_in_call_order() {
     assert_cases(MARKETS_CATALOG_CASES).await;
 }
+
+// ── The series builders (issue #71) ─────────────────────────────
+
+const SERIES_CASES: &[Case] = &[
+    Case {
+        builder: "ListSeries",
+        path: "/trade-api/v2/series",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .series()
+                    .list()
+                    .category("Economics")
+                    .tags("Inflation")
+                    .include_product_metadata(true)
+                    .include_volume(true)
+                    .min_updated_ts(9)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("category", "Economics"),
+            ("tags", "Inflation"),
+            ("include_product_metadata", "true"),
+            ("include_volume", "true"),
+            ("min_updated_ts", "9"),
+        ],
+    },
+    Case {
+        builder: "GetSeries",
+        path: "/trade-api/v2/series/KXSER-1",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .series()
+                    .get("KXSER-1")
+                    .include_volume(true)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("include_volume", "true")],
+    },
+];
+
+#[tokio::test]
+async fn every_series_setter_sends_its_key_and_value_in_call_order() {
+    assert_cases(SERIES_CASES).await;
+}

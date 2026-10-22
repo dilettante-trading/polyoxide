@@ -3,6 +3,7 @@ mod events;
 mod exchange;
 mod limits;
 mod markets;
+mod series;
 
 pub use account::{EndpointCost, EndpointCosts};
 pub use events::{Event, EventResponse};
@@ -15,3 +16,4 @@ pub use markets::{
     OrderbooksResponse, OutcomeSide, PeriodInterval, PriceDistribution, PriceLevel, PriceRange,
     SeriesCandlesticksResponse, Trade, TradesPage,
 };
+pub use series::{Series, SeriesList, SeriesResponse, SettlementSource};

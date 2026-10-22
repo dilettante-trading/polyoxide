@@ -89,6 +89,8 @@ impl Predictions {
         markets: api::MarketsApi,
         /// Events and their markets.
         events: api::EventsApi,
+        /// Series: the templates events follow, with their categories and tags.
+        series: api::SeriesApi,
         /// The account's limits and the routes' token costs.
         account: api::AccountApi,
     }

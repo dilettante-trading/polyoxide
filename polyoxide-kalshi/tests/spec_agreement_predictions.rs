@@ -848,3 +848,64 @@ async fn the_markets_catalog_builders_send_exactly_the_documented_query_keys() {
         query::documented_parameters(&spec, "/markets/orderbooks")
     );
 }
+
+use polyoxide_kalshi::predictions::types::{Series, SeriesList, SeriesResponse, SettlementSource};
+
+#[test]
+fn every_series_schema_agrees_with_the_spec() {
+    let schemas = mirror_schemas();
+    check_schema::<SettlementSource>(&schemas, "SettlementSource");
+    check_schema::<Series>(&schemas, "Series");
+    check_schema::<SeriesList>(&schemas, "GetSeriesListResponse");
+    check_schema::<SeriesResponse>(&schemas, "GetSeriesResponse");
+    let unaccounted = unaccounted_from(
+        &["/series", "/series/{series_ticker}"],
+        &[
+            "Series",
+            "SettlementSource",
+            "GetSeriesListResponse",
+            "GetSeriesResponse",
+        ],
+        &[],
+    );
+    assert!(
+        unaccounted.is_empty(),
+        "schemas neither checked nor excused: {unaccounted:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_series_builders_send_exactly_the_documented_query_keys() {
+    let spec = mirror();
+    let list = keys_of("/series", "catalog/series_list", |p| {
+        Box::pin(async move {
+            p.series()
+                .list()
+                .category("Economics")
+                .tags("Inflation")
+                .include_product_metadata(true)
+                .include_volume(true)
+                .min_updated_ts(9)
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    assert_eq!(Some(list), query::documented_parameters(&spec, "/series"));
+    let one = keys_of("/series/KXSER-1", "catalog/series", |p| {
+        Box::pin(async move {
+            p.series()
+                .get("KXSER-1")
+                .include_volume(true)
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    assert_eq!(
+        Some(one),
+        query::documented_parameters(&spec, "/series/{series_ticker}")
+    );
+}

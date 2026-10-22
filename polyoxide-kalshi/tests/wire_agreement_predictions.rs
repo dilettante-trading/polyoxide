@@ -306,3 +306,22 @@ fn the_markets_catalog_fixtures_cover_the_cases_the_routes_exist_for() {
     let updated: MarketsPage = read("catalog/markets_updated_page");
     assert!(!updated.markets.is_empty(), "a day held updated markets");
 }
+
+use polyoxide_kalshi::predictions::types::{SeriesList, SeriesResponse};
+
+#[test]
+fn every_series_fixture_agrees_with_its_type() {
+    hold_exactly::<SeriesList>("catalog/series_list");
+    hold_exactly::<SeriesResponse>("catalog/series");
+}
+
+#[test]
+fn the_series_fixtures_cover_the_cases_the_types_exist_for() {
+    let list: SeriesList = read("catalog/series_list");
+    assert!(!list.series.is_empty());
+    let one: SeriesResponse = read("catalog/series");
+    assert!(
+        one.series.volume_fp.is_some(),
+        "series.json was asked for its volume"
+    );
+}
