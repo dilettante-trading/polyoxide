@@ -476,3 +476,154 @@ const EVENTS_CASES: &[Case] = &[Case {
 async fn every_events_listing_setter_sends_its_key_and_value_in_call_order() {
     assert_cases(EVENTS_CASES).await;
 }
+
+// ── The archive (issue #71) ─────────────────────────────────────
+
+use polyoxide_kalshi::predictions::types::HistoricalSelection;
+
+/// Each selection sends its one key; the candlestick builder its three arguments in the order the
+/// route documents them; the trades builder its setters in call order.
+const HISTORICAL_CASES: &[Case] = &[
+    Case {
+        builder: "GetHistoricalCutoff",
+        path: "/trade-api/v2/historical/cutoff",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base).historical().cutoff().send().await;
+            })
+        },
+        sends: &[],
+    },
+    Case {
+        builder: "ListHistoricalMarkets, all",
+        path: "/trade-api/v2/historical/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .markets(HistoricalSelection::All)
+                    .limit(5)
+                    .cursor("c1")
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("limit", "5"), ("cursor", "c1")],
+    },
+    Case {
+        builder: "ListHistoricalMarkets, multivariate excluded",
+        path: "/trade-api/v2/historical/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .markets(HistoricalSelection::ExcludeMultivariate)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("mve_filter", "exclude")],
+    },
+    Case {
+        builder: "ListHistoricalMarkets, tickers",
+        path: "/trade-api/v2/historical/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .markets(HistoricalSelection::Tickers(vec![ticker(), second()]))
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("tickers", "KXTEST-1,KXTEST-2")],
+    },
+    Case {
+        builder: "ListHistoricalMarkets, event",
+        path: "/trade-api/v2/historical/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .markets(HistoricalSelection::Event("EV-1".to_owned()))
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("event_ticker", "EV-1")],
+    },
+    Case {
+        builder: "ListHistoricalMarkets, series",
+        path: "/trade-api/v2/historical/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .markets(HistoricalSelection::Series("SER-1".to_owned()))
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("series_ticker", "SER-1")],
+    },
+    Case {
+        builder: "GetHistoricalMarket",
+        path: "/trade-api/v2/historical/markets/KXTEST-1",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base).historical().market(&ticker()).send().await;
+            })
+        },
+        sends: &[],
+    },
+    Case {
+        builder: "GetHistoricalCandlesticks",
+        path: "/trade-api/v2/historical/markets/KXTEST-1/candlesticks",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .candlesticks(&ticker(), PeriodInterval::Hour1, 100, 200)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("start_ts", "100"),
+            ("end_ts", "200"),
+            ("period_interval", "60"),
+        ],
+    },
+    Case {
+        builder: "ListHistoricalTrades",
+        path: "/trade-api/v2/historical/trades",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .historical()
+                    .trades()
+                    .ticker(&ticker())
+                    .min_ts(1)
+                    .max_ts(2)
+                    .limit(5)
+                    .cursor("c1")
+                    .is_block_trade(false)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("ticker", "KXTEST-1"),
+            ("min_ts", "1"),
+            ("max_ts", "2"),
+            ("limit", "5"),
+            ("cursor", "c1"),
+            ("is_block_trade", "false"),
+        ],
+    },
+];
+
+#[tokio::test]
+async fn every_historical_setter_sends_its_key_and_value_in_call_order() {
+    assert_cases(HISTORICAL_CASES).await;
+}

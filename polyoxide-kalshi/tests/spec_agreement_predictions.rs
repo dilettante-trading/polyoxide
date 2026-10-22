@@ -971,3 +971,160 @@ async fn the_events_listing_sends_every_documented_key_but_with_milestones() {
     assert!(documented.remove("with_milestones"));
     assert_eq!(sent, documented);
 }
+
+use polyoxide_kalshi::predictions::types::{
+    HistoricalBidAsk, HistoricalCandlestick, HistoricalCandlesticksResponse, HistoricalCutoff,
+    HistoricalPrice, HistoricalSelection,
+};
+
+#[test]
+fn every_historical_schema_agrees_with_the_spec() {
+    let schemas = mirror_schemas();
+    check_schema::<HistoricalCutoff>(&schemas, "GetHistoricalCutoffResponse");
+    check_schema::<HistoricalBidAsk>(&schemas, "BidAskDistributionHistorical");
+    check_schema::<HistoricalPrice>(&schemas, "PriceDistributionHistorical");
+    check_schema::<HistoricalCandlestick>(&schemas, "MarketCandlestickHistorical");
+    check_schema::<HistoricalCandlesticksResponse>(
+        &schemas,
+        "GetMarketCandlesticksHistoricalResponse",
+    );
+    let unaccounted = unaccounted_from(
+        &[
+            "/historical/cutoff",
+            "/historical/markets",
+            "/historical/markets/{ticker}",
+            "/historical/markets/{ticker}/candlesticks",
+            "/historical/trades",
+        ],
+        &[
+            "GetHistoricalCutoffResponse",
+            "GetMarketsResponse",
+            "GetMarketResponse",
+            "Market",
+            "PriceRange",
+            "GetMarketCandlesticksHistoricalResponse",
+            "MarketCandlestickHistorical",
+            "BidAskDistributionHistorical",
+            "PriceDistributionHistorical",
+            "GetTradesResponse",
+            "Trade",
+        ],
+        &["MveSelectedLeg"],
+    );
+    assert!(
+        unaccounted.is_empty(),
+        "schemas neither checked nor excused: {unaccounted:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_historical_builders_send_exactly_the_documented_query_keys() {
+    let spec = mirror();
+    let mut markets = keys_of("/historical/markets", "historical/markets_page", |p| {
+        Box::pin(async move {
+            p.historical()
+                .markets(HistoricalSelection::ExcludeMultivariate)
+                .limit(5)
+                .cursor("c1")
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    markets.extend(
+        keys_of("/historical/markets", "historical/markets_page", |p| {
+            Box::pin(async move {
+                p.historical()
+                    .markets(HistoricalSelection::Tickers(vec![
+                        Ticker::new("KXTEST-1").unwrap()
+                    ]))
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    markets.extend(
+        keys_of("/historical/markets", "historical/markets_page", |p| {
+            Box::pin(async move {
+                p.historical()
+                    .markets(HistoricalSelection::Event("EV-1".to_owned()))
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    markets.extend(
+        keys_of("/historical/markets", "historical/markets_page", |p| {
+            Box::pin(async move {
+                p.historical()
+                    .markets(HistoricalSelection::Series("SER-1".to_owned()))
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    assert_eq!(
+        Some(markets),
+        query::documented_parameters(&spec, "/historical/markets")
+    );
+
+    let candles = keys_of(
+        "/historical/markets/KXTEST-1/candlesticks",
+        "historical/candlesticks_60",
+        |p| {
+            Box::pin(async move {
+                p.historical()
+                    .candlesticks(
+                        &Ticker::new("KXTEST-1").unwrap(),
+                        PeriodInterval::Hour1,
+                        1,
+                        2,
+                    )
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        },
+    )
+    .await;
+    assert_eq!(
+        Some(candles),
+        query::documented_parameters(&spec, "/historical/markets/{ticker}/candlesticks")
+    );
+
+    let trades = keys_of("/historical/trades", "historical/trades", |p| {
+        Box::pin(async move {
+            p.historical()
+                .trades()
+                .ticker(&Ticker::new("KXTEST-1").unwrap())
+                .min_ts(1)
+                .max_ts(2)
+                .limit(5)
+                .cursor("c1")
+                .is_block_trade(true)
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    assert_eq!(
+        Some(trades),
+        query::documented_parameters(&spec, "/historical/trades")
+    );
+
+    for path in ["/historical/cutoff", "/historical/markets/{ticker}"] {
+        assert_eq!(
+            query::documented_parameters(&spec, path),
+            Some(BTreeSet::new()),
+            "{path} documents a query, so its builder needs a setter"
+        );
+    }
+}

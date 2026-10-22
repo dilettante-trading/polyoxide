@@ -91,6 +91,9 @@ impl Predictions {
         events: api::EventsApi,
         /// Series: the templates events follow, with their categories and tags.
         series: api::SeriesApi,
+        /// The archive: markets settled before the historical cutoff, with their candlesticks
+        /// and trades.
+        historical: api::HistoricalApi,
         /// The account's limits and the routes' token costs.
         account: api::AccountApi,
     }

@@ -345,3 +345,43 @@ fn the_events_listing_fixtures_cover_the_cases_the_type_exists_for() {
         "a nested page nests markets"
     );
 }
+
+use polyoxide_kalshi::predictions::types::{HistoricalCandlesticksResponse, HistoricalCutoff};
+
+#[test]
+fn every_historical_fixture_agrees_with_its_type() {
+    hold_exactly::<HistoricalCutoff>("historical/cutoff");
+    hold_exactly::<MarketsPage>("historical/markets_page");
+    hold_exactly::<MarketResponse>("historical/market");
+    for width in [1, 60, 1440] {
+        hold_exactly::<HistoricalCandlesticksResponse>(&format!("historical/candlesticks_{width}"));
+    }
+    hold_exactly::<TradesPage>("historical/trades");
+}
+
+#[test]
+fn the_historical_fixtures_cover_the_cases_the_fallback_is_built_on() {
+    let hourly: HistoricalCandlesticksResponse = read("historical/candlesticks_60");
+    assert!(
+        hourly
+            .candlesticks
+            .iter()
+            .any(|row| row.price.close.is_some()),
+        "an hourly period with a trade"
+    );
+    assert!(
+        hourly
+            .candlesticks
+            .iter()
+            .any(|row| row.price.close.is_none() && row.price.previous.is_some()),
+        "an hourly period with no trade that carries previous"
+    );
+    let market: MarketResponse = read("historical/market");
+    assert_eq!(hourly.ticker, market.market.ticker);
+    let trades: TradesPage = read("historical/trades");
+    assert!(!trades.trades.is_empty(), "the archived market traded");
+    assert!(trades
+        .trades
+        .iter()
+        .all(|trade| trade.ticker == market.market.ticker));
+}

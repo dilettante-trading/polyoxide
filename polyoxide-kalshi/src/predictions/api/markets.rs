@@ -106,7 +106,7 @@ impl MarketsApi {
     /// periods.
     ///
     /// A market that settled before Kalshi's historical cutoff has candlesticks only on
-    /// `GET /historical/markets/{ticker}/candlesticks`, which this client does not call.
+    /// `GET /historical/markets/{ticker}/candlesticks`, which `historical().candlesticks` reads.
     pub fn candlesticks(
         &self,
         ticker: &Ticker,
