@@ -4208,7 +4208,7 @@ async fn an_archive_that_fails_otherwise_is_that_failure() {
         .instrument(&key::key(&ticker, Outcome::Yes))
         .await
         .unwrap_err();
-    assert_eq!(err.class, Class::Unavailable);
+    assert!(matches!(err.class, Class::Unavailable { .. }), "{err}");
     assert!(err.source.downcast_ref::<NotListed>().is_none(), "{err}");
 }
 

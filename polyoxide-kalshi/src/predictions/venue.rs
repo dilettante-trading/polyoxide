@@ -39,19 +39,30 @@
 //! `previous` either is left out. Its volume is the contracts traded in the period,
 //! in shares. `CandleExt` carries the YES bid and ask distributions and the open
 //! interest in YES terms whatever the key's outcome, and the mean trade price,
-//! turned over for a `no` key like the other prices. A market that settled before
-//! Kalshi's historical cutoff has candlesticks only on its historical route, which
-//! this client does not call: the live route's answer for it, an empty list or a
-//! refusal, is returned as the venue gave it.
+//! turned over for a `no` key like the other prices.
+//!
+//! A market that settled before Kalshi's historical cutoff is gone from the live
+//! routes, which answer it as an unknown ticker, and is read from the archive
+//! (`historical()`) instead. `instrument` reads `GET /historical/markets/{ticker}`
+//! when the live market route answers `404`; `candles` reads the archived
+//! candlesticks with the same span when the batch answer leaves the market out (it
+//! lists a live market with no candle in the span with an empty list), clamped
+//! to its first 5,000 periods, the most the archive answers; `trades`
+//! reads `GET /historical/trades` when the live route has none; and `event_group`
+//! reads the event's archived markets when the live event does not nest the key's
+//! market. A `404` from the archive is `NotListed`. No method reads the cutoff: the
+//! live answer decides, so a market the live routes still serve near the cutoff is
+//! read live. `quote` and `book` read only the live book, which is empty for an
+//! archived market.
 //!
 //! | Method | Route | Requests |
 //! | --- | --- | --- |
-//! | `instrument` | `GET /trade-api/v2/markets/{ticker}` | 1 |
+//! | `instrument` | `GET /trade-api/v2/markets/{ticker}`, and for an archived market `GET /trade-api/v2/historical/markets/{ticker}` | 1, or 2 |
 //! | `quote` | `GET /trade-api/v2/markets/{ticker}/orderbook`, `depth=1` | 1 |
 //! | `book` | `GET /trade-api/v2/markets/{ticker}/orderbook`, every level | 1 |
-//! | `trades` | `GET /trade-api/v2/markets/trades` for the ticker, 1000 rows | 1 |
-//! | `candles` | `GET /trade-api/v2/markets/candlesticks` for the ticker | 1 |
-//! | `event_group` | `GET /trade-api/v2/markets/{ticker}`, then `GET /trade-api/v2/events/{event}` with `with_nested_markets=true` | 2 |
+//! | `trades` | `GET /trade-api/v2/markets/trades` for the ticker, 1000 rows, and when it has none `GET /trade-api/v2/historical/trades` | 1, or 2 |
+//! | `candles` | `GET /trade-api/v2/markets/candlesticks` for the ticker, and when it leaves the market out `GET /trade-api/v2/historical/markets/{ticker}/candlesticks` | 1, or 2 |
+//! | `event_group` | `instrument`'s reads, then `GET /trade-api/v2/events/{event}` with `with_nested_markets=true`, and for an archived market `GET /trade-api/v2/historical/markets?event_ticker=` | 2 to 4 |
 //!
 //! Each request costs its route's tokens on the client's Read layer, 10 today.
 
@@ -67,8 +78,8 @@ use rust_decimal::Decimal;
 
 use super::key::{self, Outcome, OutcomeId, Ticker};
 use super::types::{
-    self, BidAskDistribution, MarketCandlestick, MarketStatus, OrderbookFp, OutcomeSide,
-    PeriodInterval, PriceRange,
+    self, BidAskDistribution, HistoricalCandlestick, HistoricalSelection, MarketCandlestick,
+    MarketStatus, OrderbookFp, OutcomeSide, PeriodInterval, PriceDistribution, PriceRange,
 };
 use super::{Predictions, PredictionsError};
 
@@ -127,6 +138,15 @@ fn is_not_found(err: &PredictionsError) -> bool {
         PredictionsError::Venue(venue) => venue.status == 404,
         PredictionsError::Api(ApiError::Response(response)) => response.status.as_u16() == 404,
         _ => false,
+    }
+}
+
+/// `err` as the traits return it: `NotListed` for `key` when Kalshi answered `404`.
+fn unless_not_found(key: &MarketKey, err: PredictionsError) -> ClassifiedError {
+    if is_not_found(&err) {
+        NotListed::new(key.clone()).into()
+    } else {
+        err.into()
     }
 }
 
@@ -203,15 +223,22 @@ fn instrument(
 }
 
 impl Predictions {
-    /// The outcome a key names and its market's row; `NotListed` when Kalshi
-    /// answers `404` for the ticker (D11).
+    /// The outcome a key names and its market's row, read live and, when the live route answers
+    /// `404`, from the archive; `NotListed` when both answer `404` (D11, issue #71's D13).
     async fn listed(&self, key: &MarketKey) -> Result<(OutcomeId, types::Market), ClassifiedError> {
         let id = key::outcome(key)?;
         match self.markets().get(&id.ticker).send().await {
-            Ok(response) => Ok((id, response.market)),
-            Err(err) if is_not_found(&err) => Err(NotListed::new(key.clone()).into()),
-            Err(err) => Err(err.into()),
+            Ok(response) => return Ok((id, response.market)),
+            Err(err) if is_not_found(&err) => {}
+            Err(err) => return Err(err.into()),
         }
+        let response = self
+            .historical()
+            .market(&id.ticker)
+            .send()
+            .await
+            .map_err(|err| unless_not_found(key, err))?;
+        Ok((id, response.market))
     }
 }
 
@@ -279,19 +306,32 @@ fn trade(key: &MarketKey, outcome: Outcome, row: &types::Trade) -> Result<Trade,
 }
 
 impl Trades for Predictions {
-    /// The last 1000 trades of the market, oldest first. Kalshi serves them
-    /// newest first, with a cursor this method does not follow.
+    /// The last 1000 trades of the market, oldest first. Kalshi serves them newest first, with a
+    /// cursor this method does not follow. When the live route has none, they are read from the
+    /// archive, which holds a market settled before the historical cutoff; its `404` is
+    /// `NotListed`.
     async fn trades(&self, key: &MarketKey) -> Result<Vec<Trade>, ClassifiedError> {
         let id = key::outcome(key)?;
-        let page = self
+        let mut rows = self
             .markets()
             .trades()
             .ticker(&id.ticker)
             .limit(1000)
             .send()
-            .await?;
-        page.trades
-            .iter()
+            .await?
+            .trades;
+        if rows.is_empty() {
+            rows = self
+                .historical()
+                .trades()
+                .ticker(&id.ticker)
+                .limit(1000)
+                .send()
+                .await
+                .map_err(|err| unless_not_found(key, err))?
+                .trades;
+        }
+        rows.iter()
             .rev()
             .map(|row| trade(key, id.outcome, row))
             .collect()
@@ -308,6 +348,10 @@ const SERVED: &[CandleInterval] = &[
 /// The most candlesticks Kalshi answers in one request: it refuses a request for more with a
 /// `400` ("max candlesticks: 10000") rather than truncating it.
 const MAX_PERIODS_PER_REQUEST: i64 = 10_000;
+
+/// The most candlesticks the archive answers in one request: it refuses more with a `400` ("max
+/// candlesticks: 5000"), half the live route's cap (`docs/specs/kalshi/OBSERVED.md`, issue #71).
+const MAX_ARCHIVED_PERIODS_PER_REQUEST: i64 = 5_000;
 
 /// The first, highest, lowest and last price of one side's offers over a candle's period, in
 /// dollars.
@@ -390,6 +434,33 @@ fn ohlc(offers: &BidAskDistribution) -> Ohlc {
     }
 }
 
+/// An archived candlestick in the live route's shape, so one mapping reads both.
+fn live_shape(row: &HistoricalCandlestick) -> MarketCandlestick {
+    let offers = |side: &types::HistoricalBidAsk| BidAskDistribution {
+        open_dollars: side.open,
+        low_dollars: side.low,
+        high_dollars: side.high,
+        close_dollars: side.close,
+    };
+    MarketCandlestick {
+        end_period_ts: row.end_period_ts,
+        yes_bid: offers(&row.yes_bid),
+        yes_ask: offers(&row.yes_ask),
+        price: PriceDistribution {
+            open_dollars: row.price.open,
+            low_dollars: row.price.low,
+            high_dollars: row.price.high,
+            close_dollars: row.price.close,
+            mean_dollars: row.price.mean,
+            previous_dollars: row.price.previous,
+            min_dollars: None,
+            max_dollars: None,
+        },
+        volume_fp: row.volume,
+        open_interest_fp: row.open_interest,
+    }
+}
+
 /// The candle a row describes, for `outcome`, or `None` for a period with neither a trade nor a
 /// price before it.
 fn to_candle(
@@ -454,7 +525,9 @@ impl Candles for Predictions {
 
     /// The market's candles of one served width opening in the query's span, oldest first, in
     /// one request. Kalshi refuses a request over 10,000 candlesticks rather than truncating it,
-    /// so a span past 10,000 periods is clamped to its first 10,000 and the rest is not read.
+    /// so a span past 10,000 periods is clamped to its first 10,000 and the rest is not read. A
+    /// market the answer leaves out is read from the archive, which answers at most 5,000
+    /// candlesticks, so its span is clamped to its first 5,000 periods; its `404` is `NotListed`.
     async fn candles(
         &self,
         key: &MarketKey,
@@ -475,15 +548,34 @@ impl Candles for Predictions {
             .candlesticks(&id.ticker, period, start_ts, end_ts)
             .send()
             .await?;
-        let Some(market) = response
+        let rows = match response
             .markets
             .into_iter()
             .find(|market| market.market_ticker == id.ticker.as_str())
-        else {
-            return Ok(Vec::new());
+        {
+            Some(market) => market.candlesticks,
+            // Kalshi lists a live market with no candle in the span with an empty list, and
+            // leaves out a market it has archived, whose candles the archive serves.
+            None => self
+                .historical()
+                .candlesticks(
+                    &id.ticker,
+                    period,
+                    start_ts,
+                    end_ts.min(start_ts.saturating_add(
+                        MAX_ARCHIVED_PERIODS_PER_REQUEST.saturating_sub(1) * width,
+                    )),
+                )
+                .send()
+                .await
+                .map_err(|err| unless_not_found(key, err))?
+                .candlesticks
+                .iter()
+                .map(live_shape)
+                .collect(),
         };
         let mut candles = Vec::new();
-        for row in &market.candlesticks {
+        for row in &rows {
             if let Some(candle) = to_candle(key, id.outcome, query.interval, width, row)? {
                 if candle.open_time >= query.start && candle.open_time <= end {
                     candles.push(candle);
@@ -509,12 +601,28 @@ pub struct EventGroupExt {
     pub collateral_return_type: Option<String>,
 }
 
+/// Both outcomes of `market`, appended to `group`.
+fn push_outcomes(group: &mut EventGroup, market: &types::Market) -> Result<(), ClassifiedError> {
+    // A ticker no key can carry is a response this client cannot read.
+    let ticker =
+        Ticker::new(&market.ticker).map_err(|err| ClassifiedError::new(Class::Decode, err))?;
+    for (outcome, label) in [(Outcome::Yes, "Yes"), (Outcome::No, "No")] {
+        let mut each = EventOutcome::new(key::key(&ticker, outcome), market.ticker.clone(), label);
+        each.market_title = Some(market.yes_sub_title.clone());
+        group.outcomes.push(each);
+    }
+    Ok(())
+}
+
 impl EventGroups for Predictions {
-    /// The event of the key's market, with both outcomes of each of its
-    /// markets. The event is read with its markets nested, so a settled market
-    /// Kalshi leaves out of an event is left out here.
+    /// The event of the key's market, with both outcomes of each of its markets.
+    ///
+    /// The event is read with its markets nested, and Kalshi nests only the live ones, so when the
+    /// key's market is not among them (it settled before the historical cutoff) the event's
+    /// archived markets are read too, one page of 1000: the live markets first, then each archived
+    /// one not already listed.
     async fn event_group(&self, key: &MarketKey) -> Result<EventGroup, ClassifiedError> {
-        let (_, market) = self.listed(key).await?;
+        let (id, market) = self.listed(key).await?;
         let response = self
             .events()
             .get(&market.event_ticker)
@@ -524,15 +632,22 @@ impl EventGroups for Predictions {
         let event = response.event;
         let mut group = EventGroup::new(event.event_ticker.clone());
         group.title = Some(event.title.clone());
+        // The live markets are read before the archive is asked, so a response this client cannot
+        // read fails without the archive's request.
         for nested in &event.markets {
-            // A ticker no key can carry is a response this client cannot read.
-            let ticker = Ticker::new(&nested.ticker)
-                .map_err(|err| ClassifiedError::new(Class::Decode, err))?;
-            for (outcome, label) in [(Outcome::Yes, "Yes"), (Outcome::No, "No")] {
-                let mut each =
-                    EventOutcome::new(key::key(&ticker, outcome), nested.ticker.clone(), label);
-                each.market_title = Some(nested.yes_sub_title.clone());
-                group.outcomes.push(each);
+            push_outcomes(&mut group, nested)?;
+        }
+        let nests = |ticker: &str| event.markets.iter().any(|nested| nested.ticker == ticker);
+        if !nests(id.ticker.as_str()) {
+            let archived = self
+                .historical()
+                .markets(HistoricalSelection::Event(event.event_ticker.clone()))
+                .limit(1000)
+                .send()
+                .await?
+                .markets;
+            for row in archived.iter().filter(|row| !nests(row.ticker.as_str())) {
+                push_outcomes(&mut group, row)?;
             }
         }
         group.extensions = Extensions::of(EventGroupExt {

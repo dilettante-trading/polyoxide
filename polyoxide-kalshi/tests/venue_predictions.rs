@@ -537,6 +537,17 @@ async fn an_unknown_ticker_is_not_listed_but_its_quote_and_book_are_empty() {
         .expect(2)
         .create_async()
         .await;
+    // The live route's 404 sends the read to the archive, which does not list it either.
+    let archive = server
+        .mock(
+            "GET",
+            format!("/trade-api/v2/historical/markets/{ticker}").as_str(),
+        )
+        .with_status(404)
+        .with_body(fixture("error_not_found"))
+        .expect(2)
+        .create_async()
+        .await;
     // Kalshi answers an unknown ticker's orderbook with 200 and two empty lists.
     let books = route(
         &mut server,
@@ -560,6 +571,7 @@ async fn an_unknown_ticker_is_not_listed_but_its_quote_and_book_are_empty() {
         assert!(book.bids.is_empty() && book.asks.is_empty(), "{book:?}");
     }
     market.assert_async().await;
+    archive.assert_async().await;
     books.assert_async().await;
 }
 
@@ -573,6 +585,15 @@ async fn only_a_404_is_not_listed() {
     let mut server = start().await;
     let _plain = server
         .mock("GET", market_path(&ticker).as_str())
+        .with_status(404)
+        .with_body("not found")
+        .create_async()
+        .await;
+    let _archive = server
+        .mock(
+            "GET",
+            format!("/trade-api/v2/historical/markets/{ticker}").as_str(),
+        )
         .with_status(404)
         .with_body("not found")
         .create_async()
@@ -1053,6 +1074,15 @@ async fn an_unlisted_key_has_no_event_group_and_asks_for_no_event() {
         .with_body(fixture("error_not_found"))
         .create_async()
         .await;
+    let _archive = server
+        .mock(
+            "GET",
+            format!("/trade-api/v2/historical/markets/{ticker}").as_str(),
+        )
+        .with_status(404)
+        .with_body(fixture("error_not_found"))
+        .create_async()
+        .await;
     let events = server
         .mock("GET", Matcher::Regex("^/trade-api/v2/events/".to_owned()))
         .match_query(Matcher::Any)
@@ -1504,32 +1534,50 @@ async fn a_candle_opening_outside_the_query_is_dropped_and_the_rest_come_oldest_
 }
 
 #[tokio::test]
-async fn a_market_the_answer_does_not_list_has_no_candles() {
+async fn a_market_the_answer_does_not_list_is_asked_of_the_archive() {
+    let ticker = test_ticker();
     let query = || {
         CandleQuery::new(CandleInterval::Hour1, UnixMillis(ms(T0))).end(UnixMillis(ms(T0 + 3_600)))
     };
-    let span = (T0 + 3_600, T0 + 7_200, 60);
-    let none = candles_of(
-        json!({"markets": []}).to_string(),
-        Outcome::Yes,
-        query(),
-        span,
-    )
-    .await
-    .unwrap();
-    assert!(none.is_empty());
-
     let other = json!({"markets": [{"market_ticker": "KXOTHER-1", "candlesticks": [
         row(T0 + 3_600, traded())
     ]}]})
     .to_string();
-    let none = candles_of(other, Outcome::Yes, query(), span)
-        .await
-        .unwrap();
-    assert!(
-        none.is_empty(),
-        "another market's candles are not this one's"
-    );
+    // Neither an empty answer nor one with only another market lists this one, so each asks the
+    // archive for the same span, whose 404 is `NotListed`.
+    for body in [json!({"markets": []}).to_string(), other] {
+        let mut server = start().await;
+        let live = route(
+            &mut server,
+            CANDLES,
+            candles_query(&ticker, T0 + 3_600, T0 + 7_200, 60),
+            &body,
+            1,
+        )
+        .await;
+        let archive = server
+            .mock(
+                "GET",
+                format!("/trade-api/v2/historical/markets/{ticker}/candlesticks").as_str(),
+            )
+            .match_query(Matcher::Exact(format!(
+                "start_ts={}&end_ts={}&period_interval=60",
+                T0 + 3_600,
+                T0 + 7_200
+            )))
+            .with_status(404)
+            .with_body(fixture("error_not_found"))
+            .expect(1)
+            .create_async()
+            .await;
+        let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+        let key = key::key(&ticker, Outcome::Yes);
+        let err = venue.candles(&key, &query()).await.unwrap_err();
+        live.assert_async().await;
+        archive.assert_async().await;
+        assert_eq!(err.class, Class::VenueRefusal { code: None });
+        assert_eq!(err.source.downcast_ref::<NotListed>().unwrap().key, key);
+    }
 }
 
 #[tokio::test]
