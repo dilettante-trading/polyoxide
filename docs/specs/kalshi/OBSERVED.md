@@ -298,4 +298,8 @@ Probed 2026-10-22T09:03:45Z on production, unsigned, by `--catalog`.
 
 What they settle: no created, closed or settled window refuses `tickers`, `event_ticker`, `series_ticker` or either `mve_filter`, so `ListMarketWindow` keeps every setter; `min_updated_ts` with `series_ticker` needs `mve_filter=exclude`, which `markets().updated` always sends; `GET /markets/orderbooks` answers in the order asked and answers a repeated ticker twice; the archive answers an unknown ticker's trades and candlesticks with `404`; and **the historical candlestick route refuses more than 5,000 candlesticks** ("max candlesticks: 5000"), half the live batch route's 10,000.
 
+### The live suites (production, unsigned, 2026-10-22)
+
+`live_predictions.rs`'s five catalog tests passed: `markets().updated(<now − 1 day>)` answered only markets whose `updated_time` is at or after the bound; `list().tickers(..)` and `orderbooks(..)` for three open tickers answered exactly those three; the cutoff's times parse; and `live_catalog_responses_carry_no_unmodelled_keys` found no key the types lack on any of the eleven catalog and archive routes. Its raw reads bypass the client's throttle, and run back to back beside the suite's other tests they were refused with `429`, so they are paced 300 ms apart. `live_predictions_venue.rs`'s `live_an_archived_market_reads_through_the_traits` read `KXHIGHNY-26AUG13-T92` (settled 2026-08-14, answered `404` by the live market route) through `instrument`, hourly `candles` and `trades`, each from the archive.
+
 <!-- issue 71 findings go above this line -->

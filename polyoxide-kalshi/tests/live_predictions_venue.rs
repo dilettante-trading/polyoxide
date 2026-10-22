@@ -341,3 +341,81 @@ async fn live_candles_at_each_served_width_are_ordered_aligned_and_mirror_each_o
         ));
     }
 }
+
+// ── An archived market (issue #71) ─────────────────────────────
+
+use polyoxide_core::ApiError;
+use polyoxide_kalshi::predictions::{types::HistoricalSelection, PredictionsError};
+use polyoxide_test_support::fail;
+
+/// An RFC 3339 time the host sent, in milliseconds since the epoch; one that does not parse fails
+/// the test as the decode failure it is.
+fn millis(field: &str, text: &str) -> u64 {
+    match chrono::DateTime::parse_from_rfc3339(text) {
+        Ok(time) => time.timestamp_millis().unsigned_abs(),
+        Err(_) => fail(
+            field,
+            &ApiError::Validation(format!("{field} {text:?} is not RFC 3339")),
+        ),
+    }
+}
+
+/// The newest archived market of a long-running daily series with volume that the live market
+/// route answers `404`, chosen on the route the traits read first.
+async fn archived_market(client: &Predictions) -> polyoxide_kalshi::predictions::types::Market {
+    let page = client
+        .historical()
+        .markets(HistoricalSelection::Series("KXHIGHNY".to_owned()))
+        .limit(200)
+        .send()
+        .await
+        .or_fail("archived KXHIGHNY markets");
+    for market in page.markets {
+        if market.volume_fp <= Decimal::ZERO {
+            continue;
+        }
+        let ticker = Ticker::new(&market.ticker).or_fail("name an archived market");
+        match client.markets().get(&ticker).send().await {
+            Err(PredictionsError::Venue(venue)) if venue.status == 404 => return market,
+            _ => continue,
+        }
+    }
+    environmental("no archived KXHIGHNY market with volume is gone from the live route");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_an_archived_market_reads_through_the_traits() {
+    let client = client();
+    let market = archived_market(&client).await;
+    let ticker = Ticker::new(&market.ticker).or_fail("name the archived market");
+    let yes = key::key(&ticker, Outcome::Yes);
+
+    let instrument = client
+        .instrument(&yes)
+        .await
+        .or_fail("the archived instrument");
+    assert_eq!(
+        instrument.tradable,
+        Some(false),
+        "{yes} trades after settling"
+    );
+
+    let open = millis("open_time", &market.open_time);
+    let close = millis("close_time", &market.close_time);
+    let query = CandleQuery::new(CandleInterval::Hour1, UnixMillis(open)).end(UnixMillis(close));
+    let candles = client
+        .candles(&yes, &query)
+        .await
+        .or_fail("the archived candles");
+    assert!(
+        !candles.is_empty(),
+        "{yes} traded, so the archive holds a candle"
+    );
+
+    let trades = client.trades(&yes).await.or_fail("the archived trades");
+    assert!(
+        !trades.is_empty(),
+        "{yes} traded, so the archive holds a trade"
+    );
+}

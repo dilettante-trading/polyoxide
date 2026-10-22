@@ -10,6 +10,11 @@
 //! `live_the_route_table_agrees_with_the_endpoint_costs` the table of costs' (D5). The first
 //! sees keys and the length of the positional order-book rows. It does not see a new value of an
 //! enum, which decodes as that enum's `Other` variant.
+//!
+//! `live_catalog_responses_carry_no_unmodelled_keys` is the same detector for the catalog and
+//! historical routes (issue #71), and `live_updated_lists_only_markets_updated_since_its_bound` and
+//! `live_tickers_answer_exactly_the_markets_asked_for` hold the two filters the design session did
+//! not see at work on the host.
 
 mod common;
 
@@ -335,6 +340,285 @@ async fn live_responses_carry_no_unmodelled_keys() {
     check(compare_live::<EventResponse>(
         &path,
         &raw(&http, &path).await,
+    ));
+
+    assert!(
+        unmodelled.is_empty(),
+        "the host sent what the types do not model; model it as an optional field, excuse it \
+         in OBSERVED_EXTRA and record it in docs/specs/kalshi/OBSERVED.md: {unmodelled:#?}"
+    );
+}
+
+// ── Catalog routes (issue #71) ──────────────────────────────────
+
+use polyoxide_kalshi::predictions::types::{
+    EventStatusFilter, EventsPage, HistoricalCandlesticksResponse, HistoricalCutoff,
+    HistoricalSelection, MarketStatusFilter, MveFilter, OrderbooksResponse, SeriesList,
+    SeriesResponse,
+};
+
+/// A daily series with years of settled markets, so its archive always holds some.
+const ARCHIVE_SERIES: &str = "KXHIGHNY";
+
+fn now_seconds() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+/// An RFC 3339 time the host sent, in Unix seconds; one that does not parse fails the test as the
+/// decode failure it is.
+fn seconds(field: &str, text: &str) -> i64 {
+    match chrono::DateTime::parse_from_rfc3339(text) {
+        Ok(time) => time.timestamp(),
+        Err(_) => fail(
+            field,
+            &ApiError::Validation(format!("{field} {text:?} is not RFC 3339")),
+        ),
+    }
+}
+
+/// Three open single markets' tickers, from the filtered listing.
+async fn three_open_tickers(client: &Predictions) -> Vec<Ticker> {
+    let page = client
+        .markets()
+        .list()
+        .status(MarketStatusFilter::Open)
+        .mve_filter(MveFilter::Exclude)
+        .limit(3)
+        .send()
+        .await
+        .or_fail("the open listing");
+    if page.markets.len() < 3 {
+        environmental("the open listing held fewer than three markets");
+    }
+    page.markets
+        .iter()
+        .map(|market| Ticker::new(&market.ticker).or_fail("name a listed market"))
+        .collect()
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_updated_lists_only_markets_updated_since_its_bound() {
+    let bound = now_seconds() - 86_400;
+    let page = client()
+        .markets()
+        .updated(bound)
+        .limit(100)
+        .send()
+        .await
+        .or_fail("markets updated in the last day");
+    if page.markets.is_empty() {
+        environmental("no market's metadata changed in the last day");
+    }
+    for market in &page.markets {
+        assert!(
+            seconds("updated_time", &market.updated_time) >= bound,
+            "{} was updated at {}, before the bound {bound}",
+            market.ticker,
+            market.updated_time
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_tickers_answer_exactly_the_markets_asked_for() {
+    let client = client();
+    let asked = three_open_tickers(&client).await;
+    let mut wanted: Vec<&str> = asked.iter().map(Ticker::as_str).collect();
+    wanted.sort_unstable();
+
+    let page = client
+        .markets()
+        .list()
+        .tickers(&asked)
+        .send()
+        .await
+        .or_fail("the named markets");
+    let mut listed: Vec<&str> = page.markets.iter().map(|m| m.ticker.as_str()).collect();
+    listed.sort_unstable();
+    assert_eq!(
+        listed, wanted,
+        "the listing answers the set it was asked for"
+    );
+
+    let books = client
+        .markets()
+        .orderbooks(&asked)
+        .send()
+        .await
+        .or_fail("the named markets' books");
+    let mut booked: Vec<&str> = books.orderbooks.iter().map(|b| b.ticker.as_str()).collect();
+    booked.sort_unstable();
+    assert_eq!(booked, wanted, "one book per ticker asked for");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_series_and_the_events_listing_read() {
+    let client = client();
+    let list = client
+        .series()
+        .list()
+        .category("Economics")
+        .send()
+        .await
+        .or_fail("the Economics series");
+    let Some(first) = list.series.first() else {
+        environmental("Kalshi lists no Economics series");
+    };
+    let one = client
+        .series()
+        .get(&first.ticker)
+        .include_volume(true)
+        .send()
+        .await
+        .or_fail("one series");
+    assert_eq!(one.series.ticker, first.ticker);
+    assert!(one.series.volume_fp.is_some(), "the volume was asked for");
+
+    let page = client
+        .events()
+        .list()
+        .status(EventStatusFilter::Open)
+        .with_nested_markets(true)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("the open events");
+    if page.events.is_empty() {
+        environmental("Kalshi lists no open event");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_the_cutoff_parses_and_an_archived_market_reads_back() {
+    let client = client();
+    let cutoff = client
+        .historical()
+        .cutoff()
+        .send()
+        .await
+        .or_fail("the cutoff");
+    for (name, time) in [
+        ("market_settled_ts", &cutoff.market_settled_ts),
+        ("trades_created_ts", &cutoff.trades_created_ts),
+        ("orders_updated_ts", &cutoff.orders_updated_ts),
+    ] {
+        assert!(seconds(name, time) > 0, "{name} {time} is before 1970");
+    }
+    let page = client
+        .historical()
+        .markets(HistoricalSelection::Series(ARCHIVE_SERIES.to_owned()))
+        .limit(5)
+        .send()
+        .await
+        .or_fail("archived markets");
+    let Some(first) = page.markets.first() else {
+        environmental(&format!("the archive holds no {ARCHIVE_SERIES} market"));
+    };
+    let ticker = Ticker::new(&first.ticker).or_fail("name an archived market");
+    let read = client
+        .historical()
+        .market(&ticker)
+        .send()
+        .await
+        .or_fail("an archived market");
+    assert_eq!(read.market.ticker, first.ticker);
+}
+
+/// [`raw`], after a pause: the drift tests' reads bypass the client's throttle, and the suite's
+/// other tests read the host at the same time, so eleven back-to-back reads were refused with
+/// `429` (2026-10-22).
+async fn paced(http: &polyoxide_core::reqwest::Client, path: &str) -> String {
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    raw(http, path).await
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_catalog_responses_carry_no_unmodelled_keys() {
+    let client = client();
+    let asked = three_open_tickers(&client).await;
+    let archived = client
+        .historical()
+        .markets(HistoricalSelection::Series(ARCHIVE_SERIES.to_owned()))
+        .limit(1)
+        .send()
+        .await
+        .or_fail("an archived market")
+        .markets;
+    let Some(archived) = archived.first() else {
+        environmental(&format!("the archive holds no {ARCHIVE_SERIES} market"));
+    };
+    let open = seconds("open_time", &archived.open_time);
+    let close = seconds("close_time", &archived.close_time);
+
+    let http = polyoxide_core::reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(ApiError::Network)
+        .or_fail("a reqwest client");
+    let mut unmodelled = Vec::new();
+    let mut check = |found: Vec<String>| unmodelled.extend(found);
+
+    let path = "/trade-api/v2/series?category=Economics";
+    check(compare_live::<SeriesList>(path, &paced(&http, path).await));
+    let path = format!("/trade-api/v2/series/{ARCHIVE_SERIES}?include_volume=true");
+    check(compare_live::<SeriesResponse>(
+        &path,
+        &paced(&http, &path).await,
+    ));
+    let path = "/trade-api/v2/events?status=open&limit=5";
+    check(compare_live::<EventsPage>(path, &paced(&http, path).await));
+    let path = "/trade-api/v2/events?status=open&limit=2&with_nested_markets=true";
+    check(compare_live::<EventsPage>(path, &paced(&http, path).await));
+    let pairs: Vec<String> = asked.iter().map(|t| format!("tickers={t}")).collect();
+    let path = format!("/trade-api/v2/markets/orderbooks?{}", pairs.join("&"));
+    check(compare_live::<OrderbooksResponse>(
+        &path,
+        &paced(&http, &path).await,
+    ));
+    let path = format!(
+        "/trade-api/v2/markets?min_updated_ts={}&mve_filter=exclude&limit=5",
+        now_seconds() - 86_400
+    );
+    check(compare_live::<MarketsPage>(
+        &path,
+        &paced(&http, &path).await,
+    ));
+    let path = "/trade-api/v2/historical/cutoff";
+    check(compare_live::<HistoricalCutoff>(
+        path,
+        &paced(&http, path).await,
+    ));
+    let path = format!("/trade-api/v2/historical/markets?series_ticker={ARCHIVE_SERIES}&limit=5");
+    check(compare_live::<MarketsPage>(
+        &path,
+        &paced(&http, &path).await,
+    ));
+    let path = format!("/trade-api/v2/historical/markets/{}", archived.ticker);
+    check(compare_live::<MarketResponse>(
+        &path,
+        &paced(&http, &path).await,
+    ));
+    let path = format!(
+        "/trade-api/v2/historical/markets/{}/candlesticks?start_ts={open}&end_ts={}&period_interval=60",
+        archived.ticker,
+        close + 3_600
+    );
+    check(compare_live::<HistoricalCandlesticksResponse>(
+        &path,
+        &paced(&http, &path).await,
+    ));
+    let path = format!(
+        "/trade-api/v2/historical/trades?ticker={}&limit=5",
+        archived.ticker
+    );
+    check(compare_live::<TradesPage>(
+        &path,
+        &paced(&http, &path).await,
     ));
 
     assert!(
