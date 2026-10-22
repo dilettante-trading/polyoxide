@@ -198,7 +198,9 @@ Story 1 copies these into `OBSERVED.md` under `## Issue #71: catalog routes`, wi
     `include_volume`, and decodes `SeriesResponse { series: Series }`.
   - `Series` and `SettlementSource { name, url }` follow the mirror's `Series` schema and the
     captures, as Epic 8's types do: a field the schema requires and the wire always carries is
-    required, a nullable list decodes `null` as empty, and anything else is an `Option`.
+    required, a nullable list is an `Option<Vec<_>>` read with `serde(default)` and written back
+    as `null`, as `Event::settlement_sources` is, so the `null` the host sends round-trips (2,617
+    of 15,336 series sent `tags: null` on 2026-10-22), and anything else is an `Option`.
     `fee_type` is a `String` and `fee_multiplier` a `serde_json::Number`, as `Event`'s overrides
     are; `volume_fp` is an `Option<Decimal>`; `product_metadata` an `Option<Value>`.
 
@@ -305,13 +307,15 @@ Story 1 copies these into `OBSERVED.md` under `## Issue #71: catalog routes`, wi
 
 No Rust. Production, unsigned, through `scripts/capture_kalshi_predictions.py`, extended.
 
-- Capture a fixture per new route under `polyoxide-kalshi/tests/fixtures/predictions/`, each with a
-  `PROVENANCE.md` row: `series_list.json` (one `category`), `series.json`, `events_page.json` and
-  `events_page_nested.json`, `orderbooks.json` (two active tickers and one unknown),
-  `markets_updated_page.json`, `markets_tickers_page.json`, `markets_window_settled_page.json`,
-  `historical_cutoff.json`, `historical_markets_page.json`, `historical_market.json`,
-  `historical/candlesticks_{1,60,1440}.json` for one archived market with volume, and
-  `historical_trades.json`.
+- Capture a fixture per new route, with a mode of its own (`--catalog OUT_DIR`) that leaves the
+  other fixtures alone, each with a row in its folder's `PROVENANCE.md`. Under
+  `polyoxide-kalshi/tests/fixtures/predictions/catalog/`: `series_list.json` (one `category`),
+  `series.json`, `events_page.json`, `events_page_nested.json`, `orderbooks.json` (two active
+  tickers and one unknown), `markets_updated_page.json`, `markets_tickers_page.json` and
+  `markets_window_settled_page.json`. Under `…/predictions/historical/`: `cutoff.json`,
+  `markets_page.json`, `market.json`, `candlesticks_1.json`, `candlesticks_60.json` and
+  `candlesticks_1440.json` for one archived market with volume that the live market route
+  answers `404`, and `trades.json`.
 - Probe, and record in `OBSERVED.md`:
   - each `MarketWindow` family with `tickers`, `event_ticker`, `series_ticker` and each
     `mve_filter` (D5);
