@@ -4289,6 +4289,46 @@ async fn a_market_the_live_answer_leaves_out_is_read_from_the_archive_with_the_s
 }
 
 #[tokio::test]
+async fn an_archived_span_past_5_000_periods_is_clamped_to_its_first_5_000() {
+    let (ticker, _) = archived();
+    // 9,001 one-minute periods: within the live route's 10,000, past the archive's 5,000.
+    let first_open: i64 = 1_799_971_200;
+    let last_open = first_open + 9_000 * 60;
+    let start_ts = first_open + 60;
+    let mut server = start().await;
+    let live = exact(
+        &mut server,
+        CANDLES,
+        format!(
+            "market_tickers={ticker}&start_ts={start_ts}&end_ts={}&period_interval=1",
+            last_open + 60
+        ),
+        r#"{"markets":[]}"#,
+    )
+    .await;
+    let archive = exact(
+        &mut server,
+        &archived_candles_path(&ticker),
+        format!(
+            "start_ts={start_ts}&end_ts={}&period_interval=1",
+            start_ts + 4_999 * 60
+        ),
+        &json!({"ticker": ticker.as_str(), "candlesticks": []}).to_string(),
+    )
+    .await;
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    let query = CandleQuery::new(CandleInterval::Minute1, UnixMillis(ms(first_open)))
+        .end(UnixMillis(ms(last_open)));
+    let candles = venue
+        .candles(&key::key(&ticker, Outcome::Yes), &query)
+        .await
+        .unwrap();
+    live.assert_async().await;
+    archive.assert_async().await;
+    assert!(candles.is_empty());
+}
+
+#[tokio::test]
 async fn an_answer_that_lists_only_another_market_asks_the_archive_and_its_404_is_not_listed() {
     let ticker = Ticker::new("KXNOSUCH-1").unwrap();
     let mut server = start().await;
@@ -4635,6 +4675,14 @@ fn live_shape(row: &HistoricalCandlestick) -> MarketCandlestick {
 }
 ```
 
+After `const MAX_PERIODS_PER_REQUEST`, add:
+
+```rust
+/// The most candlesticks the archive answers in one request: it refuses more with a `400` ("max
+/// candlesticks: 5000"), half the live route's cap (`docs/specs/kalshi/OBSERVED.md`, issue #71).
+const MAX_ARCHIVED_PERIODS_PER_REQUEST: i64 = 5_000;
+```
+
 In `Candles::candles`, replace
 
 ```rust
@@ -4662,7 +4710,16 @@ with
             // leaves out a market it has archived, whose candles the archive serves.
             None => self
                 .historical()
-                .candlesticks(&id.ticker, period, start_ts, end_ts)
+                .candlesticks(
+                    &id.ticker,
+                    period,
+                    start_ts,
+                    end_ts.min(
+                        start_ts.saturating_add(
+                            MAX_ARCHIVED_PERIODS_PER_REQUEST.saturating_sub(1) * width,
+                        ),
+                    ),
+                )
                 .send()
                 .await
                 .map_err(|err| unless_not_found(key, err))?
@@ -4675,7 +4732,7 @@ with
         for row in &rows {
 ```
 
-and in its doc comment, after "and the rest is not read." add " A market the answer leaves out is read from the archive with the same span; its `404` is `NotListed`."
+and in its doc comment, after "and the rest is not read." add " A market the answer leaves out is read from the archive, which answers at most 5,000 candlesticks, so its span is clamped to its first 5,000 periods; its `404` is `NotListed`."
 
 - [ ] **Step 6: `event_group` reads the archive.** Replace `EventGroups::event_group`'s doc comment and its first lines, from `async fn event_group` through `let mut group = EventGroup::new(event.event_ticker.clone());`, and the loop header `for nested in &event.markets {`, so that the method reads:
 
@@ -4748,7 +4805,8 @@ with
 //! (`historical()`) instead. `instrument` reads `GET /historical/markets/{ticker}`
 //! when the live market route answers `404`; `candles` reads the archived
 //! candlesticks with the same span when the batch answer leaves the market out (it
-//! lists a live market with no candle in the span with an empty list); `trades`
+//! lists a live market with no candle in the span with an empty list), clamped
+//! to its first 5,000 periods, the most the archive answers; `trades`
 //! reads `GET /historical/trades` when the live route has none; and `event_group`
 //! reads the event's archived markets when the live event does not nest the key's
 //! market. A `404` from the archive is `NotListed`. No method reads the cutoff: the

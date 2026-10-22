@@ -250,10 +250,15 @@ Story 1 copies these into `OBSERVED.md` under `## Issue #71: catalog routes`, wi
   | Method | Falls back when | Then | And |
   |---|---|---|---|
   | `instrument` | `GET /markets/{t}` is not found (today's `is_not_found`) | `historical().market(t)` | a second not-found is `NotListed`; any other error is returned |
-  | `candles` | the batch answer has no entry whose `market_ticker` is `t` | `historical().candlesticks` with the same `period_interval`, `start_ts` and `end_ts` (the same shift and clamp) | a not-found is `NotListed`; rows map by Epic 9's D6, `previous` null or absent alike |
+  | `candles` | the batch answer has no entry whose `market_ticker` is `t` | `historical().candlesticks` with the same `period_interval` and `start_ts`, and `end_ts` clamped to 5,000 periods (below) | a not-found is `NotListed`; rows map by Epic 9's D6, `previous` null or absent alike |
   | `trades` | the live page has no trades | `historical().trades().ticker(t).limit(1000)`, reversed to oldest first | a not-found is `NotListed`; an empty page is an empty list |
   | `event_group` | the event's nested markets lack `t` | `historical().markets(HistoricalSelection::Event(e)).limit(1000)`, one page | the outcomes are the nested markets in Kalshi's order, then each archived market not already among them, in Kalshi's order |
 
+  The archive's candle route refuses more than 5,000 candlesticks ("max candlesticks: 5000",
+  Story 1's probe), half the live route's 10,000, so the archive request sends `end_ts` no later
+  than `start_ts` + 4,999 widths: an archived market's span past 5,000 periods returns its first
+  5,000, oldest first, as the live clamp returns its first 10,000 (the owner, 2026-10-22). A test
+  pins the `end_ts` sent for a span past the cap.
   `event_group` finds the market through `instrument`'s lookup, so an archived market's event is
   read too. `quote` and `book` are unchanged: an archived market's book is empty (P8). `CandleExt`
   from a historical row carries `yes_bid` and `yes_ask` as `Ohlc`, `open_interest` and `mean`, as
