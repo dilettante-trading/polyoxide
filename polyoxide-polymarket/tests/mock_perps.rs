@@ -571,7 +571,7 @@ async fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff() {
     ok.assert_async().await;
     assert_eq!(time.time, 1);
     // The client's own first backoff is the floor; a Retry-After of zero may
-    // not pull the retry forward (the Cloudflare lesson in CLAUDE.md).
+    // not pull the retry forward (the Cloudflare lesson in .claude/rules/rate-limits.md).
     // `RetryConfig::default()` starts at 500 ms and jitters down to 75% of
     // it, so the earliest the retry can legitimately land is 375 ms.
     assert!(
