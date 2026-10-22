@@ -21,6 +21,7 @@ pub mod error;
 pub mod key;
 pub mod request;
 mod throttle;
+mod tickers;
 pub mod types;
 pub mod venue;
 #[cfg(feature = "predictions-ws")]
@@ -29,6 +30,7 @@ pub mod ws;
 pub use auth::{Credentials, CredentialsError};
 pub use error::{PredictionsError, VenueError};
 pub use key::key;
+pub use tickers::{ticker_chunks, TickerChunks, MAX_ORDERBOOK_TICKERS, TICKERS_QUERY_BUDGET};
 
 use std::fmt;
 use std::sync::Arc;

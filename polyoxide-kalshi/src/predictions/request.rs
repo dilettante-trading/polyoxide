@@ -8,6 +8,7 @@ use std::sync::Arc;
 use polyoxide_core::{ApiError, Cost, LayerId, QueryBuilder, Request};
 use serde::de::DeserializeOwned;
 
+use crate::predictions::tickers;
 use crate::predictions::{error::PredictionsError, Inner};
 
 /// The throttle layer every request of this module is charged to: Kalshi's Read bucket.
@@ -78,7 +79,7 @@ fn encode(param: &str) -> String {
     encoded
 }
 
-/// The ten routes of this module, by name.
+/// The nineteen routes of this module, by name.
 pub(crate) mod routes {
     use super::Route;
 
@@ -95,6 +96,26 @@ pub(crate) mod routes {
     /// One market's candlesticks, under its series.
     pub(crate) const SERIES_CANDLESTICKS: Route =
         Route::get("/trade-api/v2/series/:series_ticker/markets/:ticker/candlesticks");
+    /// Every series, in one body.
+    pub(crate) const SERIES_LIST: Route = Route::get("/trade-api/v2/series");
+    /// One series.
+    pub(crate) const SERIES: Route = Route::get("/trade-api/v2/series/:series_ticker");
+    /// The events, a page at a time.
+    pub(crate) const EVENTS: Route = Route::get("/trade-api/v2/events");
+    /// Up to 100 markets' books in one read.
+    pub(crate) const ORDERBOOKS: Route = Route::get("/trade-api/v2/markets/orderbooks");
+    /// Where the archive begins.
+    pub(crate) const HISTORICAL_CUTOFF: Route = Route::get("/trade-api/v2/historical/cutoff");
+    /// The archived markets, a page at a time.
+    pub(crate) const HISTORICAL_MARKETS: Route = Route::get("/trade-api/v2/historical/markets");
+    /// One archived market.
+    pub(crate) const HISTORICAL_MARKET: Route =
+        Route::get("/trade-api/v2/historical/markets/:ticker");
+    /// One archived market's candlesticks.
+    pub(crate) const HISTORICAL_CANDLESTICKS: Route =
+        Route::get("/trade-api/v2/historical/markets/:ticker/candlesticks");
+    /// The archived trades, a page at a time.
+    pub(crate) const HISTORICAL_TRADES: Route = Route::get("/trade-api/v2/historical/trades");
 
     /// Every route above.
     pub(crate) const ALL: &[Route] = &[
@@ -108,6 +129,15 @@ pub(crate) mod routes {
         ACCOUNT_LIMITS,
         CANDLESTICKS,
         SERIES_CANDLESTICKS,
+        SERIES_LIST,
+        SERIES,
+        EVENTS,
+        ORDERBOOKS,
+        HISTORICAL_CUTOFF,
+        HISTORICAL_MARKETS,
+        HISTORICAL_MARKET,
+        HISTORICAL_CANDLESTICKS,
+        HISTORICAL_TRADES,
     ];
 }
 
@@ -156,6 +186,8 @@ pub(crate) struct Routed<T> {
     /// Why the request is refused before it is sent, when a route parameter would change the
     /// route.
     refused: Option<String>,
+    /// Why a query key's value is refused, by key, recorded by [`Routed::refuse`].
+    refusals: Vec<(&'static str, String)>,
     _marker: PhantomData<fn() -> T>,
 }
 
@@ -179,18 +211,66 @@ impl<T> Routed<T> {
             path: route.path(params),
             query: Vec::new(),
             refused,
+            refusals: Vec::new(),
             _marker: PhantomData,
         }
     }
 
-    /// Sets a query parameter, replacing an earlier value for the same key.
+    /// Sets a query parameter, replacing an earlier value for the same key, and clears a refusal
+    /// of the key.
     pub(crate) fn query(mut self, key: &'static str, value: impl ToString) -> Self {
+        self.refusals.retain(|(k, _)| *k != key);
         let value = value.to_string();
         match self.query.iter_mut().find(|(k, _)| *k == key) {
             Some(slot) => slot.1 = value,
             None => self.query.push((key, value)),
         }
         self
+    }
+
+    /// Appends one `key` pair per value, after every pair already set, replacing none, and clears a
+    /// refusal of the key.
+    pub(crate) fn query_many<V: ToString>(
+        mut self,
+        key: &'static str,
+        values: impl IntoIterator<Item = V>,
+    ) -> Self {
+        self.refusals.retain(|(k, _)| *k != key);
+        self.query
+            .extend(values.into_iter().map(|value| (key, value.to_string())));
+        self
+    }
+
+    /// Records why `key`'s value is not sent, replacing an earlier refusal of the key.
+    /// [`Routed::send`] returns the first refusal as `ApiError::Validation` before it charges or
+    /// sends anything.
+    pub(crate) fn refuse(mut self, key: &'static str, reason: String) -> Self {
+        self.refusals.retain(|(k, _)| *k != key);
+        self.refusals.push((key, reason));
+        self
+    }
+
+    /// Sends `tickers` comma-joined as `key`, or records why the set is refused: empty, or past
+    /// the query budget.
+    pub(crate) fn tickers_joined(self, key: &'static str, tickers: &[&str]) -> Self {
+        match tickers::refusal(tickers, usize::MAX) {
+            Some(reason) => self.refuse(key, format!("{key}: {reason}")),
+            None => self.query(key, tickers.join(",")),
+        }
+    }
+
+    /// Sends each of `tickers` as its own `key` pair, or records why the set is refused: empty,
+    /// more than `max_count`, or past the query budget.
+    pub(crate) fn tickers_repeated(
+        self,
+        key: &'static str,
+        tickers: &[&str],
+        max_count: usize,
+    ) -> Self {
+        match tickers::refusal(tickers, max_count) {
+            Some(reason) => self.refuse(key, format!("{key}: {reason}")),
+            None => self.query_many(key, tickers.iter().copied()),
+        }
     }
 
     /// Whether the client holds an authenticator, so a route that needs a key can refuse before it
@@ -203,13 +283,17 @@ impl<T> Routed<T> {
 impl<T: DeserializeOwned> Routed<T> {
     /// Sends on the client's send loop, which waits for the Read bucket, and decodes the response.
     ///
-    /// A route parameter that `new` refused is returned first, as `ApiError::Validation`, before
+    /// A route parameter that `new` refused is returned first, then the first query key
+    /// [`Routed::refuse`] recorded, as `ApiError::Validation`, before
     /// `before_send`, any token and any request. The steps after it, in order: wait for the
     /// client's `before_send`; build core's request with the
     /// route's cost, read now, after any confirmation has replaced it; add the client's
     /// authenticator when it has one, and the query pairs; send.
     pub(crate) async fn send(self) -> Result<T, PredictionsError> {
         if let Some(reason) = self.refused {
+            return Err(ApiError::Validation(reason).into());
+        }
+        if let Some((_, reason)) = self.refusals.into_iter().next() {
             return Err(ApiError::Validation(reason).into());
         }
         self.inner.before_send().await;
@@ -243,7 +327,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_route_table_is_the_epics_ten_routes() {
+    fn the_route_table_is_the_modules_nineteen_routes() {
         let templates: Vec<(&str, &str)> = route_templates().collect();
         assert_eq!(
             templates,
@@ -261,6 +345,18 @@ mod tests {
                     "GET",
                     "/trade-api/v2/series/:series_ticker/markets/:ticker/candlesticks"
                 ),
+                ("GET", "/trade-api/v2/series"),
+                ("GET", "/trade-api/v2/series/:series_ticker"),
+                ("GET", "/trade-api/v2/events"),
+                ("GET", "/trade-api/v2/markets/orderbooks"),
+                ("GET", "/trade-api/v2/historical/cutoff"),
+                ("GET", "/trade-api/v2/historical/markets"),
+                ("GET", "/trade-api/v2/historical/markets/:ticker"),
+                (
+                    "GET",
+                    "/trade-api/v2/historical/markets/:ticker/candlesticks"
+                ),
+                ("GET", "/trade-api/v2/historical/trades"),
             ]
         );
     }
@@ -540,5 +636,105 @@ mod routed_tests {
             assert_eq!(err.class(), Class::InvalidRequest, "{param:?}");
             mock.assert_async().await;
         }
+    }
+
+    #[test]
+    fn query_many_appends_a_pair_per_value_after_the_others() {
+        let kalshi = Predictions::new().unwrap();
+        let request = Routed::<Value>::new(&kalshi.inner, routes::MARKETS, &[])
+            .query("a", 1)
+            .query_many("tickers", ["X", "Y"])
+            .query_many("tickers", ["Z"]);
+        assert_eq!(
+            request.query,
+            [
+                ("a", "1"),
+                ("tickers", "X"),
+                ("tickers", "Y"),
+                ("tickers", "Z")
+            ]
+            .map(|(k, v)| (k, v.to_owned()))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refused_key_sends_nothing_and_a_later_value_for_it_clears_the_refusal() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", Matcher::Any)
+            .match_query(Matcher::Any)
+            .expect(0)
+            .create_async()
+            .await;
+        let kalshi = Predictions::builder()
+            .base_url(server.url())
+            .build()
+            .unwrap();
+        let err = Routed::<Value>::new(&kalshi.inner, routes::EXCHANGE_STATUS, &[])
+            .refuse("tickers", "no".to_owned())
+            .send()
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, PredictionsError::Api(ApiError::Validation(reason)) if reason == "no"),
+            "{err:?}"
+        );
+        assert_eq!(err.class(), Class::InvalidRequest);
+        mock.assert_async().await;
+
+        let pairs = pairs_sent(STATUS, |url| async move {
+            let kalshi = Predictions::builder().base_url(url).build().unwrap();
+            let _ = Routed::<Value>::new(&kalshi.inner, routes::EXCHANGE_STATUS, &[])
+                .refuse("tickers", "no".to_owned())
+                .query("tickers", "A")
+                .send()
+                .await;
+        })
+        .await;
+        assert_eq!(pairs, [("tickers".to_owned(), "A".to_owned())]);
+    }
+
+    #[test]
+    fn a_ticker_set_is_joined_or_repeated_or_refused() {
+        let kalshi = Predictions::new().unwrap();
+        let joined = Routed::<Value>::new(&kalshi.inner, routes::MARKETS, &[])
+            .tickers_joined("tickers", &["A", "B"]);
+        assert_eq!(joined.query, [("tickers", "A,B".to_owned())]);
+        assert!(joined.refusals.is_empty());
+
+        let repeated = Routed::<Value>::new(&kalshi.inner, routes::MARKETS, &[]).tickers_repeated(
+            "tickers",
+            &["A", "B"],
+            100,
+        );
+        assert_eq!(
+            repeated.query,
+            [("tickers", "A".to_owned()), ("tickers", "B".to_owned())]
+        );
+
+        let empty = Routed::<Value>::new(&kalshi.inner, routes::MARKETS, &[])
+            .tickers_joined("tickers", &[]);
+        assert!(empty.query.is_empty());
+        assert_eq!(empty.refusals.len(), 1);
+        assert!(
+            empty.refusals[0].1.starts_with("tickers: "),
+            "{:?}",
+            empty.refusals
+        );
+
+        let over = Routed::<Value>::new(&kalshi.inner, routes::MARKETS, &[]).tickers_repeated(
+            "tickers",
+            &["A", "B", "C"],
+            2,
+        );
+        assert!(over.query.is_empty());
+        assert_eq!(over.refusals.len(), 1);
+
+        // A refused set followed by a good one sends the good one.
+        let replaced = Routed::<Value>::new(&kalshi.inner, routes::MARKETS, &[])
+            .tickers_joined("tickers", &[])
+            .tickers_joined("tickers", &["C"]);
+        assert!(replaced.refusals.is_empty());
+        assert_eq!(replaced.query, [("tickers", "C".to_owned())]);
     }
 }

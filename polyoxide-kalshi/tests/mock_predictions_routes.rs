@@ -500,7 +500,7 @@ async fn a_429_with_no_retry_left_still_holds_the_next_request() {
 // ── the route table ─────────────────────────────────────────────
 
 #[test]
-fn the_route_table_holds_the_ten_routes_in_endpoint_costs_spelling() {
+fn the_route_table_holds_the_nineteen_routes_in_endpoint_costs_spelling() {
     let mut routes: Vec<(String, &str)> = route_templates()
         .map(|(method, template)| (method.to_ascii_uppercase(), template))
         .collect();
@@ -508,13 +508,25 @@ fn the_route_table_holds_the_ten_routes_in_endpoint_costs_spelling() {
     let expected = [
         ("GET", "/trade-api/v2/account/endpoint_costs"),
         ("GET", "/trade-api/v2/account/limits"),
+        ("GET", "/trade-api/v2/events"),
         ("GET", "/trade-api/v2/events/:event_ticker"),
         ("GET", "/trade-api/v2/exchange/status"),
+        ("GET", "/trade-api/v2/historical/cutoff"),
+        ("GET", "/trade-api/v2/historical/markets"),
+        ("GET", "/trade-api/v2/historical/markets/:ticker"),
+        (
+            "GET",
+            "/trade-api/v2/historical/markets/:ticker/candlesticks",
+        ),
+        ("GET", "/trade-api/v2/historical/trades"),
         ("GET", "/trade-api/v2/markets"),
         ("GET", "/trade-api/v2/markets/:ticker"),
         ("GET", "/trade-api/v2/markets/:ticker/orderbook"),
         ("GET", "/trade-api/v2/markets/candlesticks"),
+        ("GET", "/trade-api/v2/markets/orderbooks"),
         ("GET", "/trade-api/v2/markets/trades"),
+        ("GET", "/trade-api/v2/series"),
+        ("GET", "/trade-api/v2/series/:series_ticker"),
         (
             "GET",
             "/trade-api/v2/series/:series_ticker/markets/:ticker/candlesticks",
