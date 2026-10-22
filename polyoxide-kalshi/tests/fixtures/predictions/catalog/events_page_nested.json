@@ -1,0 +1,259 @@
+{
+  "cursor": "CgYI8OG8lQ8SE0tYTkVYVE5BVE9TRUNHRU4tOTk",
+  "events": [
+    {
+      "category": "Science and Technology",
+      "collateral_return_type": "",
+      "event_ticker": "KXELONMARS-99",
+      "exchange_index": 0,
+      "last_updated_ts": "2026-10-16T03:24:48.885736Z",
+      "markets": [
+        {
+          "can_close_early": true,
+          "close_time": "2099-08-01T04:59:00Z",
+          "created_time": "2025-08-28T20:40:16.168768Z",
+          "early_close_condition": "This market will close and expire early if the event occurs.",
+          "event_ticker": "KXELONMARS-99",
+          "exchange_index": 0,
+          "expected_expiration_time": "2099-08-01T15:00:00Z",
+          "expiration_time": "2099-08-08T15:00:00Z",
+          "expiration_value": "",
+          "last_price_dollars": "0.1000",
+          "latest_expiration_time": "2099-08-08T15:00:00Z",
+          "market_type": "binary",
+          "no_ask_dollars": "0.9000",
+          "no_bid_dollars": "0.8900",
+          "no_sub_title": "Mars",
+          "notional_value_dollars": "1.0000",
+          "open_interest_fp": "40079.49",
+          "open_time": "2025-08-28T20:45:00Z",
+          "previous_price_dollars": "0.1000",
+          "previous_yes_ask_dollars": "0.1100",
+          "previous_yes_bid_dollars": "0.1000",
+          "price_level_structure": "linear_cent",
+          "price_ranges": [
+            {
+              "end": "1.0000",
+              "start": "0.0000",
+              "step": "0.0100"
+            }
+          ],
+          "result": "",
+          "rules_primary": "If Elon Musk visits Mars before the earlier of his death or Aug 1, 2099, then the market resolves to Yes.",
+          "rules_secondary": " ",
+          "settlement_bounds_type": "default",
+          "settlement_timer_seconds": 1800,
+          "status": "active",
+          "ticker": "KXELONMARS-99",
+          "title": "Will Elon Musk visit Mars before Aug 1, 2099?",
+          "updated_time": "2026-10-16T03:23:52.413222Z",
+          "volume_24h_fp": "1.00",
+          "volume_fp": "122961.79",
+          "yes_ask_dollars": "0.1100",
+          "yes_ask_size_fp": "17.55",
+          "yes_bid_dollars": "0.1000",
+          "yes_bid_size_fp": "123.60",
+          "yes_sub_title": "Mars"
+        }
+      ],
+      "mutually_exclusive": false,
+      "series_ticker": "KXELONMARS",
+      "settlement_sources": [
+        {
+          "name": "The Guardian",
+          "url": "https://www.theguardian.com"
+        },
+        {
+          "name": "local news outlets with verifiable mastheads in ",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "official social media accounts of  or their official representatives",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "official government sources of ",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "official representatives or offices of ",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "The New York Times",
+          "url": "https://www.nytimes.com"
+        },
+        {
+          "name": "the Associated Press",
+          "url": "https://www.ap.org"
+        },
+        {
+          "name": "Reuters",
+          "url": "https://www.reuters.com"
+        },
+        {
+          "name": "Politico",
+          "url": "https://www.politico.com"
+        },
+        {
+          "name": "Semafor",
+          "url": "https://www.semafor.com/"
+        },
+        {
+          "name": "The Information",
+          "url": "https://www.theinformation.com/"
+        },
+        {
+          "name": "The Washington Post",
+          "url": "https://www.washingtonpost.com/"
+        },
+        {
+          "name": "The Wall Street Journal",
+          "url": "https://www.wsj.com"
+        },
+        {
+          "name": "CNN",
+          "url": "https://www.cnn.com"
+        },
+        {
+          "name": "Fox News",
+          "url": "https://www.foxnews.com/"
+        },
+        {
+          "name": "MSNBC",
+          "url": "https://www.msnbc.com"
+        },
+        {
+          "name": "CNBC",
+          "url": "https://www.cnbc.com"
+        }
+      ],
+      "strike_period": "",
+      "sub_title": "Before 2099",
+      "title": "Will Elon Musk visit Mars in his lifetime?"
+    },
+    {
+      "category": "Elections",
+      "collateral_return_type": "MECNET",
+      "event_ticker": "KXNEXTNATOSECGEN-99",
+      "exchange_index": 0,
+      "last_updated_ts": "2026-10-16T03:03:29.277194Z",
+      "markets": [
+        {
+          "can_close_early": true,
+          "close_time": "2099-01-08T15:00:00Z",
+          "created_time": "2026-06-29T19:31:47.73165Z",
+          "custom_strike": {
+            "Holder": "Klaus Iohannis"
+          },
+          "event_ticker": "KXNEXTNATOSECGEN-99",
+          "exchange_index": 0,
+          "expected_expiration_time": "2099-01-08T15:00:00Z",
+          "expiration_time": "2099-01-08T15:00:00Z",
+          "expiration_value": "",
+          "last_price_dollars": "0.0800",
+          "latest_expiration_time": "2099-01-08T15:00:00Z",
+          "market_type": "binary",
+          "no_ask_dollars": "0.9900",
+          "no_bid_dollars": "0.9200",
+          "no_sub_title": "Klaus Iohannis",
+          "notional_value_dollars": "1.0000",
+          "occurrence_datetime": "2099-01-01T15:00:00Z",
+          "open_interest_fp": "90.00",
+          "open_time": "2026-06-29T19:47:00Z",
+          "previous_price_dollars": "0.0800",
+          "previous_yes_ask_dollars": "0.0800",
+          "previous_yes_bid_dollars": "0.0100",
+          "price_level_structure": "linear_cent",
+          "price_ranges": [
+            {
+              "end": "1.0000",
+              "start": "0.0000",
+              "step": "0.0100"
+            }
+          ],
+          "result": "",
+          "rules_primary": "If Klaus Iohannis formally holds the position of Secretary General of NATO, and is the first such subject to do so after Issuance, then the market resolves to Yes.",
+          "rules_secondary": "For the purposes of this Contract, \"formally holds Secretary General of NATO\" means that an individual, company, or group has assumed Secretary General of NATO in an official capacity—whether by appointment, election, succession, confirmation, designation, or acting/interim assignment—and has performed or is recognized to perform the duties or responsibilities of that role for any length of time after Issuance.",
+          "settlement_bounds_type": "default",
+          "settlement_timer_seconds": 1800,
+          "status": "active",
+          "strike_type": "custom",
+          "ticker": "KXNEXTNATOSECGEN-99-KIOH",
+          "title": "Will Klaus Iohannis be the next Secretary General of NATO?",
+          "updated_time": "2026-10-10T09:30:32.411979Z",
+          "volume_24h_fp": "0.00",
+          "volume_fp": "369.36",
+          "yes_ask_dollars": "0.0800",
+          "yes_ask_size_fp": "4.46",
+          "yes_bid_dollars": "0.0100",
+          "yes_bid_size_fp": "250.00",
+          "yes_sub_title": "Klaus Iohannis"
+        },
+        {
+          "can_close_early": true,
+          "close_time": "2099-01-08T15:00:00Z",
+          "created_time": "2026-06-29T19:31:47.73165Z",
+          "custom_strike": {
+            "Holder": "Kaja Kallas"
+          },
+          "event_ticker": "KXNEXTNATOSECGEN-99",
+          "exchange_index": 0,
+          "expected_expiration_time": "2099-01-08T15:00:00Z",
+          "expiration_time": "2099-01-08T15:00:00Z",
+          "expiration_value": "",
+          "last_price_dollars": "0.2100",
+          "latest_expiration_time": "2099-01-08T15:00:00Z",
+          "market_type": "binary",
+          "no_ask_dollars": "0.8700",
+          "no_bid_dollars": "0.7900",
+          "no_sub_title": "Kaja Kallas",
+          "notional_value_dollars": "1.0000",
+          "occurrence_datetime": "2099-01-01T15:00:00Z",
+          "open_interest_fp": "1174.50",
+          "open_time": "2026-06-29T19:47:00Z",
+          "previous_price_dollars": "0.2100",
+          "previous_yes_ask_dollars": "0.2000",
+          "previous_yes_bid_dollars": "0.1300",
+          "price_level_structure": "linear_cent",
+          "price_ranges": [
+            {
+              "end": "1.0000",
+              "start": "0.0000",
+              "step": "0.0100"
+            }
+          ],
+          "result": "",
+          "rules_primary": "If Kaja Kallas formally holds the position of Secretary General of NATO, and is the first such subject to do so after Issuance, then the market resolves to Yes.",
+          "rules_secondary": "For the purposes of this Contract, \"formally holds Secretary General of NATO\" means that an individual, company, or group has assumed Secretary General of NATO in an official capacity—whether by appointment, election, succession, confirmation, designation, or acting/interim assignment—and has performed or is recognized to perform the duties or responsibilities of that role for any length of time after Issuance.",
+          "settlement_bounds_type": "default",
+          "settlement_timer_seconds": 1800,
+          "status": "active",
+          "strike_type": "custom",
+          "ticker": "KXNEXTNATOSECGEN-99-KKAL",
+          "title": "Will Kaja Kallas be the next Secretary General of NATO?",
+          "updated_time": "2026-10-10T09:30:33.372745Z",
+          "volume_24h_fp": "0.00",
+          "volume_fp": "1936.64",
+          "yes_ask_dollars": "0.2100",
+          "yes_ask_size_fp": "18.00",
+          "yes_bid_dollars": "0.1300",
+          "yes_bid_size_fp": "200.00",
+          "yes_sub_title": "Kaja Kallas"
+        }
+      ],
+      "mutually_exclusive": true,
+      "series_ticker": "KXNEXTNATOSECGEN",
+      "settlement_sources": [
+        {
+          "name": "North Atlantic Treaty Organization",
+          "url": "https://www.nato.int/"
+        }
+      ],
+      "strike_period": "",
+      "sub_title": "Before Jan 1, 2099",
+      "title": "Who will be the next Secretary General of NATO?"
+    }
+  ],
+  "milestones": []
+}

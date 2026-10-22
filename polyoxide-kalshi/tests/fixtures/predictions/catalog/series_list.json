@@ -1,0 +1,86 @@
+{
+  "series": [
+    {
+      "additional_prohibitions": [
+        "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+        "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+      ],
+      "categories": [
+        "Economics"
+      ],
+      "category": "Economics",
+      "contract_terms_url": "https://assets.kalshi.com/contract_terms/GAS.pdf",
+      "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/GAS.pdf",
+      "exchange_index": 0,
+      "fee_multiplier": 1,
+      "fee_type": "quadratic",
+      "frequency": "weekly",
+      "last_updated_ts": "2026-10-15T08:02:28.792359Z",
+      "settlement_sources": [
+        {
+          "name": "U.S. Energy Information Agency",
+          "url": "https://www.eia.gov/dnav/pet/PET_PRI_GND_DCUS_NUS_W.htm"
+        }
+      ],
+      "tags": null,
+      "ticker": "GAS",
+      "title": "Gas weekly"
+    },
+    {
+      "additional_prohibitions": [
+        "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+        "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+      ],
+      "categories": [
+        "Economics"
+      ],
+      "category": "Economics",
+      "contract_terms_url": "https://assets.kalshi.com/contract_terms/ECONSTAT.pdf",
+      "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/ECONSTAT.pdf",
+      "exchange_index": 0,
+      "fee_multiplier": 1,
+      "fee_type": "quadratic",
+      "frequency": "monthly",
+      "last_updated_ts": "2026-10-15T16:02:57.046311Z",
+      "settlement_sources": [
+        {
+          "name": "Trading Economics",
+          "url": "https://tradingeconomics.com/china/imports-yoy"
+        }
+      ],
+      "tags": [
+        "Growth"
+      ],
+      "ticker": "KXCHIMPORTS",
+      "title": "China Imports YoY"
+    },
+    {
+      "additional_prohibitions": [
+        "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+        "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+      ],
+      "categories": [
+        "Economics"
+      ],
+      "category": "Economics",
+      "contract_terms_url": "https://assets.kalshi.com/contract_terms/ECONTWEETS.pdf",
+      "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/ECONTWEETS.pdf",
+      "exchange_index": 0,
+      "fee_multiplier": 1,
+      "fee_type": "quadratic",
+      "frequency": "weekly",
+      "last_updated_ts": "2026-10-15T08:14:10.229686Z",
+      "settlement_sources": [
+        {
+          "name": "X",
+          "url": "https://x.com/federalreserve"
+        }
+      ],
+      "tags": [
+        "Econ Weekly"
+      ],
+      "ticker": "KXFEDTWEETS",
+      "title": "Fed tweets"
+    }
+  ]
+}

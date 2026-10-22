@@ -1,0 +1,176 @@
+{
+  "cursor": "CgYI8Mzn4AsSDEtYTkVXUE9QRS03MA",
+  "events": [
+    {
+      "category": "Science and Technology",
+      "collateral_return_type": "",
+      "event_ticker": "KXELONMARS-99",
+      "exchange_index": 0,
+      "last_updated_ts": "2026-10-16T03:24:48.885736Z",
+      "mutually_exclusive": false,
+      "series_ticker": "KXELONMARS",
+      "settlement_sources": [
+        {
+          "name": "The Guardian",
+          "url": "https://www.theguardian.com"
+        },
+        {
+          "name": "local news outlets with verifiable mastheads in ",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "official social media accounts of  or their official representatives",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "official government sources of ",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "official representatives or offices of ",
+          "url": "https://kalshi.com/"
+        },
+        {
+          "name": "The New York Times",
+          "url": "https://www.nytimes.com"
+        },
+        {
+          "name": "the Associated Press",
+          "url": "https://www.ap.org"
+        },
+        {
+          "name": "Reuters",
+          "url": "https://www.reuters.com"
+        },
+        {
+          "name": "Politico",
+          "url": "https://www.politico.com"
+        },
+        {
+          "name": "Semafor",
+          "url": "https://www.semafor.com/"
+        },
+        {
+          "name": "The Information",
+          "url": "https://www.theinformation.com/"
+        },
+        {
+          "name": "The Washington Post",
+          "url": "https://www.washingtonpost.com/"
+        },
+        {
+          "name": "The Wall Street Journal",
+          "url": "https://www.wsj.com"
+        },
+        {
+          "name": "CNN",
+          "url": "https://www.cnn.com"
+        },
+        {
+          "name": "Fox News",
+          "url": "https://www.foxnews.com/"
+        },
+        {
+          "name": "MSNBC",
+          "url": "https://www.msnbc.com"
+        },
+        {
+          "name": "CNBC",
+          "url": "https://www.cnbc.com"
+        }
+      ],
+      "strike_period": "",
+      "sub_title": "Before 2099",
+      "title": "Will Elon Musk visit Mars in his lifetime?"
+    },
+    {
+      "category": "Elections",
+      "collateral_return_type": "MECNET",
+      "event_ticker": "KXNEXTNATOSECGEN-99",
+      "exchange_index": 0,
+      "last_updated_ts": "2026-10-16T03:03:29.277194Z",
+      "mutually_exclusive": true,
+      "series_ticker": "KXNEXTNATOSECGEN",
+      "settlement_sources": [
+        {
+          "name": "North Atlantic Treaty Organization",
+          "url": "https://www.nato.int/"
+        }
+      ],
+      "strike_period": "",
+      "sub_title": "Before Jan 1, 2099",
+      "title": "Who will be the next Secretary General of NATO?"
+    },
+    {
+      "category": "Elections",
+      "collateral_return_type": "MECNET",
+      "event_ticker": "KXNEWPOPE-70",
+      "exchange_index": 0,
+      "last_updated_ts": "2026-10-16T06:09:15.425468Z",
+      "mutually_exclusive": true,
+      "series_ticker": "KXNEWPOPE",
+      "settlement_sources": [
+        {
+          "name": "The New York Times",
+          "url": "https://www.nytimes.com/"
+        },
+        {
+          "name": "the Associated Press",
+          "url": "https://apnews.com/"
+        },
+        {
+          "name": "Reuters",
+          "url": "https://www.reuters.com/"
+        },
+        {
+          "name": "Axios",
+          "url": "https://www.axios.com/"
+        },
+        {
+          "name": "Politico",
+          "url": "https://www.politico.com/"
+        },
+        {
+          "name": "Semafor",
+          "url": "https://www.semafor.com/"
+        },
+        {
+          "name": "The Information",
+          "url": "https://www.theinformation.com/"
+        },
+        {
+          "name": "The Washington Post",
+          "url": "https://www.washingtonpost.com/"
+        },
+        {
+          "name": "The Wall Street Journal",
+          "url": "https://www.wsj.com/"
+        },
+        {
+          "name": "ABC",
+          "url": "https://www.abc.net.au/"
+        },
+        {
+          "name": "CBS",
+          "url": "https://www.cbsnews.com/"
+        },
+        {
+          "name": "CNN",
+          "url": "https://www.cnn.com/"
+        },
+        {
+          "name": "Fox News",
+          "url": "https://www.foxnews.com/"
+        },
+        {
+          "name": "MSNBC",
+          "url": "https://www.msnbc.com/"
+        }
+      ],
+      "strike_period": "",
+      "sub_title": "Before 2070",
+      "title": "Who will the next Pope be?"
+    }
+  ],
+  "milestones": []
+}

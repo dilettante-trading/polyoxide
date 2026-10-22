@@ -1,0 +1,8 @@
+^polyoxide-kalshi/
+^docs/specs/kalshi/OBSERVED\.md$
+^scripts/capture_kalshi_predictions\.py$
+^CLAUDE\.md$
+^docs/superpowers/specs/2026-10-22-kalshi-catalog-routes-design\.md$
+^docs/plans/2026-10-22-kalshi-catalog-routes\.md$
+^_bmad-output/specs/spec-venue-extensibility/issue-71-touch-set\.(txt|sh)$
+^\.flow/

@@ -248,3 +248,54 @@ One capture's daily candles ended at 04:00 UTC (the 1440 row of the candlestick 
 polyoxide-kalshi numbers a gap's `get_snapshot` from `FOLLOW_UP_ID_BASE`, 1,000,000,000, so it never meets a membership command's id. On the demo host, with `orderbook_delta` subscribed on `KXITFMATCH-26OCT22BANSAH-SAH` (sid 1), `get_snapshot` sent with ids 1,000,000,000, 1,000,000,001 and 2,147,483,653 (past 2^31) was each answered with an `orderbook_snapshot` echoing that id, on sid 1's next `seq` (3, 4, 5). Kalshi raised no error for any of them. The probe was a one-off script, not committed; it settles the final review's M7.
 
 <!-- epic 9 findings go above this line -->
+
+## Issue #71: catalog routes
+
+The design session's probes (production, unsigned, 2026-10-22), from the spec
+(`docs/superpowers/specs/2026-10-22-kalshi-catalog-routes-design.md` §2):
+
+- **`min_updated_ts` tracks metadata, not trading.** `GET /markets?min_updated_ts=<now − 10 min>&mve_filter=exclude` answered no markets; `<now − 1 day>` answered a full page of 1000 with a cursor. The mirror says so ("Tracks non-trading changes only"). The incremental tier sees listings and rule changes, not price moves; a price poller uses `tickers`.
+- **A request target over about 16 KiB is `414 URI Too Long`.** `GET /markets?tickers=` with 30-character tickers answered `200` at 520 tickers (16,154 bytes of path and query) and `414` at 530 (16,464 bytes). The mirror states no maximum. The client refuses a set past 8,000 bytes (`TICKERS_QUERY_BUDGET`).
+- **`GET /series` has no paging.** Unfiltered it answered every series, 15,336, in one 19 MB body with no `cursor`; `category=Economics` answered 758 KB. 2,617 series sent `tags: null`, 7 `settlement_sources: null` and 1 `additional_prohibitions: null`; `fee_multiplier` is sent as an integer or a float.
+- **`GET /markets/orderbooks` serves unsigned.** Repeated `tickers=` keys answered `{orderbooks: [{ticker, orderbook_fp}]}`, one per ticker, an unknown ticker's sides empty. 101 tickers answered `400` with a validation `msg` (the `max` tag).
+- **`GET /markets` refuses an illegal timestamp combination with `400`, naming it**: "settled ts filters are mutually exclusive with close ts filters", "… with open or closed status", "min_updated_ts and max_updated_ts are incompatible with filters other than series_ticker and mve_filter=exclude". `min_updated_ts` without `mve_filter` answered `200`.
+- **`GET /events` combines its filters and refuses none.** Over a day, `min_updated_ts` alone passed 6,000 events (30 pages, not exhausted), with `status=open` 3,139, with `min_close_ts=<now>` 5,504. Every answer carries `milestones`, asked for or not.
+- **`GET /historical/markets` takes one selector.** Any two of `tickers`, `event_ticker`, `series_ticker` and `mve_filter` answered `400`: "tickers, event_ticker, series_ticker, and mve_filter filters are mutually exclusive".
+- **The live routes drop an archived market, and overlap the archive near the cutoff.** For `KXHIGHNY-26MAY30-B72.5` and `KXHIGHNY-26MAR08-B66.5`: `GET /markets/{t}` `404`; `GET /markets/trades?ticker=` `200` with no trades; `GET /markets/candlesticks?market_tickers=` `200` with `{"markets": []}`, the market absent; the order book both sides empty; `GET /events/{e}?with_nested_markets=true` `200` with no nested markets. A listed market with no candle in the span is present with `"candlesticks": []`. `KXPERLIGA1TOTAL-26AUG22JUAASO-9`, settled hours before the cutoff, answered on every live route and on the historical ones.
+- **The historical candlestick shape is not the live one**: `yes_bid`, `yes_ask` and `price` without `_dollars`, `volume` and `open_interest` without `_fp`, and an absent price sent as `null` where the live route leaves it out. An unknown ticker is `404`.
+- **The cutoff** answered `market_settled_ts` and `trades_created_ts` 2026-08-23T00:00:00Z, `orders_updated_ts` 2026-10-08T00:00:00Z. `GET /historical/markets/{t}` for a live market is `404`.
+- **`GET /account/endpoint_costs` lists none of the nine new routes**, so each costs the default, 10.
+
+### The capture's probes
+
+Probed 2026-10-22T09:03:45Z on production, unsigned, by `--catalog`.
+- `GET /markets`, created (`status=open`, `min_created_ts`) with `tickers`: HTTP 200, 1 markets
+- `GET /markets`, created (`status=open`, `min_created_ts`) with `event_ticker`: HTTP 200, 1 markets
+- `GET /markets`, created (`status=open`, `min_created_ts`) with `series_ticker`: HTTP 200, 1 markets
+- `GET /markets`, created (`status=open`, `min_created_ts`) with `mve_filter=only`: HTTP 200, 1 markets
+- `GET /markets`, created (`status=open`, `min_created_ts`) with `mve_filter=exclude`: HTTP 200, 1 markets
+- `GET /markets`, closed (`status=closed`, `min_close_ts`) with `tickers`: HTTP 200, 0 markets
+- `GET /markets`, closed (`status=closed`, `min_close_ts`) with `event_ticker`: HTTP 200, 0 markets
+- `GET /markets`, closed (`status=closed`, `min_close_ts`) with `series_ticker`: HTTP 200, 1 markets
+- `GET /markets`, closed (`status=closed`, `min_close_ts`) with `mve_filter=only`: HTTP 200, 1 markets
+- `GET /markets`, closed (`status=closed`, `min_close_ts`) with `mve_filter=exclude`: HTTP 200, 1 markets
+- `GET /markets`, settled (`status=settled`, `min_settled_ts`) with `tickers`: HTTP 200, 0 markets
+- `GET /markets`, settled (`status=settled`, `min_settled_ts`) with `event_ticker`: HTTP 200, 0 markets
+- `GET /markets`, settled (`status=settled`, `min_settled_ts`) with `series_ticker`: HTTP 200, 1 markets
+- `GET /markets`, settled (`status=settled`, `min_settled_ts`) with `mve_filter=only`: HTTP 200, 1 markets
+- `GET /markets`, settled (`status=settled`, `min_settled_ts`) with `mve_filter=exclude`: HTTP 200, 1 markets
+- `GET /markets`, updated (`min_updated_ts`) with `tickers`: HTTP 400 (min_updated_ts and max_updated_ts are incompatible with filters other than series_ticker and mve_filter=exclude)
+- `GET /markets`, updated (`min_updated_ts`) with `event_ticker`: HTTP 400 (min_updated_ts and max_updated_ts are incompatible with filters other than series_ticker and mve_filter=exclude)
+- `GET /markets`, updated (`min_updated_ts`) with `series_ticker`: HTTP 400 (series_ticker with min_updated_ts or max_updated_ts requires mve_filter=exclude)
+- `GET /markets`, updated (`min_updated_ts`) with `mve_filter=only`: HTTP 400 (min_updated_ts and max_updated_ts are incompatible with filters other than series_ticker and mve_filter=exclude)
+- `GET /markets`, updated (`min_updated_ts`) with `mve_filter=exclude`: HTTP 200, 1 markets
+- `GET /markets/orderbooks?tickers=KXTEMPMIAH-26OCT2206-T75.99&tickers=KXTEMPMIAH-26OCT2206-T76.99&tickers=KXTEMPMIAH-26OCT2206-T75.99`: books of ['KXTEMPMIAH-26OCT2206-T75.99', 'KXTEMPMIAH-26OCT2206-T76.99', 'KXTEMPMIAH-26OCT2206-T75.99']
+- `GET /historical/trades?ticker=NOSUCHMARKET-0`: HTTP 404 (not found)
+- `GET /historical/markets/NOSUCHMARKET-0/candlesticks`: HTTP 404 (failed to get market by ticker: not found)
+- `GET /historical/markets/KXHIGHNY-26AUG13-T92/candlesticks` over 10,001 one-minute periods: HTTP 400 (requested time range with candlesticks: 10001.000000, max candlesticks: 5000)
+- `GET /events?limit=201`: HTTP 400 (bad request)
+- `GET /series/NOSUCHSERIES-0`: HTTP 404 (not found)
+
+What they settle: no created, closed or settled window refuses `tickers`, `event_ticker`, `series_ticker` or either `mve_filter`, so `ListMarketWindow` keeps every setter; `min_updated_ts` with `series_ticker` needs `mve_filter=exclude`, which `markets().updated` always sends; `GET /markets/orderbooks` answers in the order asked and answers a repeated ticker twice; the archive answers an unknown ticker's trades and candlesticks with `404`; and **the historical candlestick route refuses more than 5,000 candlesticks** ("max candlesticks: 5000"), half the live batch route's 10,000.
+
+<!-- issue 71 findings go above this line -->

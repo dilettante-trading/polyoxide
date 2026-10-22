@@ -29,11 +29,21 @@ series route at 60, the series route at 5 (its 400), and the batch route at 5 an
 (probes, kept only in OBSERVED.md), and writes OUT_DIR/candlesticks/ and a block of OBSERVED.md above
 its Epic 9 anchor. `--check-candlesticks` makes no request: it re-reads the files and exits 1 naming
 what is wrong. Neither mode touches the other fixtures.
+
+Issue #71 adds a third mode:
+
+    uv run scripts/capture_kalshi_predictions.py --catalog polyoxide-kalshi/tests/fixtures/predictions
+
+`--catalog` reads the catalog routes (series, the events list, the `/markets` timestamp families and
+`tickers`, `/markets/orderbooks`) and the archive (`/historical/*`), writes OUT_DIR/catalog/ and
+OUT_DIR/historical/ with a PROVENANCE.md in each, and prints the probes of spec §4 as Markdown lines
+for OBSERVED.md. It touches no other fixture, and writes nothing until every capture has succeeded.
 """
 import itertools
 import json
 import sys
 import time
+import urllib.parse
 from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -604,6 +614,254 @@ def check_candlesticks(root):
     print(f"ok: {len(CANDLE_FILES)} candlestick fixtures in {folder}")
 
 
+# ── Issue #71: the catalog routes ───────────────────────────────
+
+CATALOG_ROWS = 3
+"""Rows kept in each listing fixture."""
+NESTED_MARKETS = 2
+"""Markets kept under each event of the nested events page."""
+SERIES_CATEGORY = "Economics"
+ARCHIVE_SERIES = "KXHIGHNY"
+"""A daily series with years of settled markets, so its archive always holds some."""
+ARCHIVE_SCAN = 200
+MINUTE_ROWS = 120
+"""Rows kept in the one-minute archived candlesticks."""
+DAY = 86_400
+
+
+def fetch_pairs(path, pairs):
+    """GET `path` with the query `pairs` in order, a key repeated as often as it appears."""
+    query = urllib.parse.urlencode(pairs)
+    return capture_common.get(f"{BASE}{path}?{query}", headers=identity, pause=PAUSE, timeout=60)
+
+
+def refusal_text(body):
+    """What a refusal says: `error.details`, `error.message`, a bare `error`, or `msg`."""
+    if not isinstance(body, dict):
+        return repr(body)
+    error = body.get("error")
+    if isinstance(error, dict):
+        return error.get("details") or error.get("message") or repr(error)
+    return error or body.get("msg") or repr(body)
+
+
+def answer(path, pairs, rows=None):
+    """`HTTP <status>`, with the refusal's text, or the number of rows under `rows` on a 200."""
+    reply = fetch_pairs(path, pairs)
+    if reply.status != 200:
+        return f"HTTP {reply.status} ({refusal_text(reply.body)})"
+    if rows is None:
+        return "HTTP 200"
+    return f"HTTP 200, {len(reply.body.get(rows) or [])} {rows}"
+
+
+def epoch(text):
+    return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+
+
+def trimmed(body, key, count):
+    """`body` with the list under `key` cut to its first `count` rows."""
+    return {**body, key: (body.get(key) or [])[:count]}
+
+
+def traded_open_markets(count):
+    """The first `count` markets of the filtered open listing that traded in the last day."""
+    picked = []
+    for market in listing_rows():
+        if float(market.get("volume_24h_fp") or 0) > 0:
+            picked.append(market)
+            if len(picked) == count:
+                return picked
+    sys.exit(f"the filtered open listing has fewer than {count} markets that traded in the last day")
+
+
+def archived_market():
+    """The newest archived market of ARCHIVE_SERIES with volume that the live market route
+    answers 404, so the venue fallback has something to read."""
+    page = fetch_ok("/historical/markets", series_ticker=ARCHIVE_SERIES, limit=ARCHIVE_SCAN)
+    for market in page["markets"]:
+        if float(market.get("volume_fp") or 0) <= 0:
+            continue
+        if fetch(f"/markets/{market['ticker']}").status == 404:
+            return market
+    sys.exit(f"none of the newest {ARCHIVE_SCAN} archived {ARCHIVE_SERIES} markets with volume is gone from the live route")
+
+
+def series_rows(series):
+    """Up to CATALOG_ROWS series, one with `tags: null` among them when the page has one."""
+    with_null = [row for row in series if row.get("tags") is None][:1]
+    rest = [row for row in series if row not in with_null]
+    return with_null + rest[: CATALOG_ROWS - len(with_null)]
+
+
+def archived_candles(market, width):
+    """The archived market's candlesticks of `width` minutes over its life and one width more."""
+    start = epoch(market["open_time"])
+    end = epoch(market["close_time"]) + width * 60
+    body = fetch_ok(
+        f"/historical/markets/{market['ticker']}/candlesticks",
+        start_ts=start,
+        end_ts=end,
+        period_interval=width,
+    )
+    return trimmed(body, "candlesticks", MINUTE_ROWS) if width == 1 else body
+
+
+def catalog_probes(active, event, series, archived, now):
+    """Spec §4's probes, as Markdown lines for OBSERVED.md."""
+    a, b = active[0]["ticker"], active[1]["ticker"]
+    week = now - 7 * DAY
+    lines = [f"Probed {capture_common.stamp()} on production, unsigned, by `--catalog`."]
+    families = {
+        "created (`status=open`, `min_created_ts`)": [("status", "open"), ("min_created_ts", week)],
+        "closed (`status=closed`, `min_close_ts`)": [("status", "closed"), ("min_close_ts", week)],
+        "settled (`status=settled`, `min_settled_ts`)": [("status", "settled"), ("min_settled_ts", week)],
+        "updated (`min_updated_ts`)": [("min_updated_ts", now - DAY)],
+    }
+    extras = {
+        "tickers": [("tickers", f"{a},{b}")],
+        "event_ticker": [("event_ticker", event)],
+        "series_ticker": [("series_ticker", series)],
+        "mve_filter=only": [("mve_filter", "only")],
+        "mve_filter=exclude": [("mve_filter", "exclude")],
+    }
+    for family, pairs in families.items():
+        for name, extra in extras.items():
+            got = answer("/markets", pairs + extra + [("limit", 1)], "markets")
+            lines.append(f"- `GET /markets`, {family} with `{name}`: {got}")
+    books = capture_common.require_ok(
+        fetch_pairs("/markets/orderbooks", [("tickers", b), ("tickers", a), ("tickers", b)]),
+        "GET /markets/orderbooks",
+    )
+    order = [row["ticker"] for row in books["orderbooks"]]
+    lines.append(f"- `GET /markets/orderbooks?tickers={b}&tickers={a}&tickers={b}`: books of {order}")
+    lines.append(
+        f"- `GET /historical/trades?ticker={UNKNOWN_TICKER}`: "
+        + answer("/historical/trades", [("ticker", UNKNOWN_TICKER), ("limit", 5)], "trades")
+    )
+    start, end = epoch(archived["open_time"]), epoch(archived["close_time"])
+    lines.append(
+        f"- `GET /historical/markets/{UNKNOWN_TICKER}/candlesticks`: "
+        + answer(f"/historical/markets/{UNKNOWN_TICKER}/candlesticks",
+                 [("start_ts", start), ("end_ts", end), ("period_interval", 60)])
+    )
+    over = [("start_ts", end - 10_001 * 60), ("end_ts", end), ("period_interval", 1)]
+    lines.append(
+        f"- `GET /historical/markets/{archived['ticker']}/candlesticks` over 10,001 one-minute periods: "
+        + answer(f"/historical/markets/{archived['ticker']}/candlesticks", over, "candlesticks")
+    )
+    lines.append("- `GET /events?limit=201`: " + answer("/events", [("limit", 201)], "events"))
+    lines.append("- `GET /series/NOSUCHSERIES-0`: " + answer("/series/NOSUCHSERIES-0", []))
+    return lines
+
+
+def catalog_provenance(rows, what):
+    table = capture_common.provenance_table(
+        ["File", "Request", "Trimmed to"],
+        [(f"`{name}`", f"`{request}`", note) for name, request, note in rows],
+    )
+    return [
+        "# Provenance",
+        "",
+        f"Captured {capture_common.stamp('%Y-%m-%d')} from `https://external-api.kalshi.com/trade-api/v2` by",
+        "`scripts/capture_kalshi_predictions.py --catalog`. No credentials. Every key is kept; only list",
+        f"lengths are trimmed. {what}",
+        "",
+        *table,
+    ]
+
+
+def capture_catalog(out):
+    now = int(time.time())
+    active = traded_open_markets(2)
+    a, b = active[0]["ticker"], active[1]["ticker"]
+    event_ticker = active[0]["event_ticker"]
+    series_ticker = fetch_ok(f"/events/{event_ticker}")["event"]["series_ticker"]
+    archived = archived_market()
+    t = archived["ticker"]
+
+    nested = fetch_ok("/events", status="open", limit=2, with_nested_markets="true")
+    for event in nested["events"]:
+        event["markets"] = (event.get("markets") or [])[:NESTED_MARKETS]
+    books = capture_common.require_ok(
+        fetch_pairs("/markets/orderbooks", [("tickers", a), ("tickers", b), ("tickers", UNKNOWN_TICKER)]),
+        "GET /markets/orderbooks",
+    )
+    for row in books["orderbooks"]:
+        row["orderbook_fp"] = best_levels(row, BOOK_LEVELS)["orderbook_fp"]
+    catalog = {
+        "series_list.json": {
+            "series": series_rows(fetch_ok("/series", category=SERIES_CATEGORY)["series"])
+        },
+        "series.json": fetch_ok(f"/series/{series_ticker}", include_volume="true"),
+        "events_page.json": fetch_ok("/events", status="open", limit=CATALOG_ROWS),
+        "events_page_nested.json": nested,
+        "orderbooks.json": books,
+        "markets_updated_page.json": fetch_ok(
+            "/markets", min_updated_ts=now - DAY, mve_filter="exclude", limit=CATALOG_ROWS
+        ),
+        "markets_tickers_page.json": fetch_ok("/markets", tickers=f"{a},{b}"),
+        "markets_window_settled_page.json": fetch_ok(
+            "/markets", status="settled", min_settled_ts=now - 7 * DAY, mve_filter="exclude", limit=CATALOG_ROWS
+        ),
+    }
+    historical = {
+        "cutoff.json": fetch_ok("/historical/cutoff"),
+        "markets_page.json": fetch_ok("/historical/markets", series_ticker=ARCHIVE_SERIES, limit=CATALOG_ROWS),
+        "market.json": fetch_ok(f"/historical/markets/{t}"),
+        **{f"candlesticks_{w}.json": archived_candles(archived, w) for w in WIDTHS},
+        "trades.json": fetch_ok("/historical/trades", ticker=t, limit=20),
+    }
+    probes = catalog_probes(active, event_ticker, series_ticker, archived, now)
+
+    catalog_rows = [
+        ("series_list.json", f"GET /series?category={SERIES_CATEGORY}",
+         f"`series`: {CATALOG_ROWS} rows, one with `tags: null` first when the page has one"),
+        ("series.json", f"GET /series/{series_ticker}?include_volume=true", "as fetched"),
+        ("events_page.json", f"GET /events?status=open&limit={CATALOG_ROWS}", "as fetched"),
+        ("events_page_nested.json", "GET /events?status=open&limit=2&with_nested_markets=true",
+         f"each event's `markets`: the first {NESTED_MARKETS}"),
+        ("orderbooks.json", f"GET /markets/orderbooks?tickers={a}&tickers={b}&tickers={UNKNOWN_TICKER}",
+         f"the {BOOK_LEVELS} best levels of each side"),
+        ("markets_updated_page.json",
+         f"GET /markets?min_updated_ts={now - DAY}&mve_filter=exclude&limit={CATALOG_ROWS}", "as fetched"),
+        ("markets_tickers_page.json", f"GET /markets?tickers={a},{b}", "as fetched"),
+        ("markets_window_settled_page.json",
+         f"GET /markets?status=settled&min_settled_ts={now - 7 * DAY}&mve_filter=exclude&limit={CATALOG_ROWS}",
+         "as fetched"),
+    ]
+    historical_rows = [
+        ("cutoff.json", "GET /historical/cutoff", "as fetched"),
+        ("markets_page.json", f"GET /historical/markets?series_ticker={ARCHIVE_SERIES}&limit={CATALOG_ROWS}", "as fetched"),
+        ("market.json", f"GET /historical/markets/{t}", "as fetched"),
+        *[
+            (f"candlesticks_{w}.json",
+             f"GET /historical/markets/{t}/candlesticks?start_ts=<open>&end_ts=<close + {w} min>&period_interval={w}",
+             f"the first {MINUTE_ROWS} rows" if w == 1 else "as fetched")
+            for w in WIDTHS
+        ],
+        ("trades.json", f"GET /historical/trades?ticker={t}&limit=20", "as fetched"),
+    ]
+    for name, value in catalog.items():
+        capture_common.write_json(out / "catalog" / name, value)
+    for name, value in historical.items():
+        capture_common.write_json(out / "historical" / name, value)
+    capture_common.write_provenance(
+        out / "catalog",
+        catalog_provenance(catalog_rows, f"The active markets are `{a}` and `{b}`, of series `{series_ticker}`."),
+    )
+    capture_common.write_provenance(
+        out / "historical",
+        catalog_provenance(
+            historical_rows,
+            f"The archived market is `{t}`: the newest {ARCHIVE_SERIES} market in the archive with volume "
+            "that `GET /markets/{ticker}` answers 404.",
+        ),
+    )
+    print("\n".join(probes))
+    print(f"\nwrote {len(catalog)} catalog and {len(historical)} historical fixtures to {out}")
+
+
 def epic9_command(args):
     """Runs one of Epic 9's two modes; `args` is `sys.argv[1:]`, whose first item starts with `--`."""
     if len(args) == 2 and args[0] == "--check-candlesticks":
@@ -623,6 +881,11 @@ def epic9_command(args):
 
 def main():
     args = sys.argv[1:]
+    if args and args[0] == "--catalog":
+        if len(args) != 2:
+            sys.exit(__doc__)
+        capture_catalog(Path(args[1]))
+        return
     if args and args[0].startswith("--"):
         epic9_command(args)
         return

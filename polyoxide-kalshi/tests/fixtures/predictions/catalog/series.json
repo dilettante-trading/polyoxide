@@ -1,0 +1,39 @@
+{
+  "series": {
+    "additional_prohibitions": [
+      "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+      "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+    ],
+    "categories": [
+      "Climate and Weather"
+    ],
+    "category": "Climate and Weather",
+    "contract_terms_url": "https://assets.kalshi.com/contract_terms/MIAWINDEX.pdf",
+    "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/MIAWINDEX.pdf",
+    "exchange_index": 0,
+    "fee_multiplier": 1,
+    "fee_type": "quadratic",
+    "frequency": "hourly",
+    "last_updated_ts": "2026-09-08T19:38:39.578288Z",
+    "product_metadata": {
+      "important_info": {
+        "id": "NHIGHD-bulk-2026-06-12",
+        "markdown": "**Important information:** The data shown is 5 minutes delayed. Resolution for KXTEMPMIAH is based on Synoptic Data and calculated via Kalshi Weather Index Methodology. Please see additional details for more information.",
+        "message": "",
+        "title": ""
+      }
+    },
+    "settlement_sources": [
+      {
+        "name": "Synoptic Data",
+        "url": "https://synopticdata.com/"
+      }
+    ],
+    "tags": [
+      "Hourly temperature"
+    ],
+    "ticker": "KXTEMPMIAH",
+    "title": "Hourly Directional Miami Temperature",
+    "volume_fp": "19373746.00"
+  }
+}
