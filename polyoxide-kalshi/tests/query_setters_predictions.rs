@@ -435,3 +435,44 @@ const SERIES_CASES: &[Case] = &[
 async fn every_series_setter_sends_its_key_and_value_in_call_order() {
     assert_cases(SERIES_CASES).await;
 }
+
+// ── The events listing (issue #71) ──────────────────────────────
+
+use polyoxide_kalshi::predictions::types::EventStatusFilter;
+
+const EVENTS_CASES: &[Case] = &[Case {
+    builder: "ListEvents",
+    path: "/trade-api/v2/events",
+    fire: |base| {
+        Box::pin(async move {
+            let _ = client(&base)
+                .events()
+                .list()
+                .limit(5)
+                .cursor("c1")
+                .with_nested_markets(true)
+                .status(EventStatusFilter::Open)
+                .series_ticker("SER-1")
+                .tickers(["EV-1", "EV-2"])
+                .min_close_ts(6)
+                .min_updated_ts(7)
+                .send()
+                .await;
+        })
+    },
+    sends: &[
+        ("limit", "5"),
+        ("cursor", "c1"),
+        ("with_nested_markets", "true"),
+        ("status", "open"),
+        ("series_ticker", "SER-1"),
+        ("tickers", "EV-1,EV-2"),
+        ("min_close_ts", "6"),
+        ("min_updated_ts", "7"),
+    ],
+}];
+
+#[tokio::test]
+async fn every_events_listing_setter_sends_its_key_and_value_in_call_order() {
+    assert_cases(EVENTS_CASES).await;
+}

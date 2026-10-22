@@ -65,3 +65,54 @@ pub struct EventResponse {
     #[serde(default, deserialize_with = "null_as_default")]
     pub markets: Vec<Market>,
 }
+
+polyoxide_venue::wire_enum! {
+    /// The states `GET /events` filters by.
+    #[non_exhaustive]
+    pub enum EventStatusFilter {
+        /// Not yet open.
+        Unopened => "unopened",
+        /// Open for trading.
+        Open => "open",
+        /// Closed.
+        Closed => "closed",
+        /// Settled.
+        Settled => "settled",
+    }
+}
+
+/// `GET /events` (`GetEventsResponse`): one page of events, multivariate events excluded. An
+/// empty `cursor` ends a walk.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EventsPage {
+    /// The page's events.
+    pub events: Vec<Event>,
+    /// The events' milestones, as sent; Kalshi sends the list, empty, when none were asked for.
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub milestones: Vec<Value>,
+    /// The cursor of the next page, empty on the last.
+    pub cursor: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_page_reads_milestones_null_or_missing_as_empty() {
+        for body in [
+            r#"{"events":[],"cursor":"","milestones":null}"#,
+            r#"{"events":[],"cursor":""}"#,
+        ] {
+            let page: EventsPage = serde_json::from_str(body).unwrap();
+            assert!(page.milestones.is_empty(), "{body}");
+        }
+    }
+
+    #[test]
+    fn the_event_states_are_the_four_the_route_documents() {
+        let spelled: Vec<&str> = EventStatusFilter::ALL.iter().map(|s| s.as_str()).collect();
+        assert_eq!(spelled, ["unopened", "open", "closed", "settled"]);
+        assert!("paused".parse::<EventStatusFilter>().is_err());
+    }
+}

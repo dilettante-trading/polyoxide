@@ -7,7 +7,7 @@ pub mod markets;
 pub mod series;
 
 pub use account::{AccountApi, GetEndpointCosts};
-pub use events::{EventsApi, GetEvent};
+pub use events::{EventsApi, GetEvent, ListEvents};
 pub use exchange::{ExchangeApi, GetExchangeStatus};
 pub use health::Health;
 pub use limits::GetAccountLimits;

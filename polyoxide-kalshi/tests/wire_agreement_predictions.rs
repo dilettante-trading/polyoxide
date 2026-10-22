@@ -325,3 +325,23 @@ fn the_series_fixtures_cover_the_cases_the_types_exist_for() {
         "series.json was asked for its volume"
     );
 }
+
+use polyoxide_kalshi::predictions::types::EventsPage;
+
+#[test]
+fn every_events_listing_fixture_agrees_with_its_type() {
+    hold_exactly::<EventsPage>("catalog/events_page");
+    hold_exactly::<EventsPage>("catalog/events_page_nested");
+}
+
+#[test]
+fn the_events_listing_fixtures_cover_the_cases_the_type_exists_for() {
+    let flat: EventsPage = read("catalog/events_page");
+    assert!(!flat.events.is_empty());
+    assert!(!flat.cursor.is_empty(), "a page with more behind it");
+    let nested: EventsPage = read("catalog/events_page_nested");
+    assert!(
+        nested.events.iter().any(|event| !event.markets.is_empty()),
+        "a nested page nests markets"
+    );
+}

@@ -6,7 +6,7 @@ mod markets;
 mod series;
 
 pub use account::{EndpointCost, EndpointCosts};
-pub use events::{Event, EventResponse};
+pub use events::{Event, EventResponse, EventStatusFilter, EventsPage};
 pub use exchange::{ExchangeIndexStatus, ExchangeStatus};
 pub use limits::{AccountLimits, ApiUsageGrant, BucketLimit};
 pub use markets::{

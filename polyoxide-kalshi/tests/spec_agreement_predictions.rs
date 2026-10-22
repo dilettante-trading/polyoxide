@@ -909,3 +909,65 @@ async fn the_series_builders_send_exactly_the_documented_query_keys() {
         query::documented_parameters(&spec, "/series/{series_ticker}")
     );
 }
+
+use polyoxide_kalshi::predictions::types::{EventStatusFilter, EventsPage};
+
+#[test]
+fn every_events_listing_schema_agrees_with_the_spec() {
+    let spec = mirror();
+    let schemas = mirror_schemas();
+    check_schema::<EventsPage>(&schemas, "GetEventsResponse");
+    let unaccounted = unaccounted_from(
+        &["/events"],
+        &[
+            "GetEventsResponse",
+            "EventData",
+            "Market",
+            "PriceRange",
+            "SettlementSource",
+        ],
+        &["Milestone", "MveSelectedLeg"],
+    );
+    assert!(
+        unaccounted.is_empty(),
+        "schemas neither checked nor excused: {unaccounted:?}"
+    );
+    let parameters = spec["paths"]["/events"]["get"]["parameters"]
+        .as_array()
+        .expect("/events documents query parameters");
+    let status = parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "status")
+        .expect("/events documents status");
+    assert_eq!(
+        wire(EventStatusFilter::ALL),
+        documented(&status["schema"]["enum"], "/events status")
+    );
+}
+
+#[tokio::test]
+async fn the_events_listing_sends_every_documented_key_but_with_milestones() {
+    let spec = mirror();
+    let sent = keys_of("/events", "catalog/events_page", |p| {
+        Box::pin(async move {
+            p.events()
+                .list()
+                .limit(5)
+                .cursor("c1")
+                .with_nested_markets(true)
+                .status(EventStatusFilter::Open)
+                .series_ticker("SER-1")
+                .tickers(["EV-1"])
+                .min_close_ts(6)
+                .min_updated_ts(7)
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    let mut documented = query::documented_parameters(&spec, "/events").unwrap_or_default();
+    // Milestones are kept as raw JSON, so the listing never asks for them.
+    assert!(documented.remove("with_milestones"));
+    assert_eq!(sent, documented);
+}
