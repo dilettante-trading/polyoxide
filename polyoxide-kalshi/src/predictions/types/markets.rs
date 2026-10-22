@@ -519,6 +519,121 @@ pub struct SeriesCandlesticksResponse {
     pub candlesticks: Vec<MarketCandlestick>,
 }
 
+polyoxide_venue::wire_enum! {
+    /// The states a created-time window of `GET /markets` may name
+    /// ([`MarketWindow::Created`]); Kalshi refuses any other beside `min_created_ts`.
+    #[non_exhaustive]
+    pub enum CreatedStatus {
+        /// Not yet open.
+        Unopened => "unopened",
+        /// Open for trading.
+        Open => "open",
+    }
+}
+
+/// One family of `GET /markets`' timestamp filters, with the states the host allows beside it.
+///
+/// Kalshi refuses two families at once, and a state the family does not allow, with a `400`
+/// (`docs/specs/kalshi/OBSERVED.md`), so a window names one family and its states and nothing
+/// else; the fourth family, `min_updated_ts`, is `markets().updated`. Times are Unix seconds, and
+/// a bound left `None` is not sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MarketWindow {
+    /// Markets created in the window (`min_created_ts`, `max_created_ts`), optionally only the
+    /// unopened or only the open ones.
+    Created {
+        /// Only markets in this state.
+        status: Option<CreatedStatus>,
+        /// The earliest creation time.
+        min_ts: Option<i64>,
+        /// The latest creation time.
+        max_ts: Option<i64>,
+    },
+    /// Markets that close in the window (`min_close_ts`, `max_close_ts`), optionally only the
+    /// closed ones (`status=closed`).
+    Closed {
+        /// Send `status=closed`.
+        closed_only: bool,
+        /// The earliest close time.
+        min_ts: Option<i64>,
+        /// The latest close time.
+        max_ts: Option<i64>,
+    },
+    /// Markets that settled in the window (`min_settled_ts`, `max_settled_ts`), optionally only
+    /// the settled ones (`status=settled`).
+    Settled {
+        /// Send `status=settled`.
+        settled_only: bool,
+        /// The earliest settlement time.
+        min_ts: Option<i64>,
+        /// The latest settlement time.
+        max_ts: Option<i64>,
+    },
+}
+
+impl MarketWindow {
+    /// The query pairs the window sends, in order: its state, then its lower and upper bound.
+    pub(crate) fn pairs(&self) -> Vec<(&'static str, String)> {
+        let (status, (min_key, min_ts), (max_key, max_ts)) = match *self {
+            Self::Created {
+                status,
+                min_ts,
+                max_ts,
+            } => (
+                status.map(CreatedStatus::as_str),
+                ("min_created_ts", min_ts),
+                ("max_created_ts", max_ts),
+            ),
+            Self::Closed {
+                closed_only,
+                min_ts,
+                max_ts,
+            } => (
+                closed_only.then_some("closed"),
+                ("min_close_ts", min_ts),
+                ("max_close_ts", max_ts),
+            ),
+            Self::Settled {
+                settled_only,
+                min_ts,
+                max_ts,
+            } => (
+                settled_only.then_some("settled"),
+                ("min_settled_ts", min_ts),
+                ("max_settled_ts", max_ts),
+            ),
+        };
+        let mut pairs = Vec::new();
+        if let Some(status) = status {
+            pairs.push(("status", status.to_owned()));
+        }
+        if let Some(min_ts) = min_ts {
+            pairs.push((min_key, min_ts.to_string()));
+        }
+        if let Some(max_ts) = max_ts {
+            pairs.push((max_key, max_ts.to_string()));
+        }
+        pairs
+    }
+}
+
+/// One market's book in `GET /markets/orderbooks` (`MarketOrderbookFp`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarketOrderbook {
+    /// The market's ticker.
+    pub ticker: String,
+    /// Its book; an unlisted ticker's sides are empty.
+    pub orderbook_fp: OrderbookFp,
+}
+
+/// `GET /markets/orderbooks` (`GetMarketOrderbooksResponse`): one book per ticker asked for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderbooksResponse {
+    /// The books.
+    pub orderbooks: Vec<MarketOrderbook>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,5 +717,56 @@ mod tests {
             let minutes: i64 = width.as_str().parse().unwrap();
             assert_eq!(width.seconds(), minutes * 60);
         }
+    }
+
+    #[test]
+    fn a_window_sends_its_status_then_its_bounds_and_leaves_out_what_is_unset() {
+        let owned = |pairs: &[(&'static str, &str)]| -> Vec<(&'static str, String)> {
+            pairs.iter().map(|(k, v)| (*k, (*v).to_owned())).collect()
+        };
+        let created = MarketWindow::Created {
+            status: Some(CreatedStatus::Unopened),
+            min_ts: Some(1),
+            max_ts: Some(2),
+        };
+        assert_eq!(
+            created.pairs(),
+            owned(&[
+                ("status", "unopened"),
+                ("min_created_ts", "1"),
+                ("max_created_ts", "2")
+            ])
+        );
+        let closed = MarketWindow::Closed {
+            closed_only: true,
+            min_ts: None,
+            max_ts: Some(4),
+        };
+        assert_eq!(
+            closed.pairs(),
+            owned(&[("status", "closed"), ("max_close_ts", "4")])
+        );
+        let settled = MarketWindow::Settled {
+            settled_only: false,
+            min_ts: Some(5),
+            max_ts: None,
+        };
+        assert_eq!(settled.pairs(), owned(&[("min_settled_ts", "5")]));
+        let open = MarketWindow::Created {
+            status: Some(CreatedStatus::Open),
+            min_ts: None,
+            max_ts: None,
+        };
+        assert_eq!(open.pairs(), owned(&[("status", "open")]));
+    }
+
+    #[test]
+    fn a_created_status_is_one_of_the_two_the_created_family_allows() {
+        assert_eq!(
+            CreatedStatus::ALL,
+            [CreatedStatus::Unopened, CreatedStatus::Open]
+        );
+        assert_eq!(CreatedStatus::Open.to_string(), "open");
+        assert!("closed".parse::<CreatedStatus>().is_err());
     }
 }

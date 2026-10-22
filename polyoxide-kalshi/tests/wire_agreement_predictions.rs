@@ -242,3 +242,67 @@ fn the_candlestick_fixtures_cover_the_cases_the_types_exist_for() {
         assert_eq!(from_series, from_batch);
     }
 }
+
+// ── Catalog routes (issue #71) ──────────────────────────────────
+
+use polyoxide_kalshi::predictions::types::OrderbooksResponse;
+
+/// Holds `T` to the capture `name` with nothing excused: every key the host sent is modelled, and
+/// every key the type emits was sent.
+fn hold_exactly<T: DeserializeOwned + Serialize>(name: &str) {
+    let text = fixtures!("predictions").text(name);
+    let diff = agreement::compare::<T>(name, &text);
+    assert!(
+        diff.unmodelled.is_empty(),
+        "{name}: the host sent {:?}, which the type does not model",
+        diff.unmodelled
+    );
+    assert!(
+        diff.invented.is_empty(),
+        "{name}: the type emits {:?}, which the host did not send",
+        diff.invented
+    );
+}
+
+#[test]
+fn every_markets_catalog_fixture_agrees_with_its_type() {
+    for name in [
+        "catalog/markets_updated_page",
+        "catalog/markets_tickers_page",
+        "catalog/markets_window_settled_page",
+    ] {
+        hold_exactly::<MarketsPage>(name);
+    }
+    hold_exactly::<OrderbooksResponse>("catalog/orderbooks");
+}
+
+#[test]
+fn the_markets_catalog_fixtures_cover_the_cases_the_routes_exist_for() {
+    let books: OrderbooksResponse = read("catalog/orderbooks");
+    assert_eq!(
+        books.orderbooks.len(),
+        3,
+        "two active tickers and an unknown one"
+    );
+    assert!(
+        books
+            .orderbooks
+            .iter()
+            .any(|book| book.orderbook_fp.yes_dollars.is_empty()
+                && book.orderbook_fp.no_dollars.is_empty()),
+        "the unknown ticker's book is empty"
+    );
+    let settled: MarketsPage = read("catalog/markets_window_settled_page");
+    assert!(!settled.markets.is_empty(), "a week held settled markets");
+    assert!(
+        settled
+            .markets
+            .iter()
+            .all(|market| market.settlement_ts.is_some()),
+        "a settled market carries its settlement time"
+    );
+    let named: MarketsPage = read("catalog/markets_tickers_page");
+    assert_eq!(named.markets.len(), 2, "the two tickers asked for");
+    let updated: MarketsPage = read("catalog/markets_updated_page");
+    assert!(!updated.markets.is_empty(), "a day held updated markets");
+}

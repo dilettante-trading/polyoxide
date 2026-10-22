@@ -667,3 +667,184 @@ async fn the_candle_builders_send_exactly_the_documented_query_keys() {
         )
     );
 }
+
+// ── Catalog routes (issue #71) ──────────────────────────────────────
+
+use polyoxide_kalshi::predictions::{
+    key::Ticker,
+    types::{CreatedStatus, MarketOrderbook, MarketWindow, OrderbooksResponse},
+};
+
+/// Every named schema reachable by `$ref` from `paths`' `200` responses.
+fn reachable_from(paths: &[&str]) -> BTreeSet<String> {
+    fn follow(schemas: &Map<String, Value>, node: &Value, seen: &mut BTreeSet<String>) {
+        match node {
+            Value::Object(map) => {
+                if let Some(r) = map.get("$ref").and_then(Value::as_str) {
+                    let name = openapi::ref_name(r).to_owned();
+                    if seen.insert(name.clone()) {
+                        follow(schemas, &schemas[&name], seen);
+                    }
+                }
+                for child in map.values() {
+                    follow(schemas, child, seen);
+                }
+            }
+            Value::Array(items) => items.iter().for_each(|child| follow(schemas, child, seen)),
+            _ => {}
+        }
+    }
+    let spec = mirror();
+    let schemas = mirror_schemas();
+    let mut seen = BTreeSet::new();
+    for path in paths {
+        let ok = &spec["paths"][*path]["get"]["responses"]["200"];
+        assert!(
+            ok.is_object(),
+            "the mirror's GET {path} has no 200 response"
+        );
+        follow(&schemas, ok, &mut seen);
+    }
+    seen
+}
+
+/// The object schemas reachable from `paths` that neither `checked` nor `excused` names.
+fn unaccounted_from(paths: &[&str], checked: &[&str], excused: &[&str]) -> Vec<String> {
+    let schemas = mirror_schemas();
+    reachable_from(paths)
+        .into_iter()
+        .filter(|name| {
+            let schema = &schemas[name];
+            schema["type"] == "object"
+                || schema.get("allOf").is_some()
+                || schema.get("properties").is_some()
+        })
+        .filter(|name| !checked.contains(&name.as_str()) && !excused.contains(&name.as_str()))
+        .collect()
+}
+
+#[test]
+fn every_markets_catalog_schema_agrees_with_the_spec() {
+    let schemas = mirror_schemas();
+    check_schema::<MarketOrderbook>(&schemas, "MarketOrderbookFp");
+    check_schema::<OrderbooksResponse>(&schemas, "GetMarketOrderbooksResponse");
+    let unaccounted = unaccounted_from(
+        &["/markets/orderbooks"],
+        &[
+            "GetMarketOrderbooksResponse",
+            "MarketOrderbookFp",
+            "OrderbookCountFp",
+        ],
+        &[],
+    );
+    assert!(
+        unaccounted.is_empty(),
+        "schemas neither checked nor excused: {unaccounted:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_markets_catalog_builders_send_exactly_the_documented_query_keys() {
+    let spec = mirror();
+    let mut listing = keys_of("/markets", "catalog/markets_tickers_page", |p| {
+        Box::pin(async move {
+            p.markets()
+                .list()
+                .status(MarketStatusFilter::Open)
+                .event_ticker("EV-1")
+                .series_ticker("SER-1")
+                .mve_filter(MveFilter::Exclude)
+                .tickers(&[Ticker::new("KXTEST-1").unwrap()])
+                .limit(5)
+                .cursor("c1")
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    listing.extend(
+        keys_of("/markets", "catalog/markets_window_settled_page", |p| {
+            Box::pin(async move {
+                p.markets()
+                    .window(MarketWindow::Created {
+                        status: Some(CreatedStatus::Open),
+                        min_ts: Some(1),
+                        max_ts: Some(2),
+                    })
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    listing.extend(
+        keys_of("/markets", "catalog/markets_window_settled_page", |p| {
+            Box::pin(async move {
+                p.markets()
+                    .window(MarketWindow::Closed {
+                        closed_only: true,
+                        min_ts: Some(1),
+                        max_ts: Some(2),
+                    })
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    listing.extend(
+        keys_of("/markets", "catalog/markets_window_settled_page", |p| {
+            Box::pin(async move {
+                p.markets()
+                    .window(MarketWindow::Settled {
+                        settled_only: true,
+                        min_ts: Some(1),
+                        max_ts: Some(2),
+                    })
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    listing.extend(
+        keys_of("/markets", "catalog/markets_updated_page", |p| {
+            Box::pin(async move {
+                p.markets()
+                    .updated(1)
+                    .max_ts(2)
+                    .series_ticker("SER-1")
+                    .limit(5)
+                    .cursor("c1")
+                    .send()
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .await,
+    );
+    assert_eq!(
+        Some(listing),
+        query::documented_parameters(&spec, "/markets"),
+        "the listing's builders together send every documented key, and only those"
+    );
+
+    let books = keys_of("/markets/orderbooks", "catalog/orderbooks", |p| {
+        Box::pin(async move {
+            p.markets()
+                .orderbooks(&[Ticker::new("KXTEST-1").unwrap()])
+                .send()
+                .await
+                .map(|_| ())
+        })
+    })
+    .await;
+    assert_eq!(
+        Some(books),
+        query::documented_parameters(&spec, "/markets/orderbooks")
+    );
+}

@@ -6,10 +6,11 @@ use crate::predictions::{
     key::Ticker,
     request::{routes, Routed},
     types::{
-        BatchCandlesticksResponse, MarketResponse, MarketStatusFilter, MarketsPage, MveFilter,
-        OrderbookResponse, PeriodInterval, SeriesCandlesticksResponse, TradesPage,
+        BatchCandlesticksResponse, MarketResponse, MarketStatusFilter, MarketWindow, MarketsPage,
+        MveFilter, OrderbookResponse, OrderbooksResponse, PeriodInterval,
+        SeriesCandlesticksResponse, TradesPage,
     },
-    Inner, PredictionsError,
+    Inner, PredictionsError, MAX_ORDERBOOK_TICKERS,
 };
 
 /// Markets namespace.
@@ -30,6 +31,32 @@ impl MarketsApi {
         }
     }
 
+    /// `GET /trade-api/v2/markets` in one timestamp family: the markets created, closed or settled
+    /// in a window, with only the states that family allows. Kalshi refuses a state or a second
+    /// family beside it with a `400`, so the builder has no `status` setter.
+    pub fn window(&self, window: MarketWindow) -> ListMarketWindow {
+        let mut request = Routed::new(&self.inner, routes::MARKETS, &[]);
+        for (key, value) in window.pairs() {
+            request = request.query(key, value);
+        }
+        ListMarketWindow { request }
+    }
+
+    /// `GET /trade-api/v2/markets` updated after `min_ts`, in Unix seconds, multivariate
+    /// combinations excluded.
+    ///
+    /// Kalshi tracks metadata here, not trading: a market whose price moved and whose terms did not
+    /// is not listed, so a price poller reads `list().tickers(..)` instead. The host allows only
+    /// `series_ticker` and `mve_filter=exclude` beside this filter, so the builder offers nothing
+    /// else.
+    pub fn updated(&self, min_ts: i64) -> ListUpdatedMarkets {
+        ListUpdatedMarkets {
+            request: Routed::new(&self.inner, routes::MARKETS, &[])
+                .query("min_updated_ts", min_ts)
+                .query("mve_filter", MveFilter::Exclude),
+        }
+    }
+
     /// `GET /trade-api/v2/markets/{ticker}`: a ticker the host does not list is a `404`.
     pub fn get(&self, ticker: &Ticker) -> GetMarket {
         GetMarket {
@@ -42,6 +69,24 @@ impl MarketsApi {
     pub fn orderbook(&self, ticker: &Ticker) -> GetOrderbook {
         GetOrderbook {
             request: Routed::new(&self.inner, routes::ORDERBOOK, &[ticker.as_str()]),
+        }
+    }
+
+    /// `GET /trade-api/v2/markets/orderbooks`: up to [`MAX_ORDERBOOK_TICKERS`] markets' books in one
+    /// read, one per ticker, each side worst first, an unlisted ticker's sides empty.
+    ///
+    /// An empty set, more than 100 tickers, or a set past
+    /// [`TICKERS_QUERY_BUDGET`](crate::predictions::TICKERS_QUERY_BUDGET) is refused when sent,
+    /// with nothing sent; [`ticker_chunks`](crate::predictions::ticker_chunks) splits a larger set.
+    /// Kalshi answers the books in the order asked, and a repeated ticker's book once per mention.
+    pub fn orderbooks(&self, tickers: &[Ticker]) -> GetOrderbooks {
+        let texts: Vec<&str> = tickers.iter().map(Ticker::as_str).collect();
+        GetOrderbooks {
+            request: Routed::new(&self.inner, routes::ORDERBOOKS, &[]).tickers_repeated(
+                "tickers",
+                &texts,
+                MAX_ORDERBOOK_TICKERS,
+            ),
         }
     }
 
@@ -123,8 +168,92 @@ impl ListMarkets {
         cursor: impl Into<String> => "cursor",
     }
 
+    /// Only these markets, comma-joined: a price poller's read of a named set.
+    ///
+    /// An empty set, or one past
+    /// [`TICKERS_QUERY_BUDGET`](crate::predictions::TICKERS_QUERY_BUDGET), is refused when sent,
+    /// with nothing sent; [`ticker_chunks`](crate::predictions::ticker_chunks) splits a larger set.
+    /// Setting it again replaces the set and any refusal.
+    pub fn tickers(mut self, tickers: &[Ticker]) -> Self {
+        let texts: Vec<&str> = tickers.iter().map(Ticker::as_str).collect();
+        self.request = self.request.tickers_joined("tickers", &texts);
+        self
+    }
+
     /// Waits for the Read budget, sends, and decodes the response.
     pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
+        self.request.send().await
+    }
+}
+
+/// Request builder for `GET /trade-api/v2/markets` in one timestamp family
+/// ([`MarketsApi::window`]).
+#[must_use = "a request does nothing until it is sent"]
+pub struct ListMarketWindow {
+    pub(crate) request: Routed<MarketsPage>,
+}
+
+impl ListMarketWindow {
+    polyoxide_core::query_setters! {
+        /// Only the markets of this event.
+        event_ticker: impl Into<String> => "event_ticker",
+        /// Only the markets of this series.
+        series_ticker: impl Into<String> => "series_ticker",
+        /// Only the multivariate combinations, or everything but them.
+        mve_filter: MveFilter => "mve_filter",
+        /// Markets per page, up to 1000; the host defaults to 100.
+        limit: u32 => "limit",
+        /// The cursor of the page to read.
+        cursor: impl Into<String> => "cursor",
+    }
+
+    /// Only these markets, comma-joined, refused as [`ListMarkets::tickers`] refuses.
+    pub fn tickers(mut self, tickers: &[Ticker]) -> Self {
+        let texts: Vec<&str> = tickers.iter().map(Ticker::as_str).collect();
+        self.request = self.request.tickers_joined("tickers", &texts);
+        self
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response.
+    pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
+        self.request.send().await
+    }
+}
+
+/// Request builder for `GET /trade-api/v2/markets` updated after a time
+/// ([`MarketsApi::updated`]).
+#[must_use = "a request does nothing until it is sent"]
+pub struct ListUpdatedMarkets {
+    pub(crate) request: Routed<MarketsPage>,
+}
+
+impl ListUpdatedMarkets {
+    polyoxide_core::query_setters! {
+        /// Only markets updated at or before this Unix time, in seconds.
+        max_ts: i64 => "max_updated_ts",
+        /// Only the markets of this series.
+        series_ticker: impl Into<String> => "series_ticker",
+        /// Markets per page, up to 1000; the host defaults to 100.
+        limit: u32 => "limit",
+        /// The cursor of the page to read.
+        cursor: impl Into<String> => "cursor",
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response.
+    pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
+        self.request.send().await
+    }
+}
+
+/// Request builder for `GET /trade-api/v2/markets/orderbooks` ([`MarketsApi::orderbooks`]).
+#[must_use = "a request does nothing until it is sent"]
+pub struct GetOrderbooks {
+    pub(crate) request: Routed<OrderbooksResponse>,
+}
+
+impl GetOrderbooks {
+    /// Waits for the Read budget, sends, and decodes the response.
+    pub async fn send(self) -> Result<OrderbooksResponse, PredictionsError> {
         self.request.send().await
     }
 }

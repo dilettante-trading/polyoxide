@@ -10,4 +10,7 @@ pub use events::{EventsApi, GetEvent};
 pub use exchange::{ExchangeApi, GetExchangeStatus};
 pub use health::Health;
 pub use limits::GetAccountLimits;
-pub use markets::{GetMarket, GetOrderbook, ListMarkets, ListTrades, MarketsApi};
+pub use markets::{
+    GetMarket, GetOrderbook, GetOrderbooks, ListMarketWindow, ListMarkets, ListTrades,
+    ListUpdatedMarkets, MarketsApi,
+};
