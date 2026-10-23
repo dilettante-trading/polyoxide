@@ -220,6 +220,23 @@
                             "enum": ["tp", "sl"]
                           }
                         }
+                      },
+                      "builder": {
+                        "type": "object",
+                        "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+                        "required": ["address", "fee_rate"],
+                        "properties": {
+                          "address": {
+                            "type": "string",
+                            "description": "Address",
+                            "example": "0x1234567890abcdef1234567890abcdef12345678"
+                          },
+                          "fee_rate": {
+                            "type": "string",
+                            "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                            "example": "0.001"
+                          }
+                        }
                       }
                     }
                   },
@@ -273,6 +290,10 @@
                       "tr": {
                         "trp": "110.00",
                         "tpsl": "tp"
+                      },
+                      "builder": {
+                        "address": "0x1234567890abcdef1234567890abcdef12345678",
+                        "fee_rate": "0.001"
                       }
                     }
                   ],
@@ -300,61 +321,105 @@
                 "description": "Correlation ID for request-response matching"
               },
               "data": {
-                "type": "object",
+                "type": "array",
                 "description": "Array of order results",
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "required": ["status", "oid"],
-                    "properties": {
-                      "status": {
-                        "type": "string",
-                        "enum": ["ok"]
-                      },
-                      "oid": {
-                        "type": "integer",
-                        "description": "Order ID",
-                        "example": 1234567890
-                      },
-                      "coid": {
-                        "type": "string",
-                        "description": "Client order ID",
-                        "minLength": 32,
-                        "maxLength": 32,
-                        "pattern": "^[0-9a-f]{32}$",
-                        "example": "550e8400e29b41d4a716446655440000"
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status", "oid", "ts"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        },
+                        "oid": {
+                          "type": "integer",
+                          "description": "Order ID",
+                          "example": 1234567890
+                        },
+                        "coid": {
+                          "type": "string",
+                          "description": "Client order ID",
+                          "minLength": 32,
+                          "maxLength": 32,
+                          "pattern": "^[0-9a-f]{32}$",
+                          "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "ts": {
+                          "description": "Sequenced order decision timestamp in Unix milliseconds.",
+                          "type": "integer",
+                          "example": 1767225600000
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "builder": {
+                          "type": "object",
+                          "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+                          "required": ["address", "fee_rate"],
+                          "properties": {
+                            "address": {
+                              "type": "string",
+                              "description": "Address",
+                              "example": "0x1234567890abcdef1234567890abcdef12345678"
+                            },
+                            "fee_rate": {
+                              "type": "string",
+                              "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                              "example": "0.001"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "oid": {
+                          "type": "integer",
+                          "description": "Order ID",
+                          "example": 1234567890
+                        },
+                        "coid": {
+                          "type": "string",
+                          "description": "Client order ID",
+                          "minLength": 32,
+                          "maxLength": 32,
+                          "pattern": "^[0-9a-f]{32}$",
+                          "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "description": "Server rejection timestamp in Unix milliseconds.",
+                          "type": "integer",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
                       }
                     }
-                  },
-                  {
-                    "type": "object",
-                    "required": ["status", "error"],
-                    "properties": {
-                      "status": {
-                        "type": "string",
-                        "enum": ["err"]
-                      },
-                      "error": {
-                        "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
-                        "example": "insufficient_margin"
-                      },
-                      "oid": {
-                        "type": "integer",
-                        "description": "Order ID",
-                        "example": 1234567890
-                      },
-                      "coid": {
-                        "type": "string",
-                        "description": "Client order ID",
-                        "minLength": 32,
-                        "maxLength": 32,
-                        "pattern": "^[0-9a-f]{32}$",
-                        "example": "550e8400e29b41d4a716446655440000"
-                      }
-                    }
-                  }
-                ]
+                  ]
+                }
               }
             },
             "required": ["data"]
@@ -2373,7 +2438,7 @@
               }
             },
             "required": ["req", "chs"],
-            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP. After authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account.\nLater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nSigned write posts carrying an `id` are dispatched concurrently (up to 16\nin flight per connection) and may execute and respond out of request\norder, matching the semantics of concurrent HTTP requests. Ordering is\nkept per connection for posts that name the same client order id or\norder id, and `cancelAll`, leverage and margin updates wait for every\nearlier post on the connection while later posts wait for them. Posts\nwithout an `id` are dispatched one at a time but are not ordered after\nearlier `id`-carrying posts still in flight. For strict ordering, await\neach response before sending the next request, or omit `id` on every\npost. Use a unique `id` for every in-flight request on a connection.\nUniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
           },
           "examples": [
             {
@@ -2487,7 +2552,7 @@
               }
             },
             "required": ["req", "chs"],
-            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP. After authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account.\nLater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nSigned write posts carrying an `id` are dispatched concurrently (up to 16\nin flight per connection) and may execute and respond out of request\norder, matching the semantics of concurrent HTTP requests. Ordering is\nkept per connection for posts that name the same client order id or\norder id, and `cancelAll`, leverage and margin updates wait for every\nearlier post on the connection while later posts wait for them. Posts\nwithout an `id` are dispatched one at a time but are not ordered after\nearlier `id`-carrying posts still in flight. For strict ordering, await\neach response before sending the next request, or omit `id` on every\npost. Use a unique `id` for every in-flight request on a connection.\nUniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
           },
           "examples": [
             {
@@ -3756,112 +3821,163 @@
                 "example": 1234567890
               },
               "data": {
-                "type": "object",
+                "type": "array",
                 "description": "Array of fill objects",
-                "properties": {
-                  "tid": {
-                    "type": "integer",
-                    "description": "Trade ID",
-                    "example": 1
-                  },
-                  "oid": {
-                    "type": "integer",
-                    "description": "Order ID",
-                    "example": 1234567890
-                  },
-                  "iid": {
-                    "type": "integer",
-                    "description": "Instrument ID",
-                    "example": 1
-                  },
-                  "side": {
-                    "type": "string",
-                    "description": "Side",
-                    "enum": ["long", "short"]
-                  },
-                  "p": {
-                    "type": "string",
-                    "description": "Price",
-                    "example": "100.00"
-                  },
-                  "qty": {
-                    "type": "string",
-                    "description": "Quantity in no. of contracts",
-                    "example": "10.00"
-                  },
-                  "taker": {
-                    "type": "boolean",
-                    "description": "Whether this side was the taker"
-                  },
-                  "fee": {
-                    "type": "string",
-                    "description": "Fee amount for this trade side",
-                    "example": "1.25"
-                  },
-                  "fea": {
-                    "type": "string",
-                    "description": "Fee asset name",
-                    "example": "USDC"
-                  },
-                  "psz": {
-                    "type": "string",
-                    "description": "Position size before the fill",
-                    "example": "26.86"
-                  },
-                  "pep": {
-                    "type": "string",
-                    "description": "Position entry price before the fill",
-                    "example": "100.00"
-                  },
-                  "pnl": {
-                    "type": "string",
-                    "description": "PnL in USD",
-                    "example": "100.00"
-                  },
-                  "liq": {
-                    "type": "boolean",
-                    "description": "Whether this fill was part of a liquidation of the account's position — true on forced closes and on any fill executed while the account was under liquidation on the instrument, maker or taker. False on the counterparty leg of an auto-deleveraging or backstop match — its fill is part of someone else's liquidation, flagged by `adl` where applicable"
-                  },
-                  "adl": {
-                    "type": "boolean",
-                    "description": "Whether the fill came from auto-deleveraging"
-                  },
-                  "ts": {
-                    "type": "integer",
-                    "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
-                    "example": 1767225600000
-                  },
-                  "coid": {
-                    "type": "string",
-                    "description": "Client order ID",
-                    "minLength": 32,
-                    "maxLength": 32,
-                    "pattern": "^[0-9a-f]{32}$",
-                    "example": "550e8400e29b41d4a716446655440000"
-                  },
-                  "settlement": {
-                    "type": "boolean",
-                    "description": "Whether this fill closes a position during permanent instrument settlement. Settlement fills use the final settlement price and have no fees or liquidation penalties; they are not normal market trades or ADL."
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "tid",
+                    "oid",
+                    "iid",
+                    "side",
+                    "p",
+                    "qty",
+                    "taker",
+                    "fee",
+                    "builder_fee",
+                    "total_fee",
+                    "fea",
+                    "psz",
+                    "pep",
+                    "pnl",
+                    "ts",
+                    "settlement",
+                    "liq",
+                    "adl"
+                  ],
+                  "properties": {
+                    "tid": {
+                      "type": "integer",
+                      "description": "Trade ID",
+                      "example": 1
+                    },
+                    "oid": {
+                      "type": "integer",
+                      "description": "Order ID",
+                      "example": 1234567890
+                    },
+                    "iid": {
+                      "type": "integer",
+                      "description": "Instrument ID",
+                      "example": 1
+                    },
+                    "side": {
+                      "type": "string",
+                      "description": "Side",
+                      "enum": ["long", "short"]
+                    },
+                    "p": {
+                      "type": "string",
+                      "description": "Price",
+                      "example": "100.00"
+                    },
+                    "qty": {
+                      "type": "string",
+                      "description": "Quantity in no. of contracts",
+                      "example": "10.00"
+                    },
+                    "taker": {
+                      "type": "boolean",
+                      "description": "Whether this side was the taker"
+                    },
+                    "fee": {
+                      "type": "string",
+                      "description": "Signed exchange fee for this trade side, excluding builder_fee. Negative values are rebates",
+                      "example": "1.25"
+                    },
+                    "builder_fee": {
+                      "type": "string",
+                      "description": "Actual additional builder fee in the same asset as fee, floored independently for each execution to that asset's token decimals (six for pUSD), with discarded dust and no carry. The fee is non-negative and is zero for older or untagged fills and excluded forced liquidation legs.",
+                      "example": "1.00"
+                    },
+                    "total_fee": {
+                      "type": "string",
+                      "description": "Exact signed sum of exchange fee and builder_fee in the same asset. May be negative when exchange rebates exceed the builder charge.",
+                      "example": "2.25"
+                    },
+                    "builder": {
+                      "type": "object",
+                      "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+                      "required": ["address", "fee_rate"],
+                      "properties": {
+                        "address": {
+                          "type": "string",
+                          "description": "Address",
+                          "example": "0x1234567890abcdef1234567890abcdef12345678"
+                        },
+                        "fee_rate": {
+                          "type": "string",
+                          "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                          "example": "0.001"
+                        }
+                      }
+                    },
+                    "fea": {
+                      "type": "string",
+                      "description": "Fee asset name",
+                      "example": "USDC"
+                    },
+                    "psz": {
+                      "type": "string",
+                      "description": "Position size before the fill",
+                      "example": "26.86"
+                    },
+                    "pep": {
+                      "type": "string",
+                      "description": "Position entry price before the fill",
+                      "example": "100.00"
+                    },
+                    "pnl": {
+                      "description": "Realized trading PnL before exchange and builder fees. Subtract total_fee once to calculate this fill's net trading result.",
+                      "type": "string",
+                      "example": "100.00"
+                    },
+                    "liq": {
+                      "type": "boolean",
+                      "description": "Whether this fill was part of a liquidation of the account's position — true on forced closes and on any fill executed while the account was under liquidation on the instrument, maker or taker. False on the counterparty leg of an auto-deleveraging or backstop match — its fill is part of someone else's liquidation, flagged by `adl` where applicable"
+                    },
+                    "adl": {
+                      "type": "boolean",
+                      "description": "Whether the fill came from auto-deleveraging"
+                    },
+                    "ts": {
+                      "type": "integer",
+                      "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                      "example": 1767225600000
+                    },
+                    "settlement": {
+                      "type": "boolean",
+                      "description": "Whether this fill closes a position during permanent instrument settlement. Settlement fills use the final settlement price and have no fees or liquidation penalties; they are not normal market trades or ADL."
+                    },
+                    "coid": {
+                      "type": "string",
+                      "description": "Client order ID",
+                      "minLength": 32,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$",
+                      "example": "550e8400e29b41d4a716446655440000"
+                    },
+                    "liquidation_details": {
+                      "type": "object",
+                      "required": ["mark", "method"],
+                      "properties": {
+                        "liquidated_user": {
+                          "type": "string",
+                          "description": "Checksummed address of the liquidated account. Present on authenticated fill surfaces and, on public account-scoped routes, only on the liquidated account's own rows. It is absent on fund-side public rows and the anonymous trade tape."
+                        },
+                        "mark": {
+                          "type": "string",
+                          "description": "Mark price captured when the liquidation command was issued. The fill price itself stays the accounting price."
+                        },
+                        "method": {
+                          "type": "string",
+                          "enum": ["market", "backstop"],
+                          "description": "How the position was liquidated. Only backstop is emitted today. The market value is reserved for order-book liquidations, which currently carry no liquidation_details."
+                        }
+                      }
+                    }
                   }
-                },
-                "required": [
-                  "tid",
-                  "oid",
-                  "iid",
-                  "side",
-                  "p",
-                  "qty",
-                  "taker",
-                  "fee",
-                  "fea",
-                  "psz",
-                  "pep",
-                  "pnl",
-                  "ts",
-                  "settlement",
-                  "liq",
-                  "adl"
-                ]
+                }
               }
             },
             "required": ["ch", "ts", "sq", "data"]
@@ -3872,6 +3988,7 @@
               "payload": {
                 "ch": "fills",
                 "ts": 1767225600000,
+                "ets": 1767225600000,
                 "sq": 1234567890,
                 "data": [
                   {
@@ -3882,12 +3999,21 @@
                     "p": "100.00",
                     "qty": "10.00",
                     "fee": "1.25",
+                    "builder_fee": "1.00",
+                    "total_fee": "2.25",
+                    "builder": {
+                      "address": "0x1234567890abcdef1234567890abcdef12345678",
+                      "fee_rate": "0.001"
+                    },
                     "fea": "USDC",
                     "psz": "26.86",
                     "pep": "100.00",
                     "pnl": "100.00",
                     "ts": 1767225600000,
-                    "coid": "550e8400e29b41d4a716446655440000"
+                    "coid": "550e8400e29b41d4a716446655440000",
+                    "liquidation_details": {
+                      "method": "market"
+                    }
                   }
                 ]
               }
@@ -4511,6 +4637,23 @@
                     "maxLength": 32,
                     "pattern": "^[0-9a-f]{32}$",
                     "example": "550e8400e29b41d4a716446655440000"
+                  },
+                  "builder": {
+                    "type": "object",
+                    "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+                    "required": ["address", "fee_rate"],
+                    "properties": {
+                      "address": {
+                        "type": "string",
+                        "description": "Address",
+                        "example": "0x1234567890abcdef1234567890abcdef12345678"
+                      },
+                      "fee_rate": {
+                        "type": "string",
+                        "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                        "example": "0.001"
+                      }
+                    }
                   }
                 },
                 "required": [
@@ -4538,6 +4681,7 @@
               "payload": {
                 "ch": "orders",
                 "ts": 1767225600000,
+                "ets": 1767225600000,
                 "sq": 1234567890,
                 "data": {
                   "oid": 1234567890,
@@ -4553,7 +4697,11 @@
                   "cts": 1767225600000,
                   "uts": 1767225600000,
                   "status": "open",
-                  "coid": "550e8400e29b41d4a716446655440000"
+                  "coid": "550e8400e29b41d4a716446655440000",
+                  "builder": {
+                    "address": "0x1234567890abcdef1234567890abcdef12345678",
+                    "fee_rate": "0.001"
+                  }
                 }
               }
             }
@@ -5498,7 +5646,7 @@
                   },
                   "fee_tier": {
                     "type": "integer",
-                    "description": "Zero-based index into `tiers` of the single perpetual fee schedule returned by `/v1/info/fees`, which applies to every perpetual regardless of category. Defaults to 0 without a current tier assignment and is capped at the highest configured tier. WebSocket tier changes appear on the next portfolio update, published every 5 seconds.",
+                    "description": "Zero-based index into `tiers` of the single perpetual fee schedule returned by `/v1/info/fees`, which applies to every perpetual regardless of category. Builder fees are additional and are not part of this tier. Defaults to 0 without a current tier assignment and is capped at the highest configured tier. WebSocket tier changes appear on the next portfolio update, published every 5 seconds.",
                     "example": 0
                   },
                   "timestamp": {
@@ -5543,8 +5691,8 @@
                     "total_position_value": "100.03"
                   },
                   "withdrawable": "13104.51",
-                  "fee_tier": 0,
-                  "timestamp": 1767225600000
+                  "timestamp": 1767225600000,
+                  "fee_tier": 0
                 }
               }
             }
@@ -6124,330 +6272,6 @@
                     "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                   }
                 ]
-              }
-            }
-          ]
-        }
-      }
-    },
-    "tpsl": {
-      "address": "/v1/ws",
-      "title": "TP/SL",
-      "summary": "Real-time TP/SL lifecycle transitions. Requires authentication, see [Auth](/ws/auth).",
-      "messages": {
-        "SubscribeRequest": {
-          "name": "TpslSubscribeRequest",
-          "title": "Subscribe",
-          "summary": "Subscribe to private TP/SL updates (requires prior auth)",
-          "contentType": "application/json",
-          "payload": {
-            "type": "object",
-            "title": "Base Request",
-            "properties": {
-              "id": {
-                "description": "Client-supplied identifier used to correlate the response.",
-                "type": "integer"
-              },
-              "req": {
-                "type": "string",
-                "description": "Request type",
-                "enum": ["post", "sub", "unsub"]
-              },
-              "chs": {
-                "type": "array",
-                "description": "TP/SL private channel: \"tpsl\"",
-                "items": {
-                  "type": "string",
-                  "enum": ["tpsl"]
-                },
-                "example": ["tpsl"]
-              }
-            },
-            "required": ["req", "chs"],
-            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
-          },
-          "examples": [
-            {
-              "name": "SubscribeRequest Example",
-              "payload": {
-                "req": "sub",
-                "chs": ["tpsl"]
-              }
-            }
-          ]
-        },
-        "SubscribeResponse": {
-          "name": "TpslSubscribeResponse",
-          "title": "Subscribe Response",
-          "summary": "Response to TP/SL subscribe request",
-          "contentType": "application/json",
-          "payload": {
-            "type": "object",
-            "title": "Base Response",
-            "properties": {
-              "id": {
-                "type": "integer",
-                "description": "Correlation ID for request-response matching"
-              },
-              "data": {
-                "title": "Subscribe Response",
-                "type": "array",
-                "items": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "required": ["status"],
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "enum": ["ok"]
-                        }
-                      }
-                    },
-                    {
-                      "type": "object",
-                      "required": ["status", "error"],
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "enum": ["err"]
-                        },
-                        "error": {
-                          "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
-                          "example": "insufficient_margin"
-                        },
-                        "arts": {
-                          "type": "integer",
-                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
-                          "example": 1767225600000
-                        },
-                        "ts": {
-                          "type": "integer",
-                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
-                          "example": 1767225600000
-                        },
-                        "ref": {
-                          "type": "string",
-                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
-                          "example": "g-0011223344556"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "required": ["data"]
-          },
-          "examples": [
-            {
-              "name": "SubscribeResponse Example",
-              "payload": {
-                "data": []
-              }
-            }
-          ]
-        },
-        "UnsubscribeRequest": {
-          "name": "TpslUnsubscribeRequest",
-          "title": "Unsubscribe",
-          "summary": "Unsubscribe from private TP/SL updates",
-          "contentType": "application/json",
-          "payload": {
-            "type": "object",
-            "title": "Base Request",
-            "properties": {
-              "id": {
-                "description": "Client-supplied identifier used to correlate the response.",
-                "type": "integer"
-              },
-              "req": {
-                "type": "string",
-                "description": "Request type",
-                "enum": ["post", "sub", "unsub"]
-              },
-              "chs": {
-                "type": "array",
-                "description": "TP/SL private channel: \"tpsl\"",
-                "items": {
-                  "type": "string",
-                  "enum": ["tpsl"]
-                },
-                "example": ["tpsl"]
-              }
-            },
-            "required": ["req", "chs"],
-            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
-          },
-          "examples": [
-            {
-              "name": "UnsubscribeRequest Example",
-              "payload": {
-                "req": "unsub",
-                "chs": ["tpsl"]
-              }
-            }
-          ]
-        },
-        "UnsubscribeResponse": {
-          "name": "TpslUnsubscribeResponse",
-          "title": "Unsubscribe Response",
-          "summary": "Response to TP/SL unsubscribe request",
-          "contentType": "application/json",
-          "payload": {
-            "type": "object",
-            "title": "Base Response",
-            "properties": {
-              "id": {
-                "type": "integer",
-                "description": "Correlation ID for request-response matching"
-              },
-              "data": {
-                "title": "Subscribe Response",
-                "type": "array",
-                "items": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "required": ["status"],
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "enum": ["ok"]
-                        }
-                      }
-                    },
-                    {
-                      "type": "object",
-                      "required": ["status", "error"],
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "enum": ["err"]
-                        },
-                        "error": {
-                          "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
-                          "example": "insufficient_margin"
-                        },
-                        "arts": {
-                          "type": "integer",
-                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
-                          "example": 1767225600000
-                        },
-                        "ts": {
-                          "type": "integer",
-                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
-                          "example": 1767225600000
-                        },
-                        "ref": {
-                          "type": "string",
-                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
-                          "example": "g-0011223344556"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "required": ["data"]
-          },
-          "examples": [
-            {
-              "name": "UnsubscribeResponse Example",
-              "payload": {
-                "data": []
-              }
-            }
-          ]
-        },
-        "Update": {
-          "name": "TpslUpdate",
-          "title": "Update",
-          "summary": "TP/SL lifecycle transitions for authenticated users",
-          "contentType": "application/json",
-          "payload": {
-            "title": "TP/SL Update",
-            "description": "A lifecycle transition for one of the authenticated account's TP/SL legs, one frame per transition. The frame carries only the new state; read the leg's full order, including its live trigger price, from open orders.",
-            "type": "object",
-            "properties": {
-              "ch": {
-                "type": "string",
-                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
-                "example": "trades::1"
-              },
-              "ts": {
-                "description": "Server send time, Unix milliseconds",
-                "type": "integer",
-                "example": 1767225600000
-              },
-              "ets": {
-                "type": "integer",
-                "description": "Event timestamp — the newest event this update reflects, in Unix milliseconds. Distinct from `ts`, which is the server send time; `ts - ets` is time spent inside the exchange after the event. `ets=0` means no event horizon is attested, and consumers must treat the horizon as unknown.",
-                "example": 1767225600000
-              },
-              "sq": {
-                "type": "integer",
-                "description": "Sequence number",
-                "example": 1234567890
-              },
-              "data": {
-                "type": "object",
-                "required": ["oid", "st"],
-                "properties": {
-                  "oid": {
-                    "type": "integer",
-                    "description": "Order ID",
-                    "example": 1234567890
-                  },
-                  "st": {
-                    "type": "string",
-                    "enum": [
-                      "untriggered",
-                      "armed",
-                      "activated",
-                      "cancelled",
-                      "expired"
-                    ],
-                    "description": "New state of the leg. `untriggered`: accepted and waiting for its parent order to fill. `armed`: live and watching its trigger. `activated`: a trailing stop reached its activation price and started trailing. `cancelled`: cancelled by the account. `expired`: left the book for any other reason, including firing; `reason` says which."
-                  },
-                  "reason": {
-                    "type": "string",
-                    "description": "Why the leg left the book. Present only when `st` is `expired`. One of `triggered`, `parent_cancelled`, `position_closed`, `position_flipped`, `good_til_time_elapsed`, `reduce_only_invalid_at_trigger`, `instrument_close_only`, `instrument_settled` or `unknown`. Treat other values as `unknown`."
-                  }
-                }
-              }
-            },
-            "required": ["ch", "ts", "ets", "sq", "data"]
-          },
-          "examples": [
-            {
-              "name": "Leg armed",
-              "payload": {
-                "ch": "tpsl::12345",
-                "ts": 1767225600002,
-                "ets": 1767225600000,
-                "sq": 1234567890,
-                "data": {
-                  "oid": 1234567890,
-                  "st": "armed"
-                }
-              }
-            },
-            {
-              "name": "Leg triggered",
-              "payload": {
-                "ch": "tpsl::12345",
-                "ts": 1767225660002,
-                "ets": 1767225660000,
-                "sq": 1234568012,
-                "data": {
-                  "oid": 1234567890,
-                  "st": "expired",
-                  "reason": "triggered"
-                }
               }
             }
           ]
@@ -7323,6 +7147,23 @@
                               "maxLength": 32,
                               "pattern": "^[0-9a-f]{32}$",
                               "example": "550e8400e29b41d4a716446655440000"
+                            },
+                            "builder": {
+                              "type": "object",
+                              "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+                              "required": ["address", "fee_rate"],
+                              "properties": {
+                                "address": {
+                                  "type": "string",
+                                  "description": "Address",
+                                  "example": "0x1234567890abcdef1234567890abcdef12345678"
+                                },
+                                "fee_rate": {
+                                  "type": "string",
+                                  "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                                  "example": "0.001"
+                                }
+                              }
                             }
                           }
                         }
@@ -7353,6 +7194,21 @@
                           "type": "string",
                           "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "description": "Server rejection timestamp in Unix milliseconds.",
+                          "type": "integer",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
                         }
                       }
                     }
@@ -7634,6 +7490,23 @@
                               "maxLength": 32,
                               "pattern": "^[0-9a-f]{32}$",
                               "example": "550e8400e29b41d4a716446655440000"
+                            },
+                            "builder": {
+                              "type": "object",
+                              "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+                              "required": ["address", "fee_rate"],
+                              "properties": {
+                                "address": {
+                                  "type": "string",
+                                  "description": "Address",
+                                  "example": "0x1234567890abcdef1234567890abcdef12345678"
+                                },
+                                "fee_rate": {
+                                  "type": "string",
+                                  "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                                  "example": "0.001"
+                                }
+                              }
                             }
                           }
                         }
@@ -7664,6 +7537,21 @@
                           "type": "string",
                           "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "description": "Server rejection timestamp in Unix milliseconds.",
+                          "type": "integer",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
                         }
                       }
                     }
@@ -7699,6 +7587,746 @@
                     }
                   }
                 ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "builderFills": {
+      "address": "/v1/ws",
+      "title": "BuilderFills",
+      "summary": "Real-time attributed fills for the authenticated builder account. Requires prior authentication.",
+      "messages": {
+        "SubscribeRequest": {
+          "name": "BuilderFillsSubscribeRequest",
+          "title": "Subscribe",
+          "summary": "Subscribe to attributed fill updates for the authenticated builder (requires prior auth)",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "BuilderFills private channel: \"builderFills\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["builderFills"]
+                },
+                "example": ["builderFills"]
+              }
+            },
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP. After authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account.\nLater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nSigned write posts carrying an `id` are dispatched concurrently (up to 16\nin flight per connection) and may execute and respond out of request\norder, matching the semantics of concurrent HTTP requests. Ordering is\nkept per connection for posts that name the same client order id or\norder id, and `cancelAll`, leverage and margin updates wait for every\nearlier post on the connection while later posts wait for them. Posts\nwithout an `id` are dispatched one at a time but are not ordered after\nearlier `id`-carrying posts still in flight. For strict ordering, await\neach response before sending the next request, or omit `id` on every\npost. Use a unique `id` for every in-flight request on a connection.\nUniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+          },
+          "examples": [
+            {
+              "name": "SubscribeRequest Example",
+              "payload": {
+                "req": "sub",
+                "chs": ["builderFills"]
+              }
+            }
+          ]
+        },
+        "SubscribeResponse": {
+          "name": "BuilderFillsSubscribeResponse",
+          "title": "Subscribe Response",
+          "summary": "Response to fills subscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "SubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "UnsubscribeRequest": {
+          "name": "BuilderFillsUnsubscribeRequest",
+          "title": "Unsubscribe",
+          "summary": "Unsubscribe from attributed fill updates for the authenticated builder",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "BuilderFills private channel: \"builderFills\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["builderFills"]
+                },
+                "example": ["builderFills"]
+              }
+            },
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP. After authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account.\nLater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nSigned write posts carrying an `id` are dispatched concurrently (up to 16\nin flight per connection) and may execute and respond out of request\norder, matching the semantics of concurrent HTTP requests. Ordering is\nkept per connection for posts that name the same client order id or\norder id, and `cancelAll`, leverage and margin updates wait for every\nearlier post on the connection while later posts wait for them. Posts\nwithout an `id` are dispatched one at a time but are not ordered after\nearlier `id`-carrying posts still in flight. For strict ordering, await\neach response before sending the next request, or omit `id` on every\npost. Use a unique `id` for every in-flight request on a connection.\nUniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeRequest Example",
+              "payload": {
+                "req": "unsub",
+                "chs": ["builderFills"]
+              }
+            }
+          ]
+        },
+        "UnsubscribeResponse": {
+          "name": "BuilderFillsUnsubscribeResponse",
+          "title": "Unsubscribe Response",
+          "summary": "Response to fills unsubscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "Update": {
+          "name": "BuilderFillsUpdate",
+          "title": "Update",
+          "summary": "Real-time fill updates for authenticated users",
+          "contentType": "application/json",
+          "payload": {
+            "title": "Builder Fills Update",
+            "description": "Attributed fill sides for the authenticated builder, including zero builder fees. Each receipt uses the same fields and earning_id as GET /v1/account/builder-earnings. The trader is the main account wallet, never a delegated trading key. There is no initial history snapshot and delivery is not exactly once. After reconnecting, subscribe first, buffer live receipts, then page REST history over an overlapping time window. History can lag the live feed. Use its complete as_of_sequence cutoff, repeat recovery until indexing catches up, and deduplicate by earning_id.",
+            "type": "object",
+            "properties": {
+              "ch": {
+                "type": "string",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "example": "builderFills"
+              },
+              "ts": {
+                "description": "Server send time, Unix milliseconds",
+                "type": "integer",
+                "example": 1767225600000
+              },
+              "ets": {
+                "type": "integer",
+                "description": "Timestamp of the newest event this update reflects, in Unix milliseconds. Distinct from `ts`, which is the server send time. `ts - ets` is time spent inside the exchange after the event. `ets=0` means no event horizon is attested, and consumers must treat the horizon as unknown.",
+                "example": 1767225600000
+              },
+              "sq": {
+                "type": "integer",
+                "description": "Sequence number",
+                "example": 1234567890
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "earning_id",
+                    "trade_id",
+                    "order_id",
+                    "instrument_id",
+                    "trader",
+                    "buy",
+                    "price",
+                    "quantity",
+                    "side",
+                    "timestamp",
+                    "sequence",
+                    "notional",
+                    "fee_asset",
+                    "fee",
+                    "builder_fee",
+                    "total_fee",
+                    "fee_rate"
+                  ],
+                  "properties": {
+                    "earning_id": {
+                      "type": "string",
+                      "description": "Stable side-specific receipt identity, unique for this builder. Use this to deduplicate, not sequence or trade_id alone."
+                    },
+                    "trade_id": {
+                      "type": "integer",
+                      "description": "Trade ID",
+                      "example": 1
+                    },
+                    "order_id": {
+                      "type": "integer",
+                      "description": "Order ID",
+                      "example": 1234567890
+                    },
+                    "instrument_id": {
+                      "type": "integer",
+                      "description": "Instrument ID",
+                      "example": 1
+                    },
+                    "trader": {
+                      "description": "Main address of the attributed trading account, not its signing proxy or the counterparty.",
+                      "type": "string",
+                      "example": "0x1234567890abcdef1234567890abcdef12345678"
+                    },
+                    "buy": {
+                      "type": "boolean",
+                      "description": "Is buy",
+                      "example": true
+                    },
+                    "price": {
+                      "type": "string",
+                      "description": "Price",
+                      "example": "100.00"
+                    },
+                    "quantity": {
+                      "type": "string",
+                      "description": "Quantity in number of contracts",
+                      "example": "10.00"
+                    },
+                    "client_order_id": {
+                      "description": "Included only when the attributed order supplied a client_order_id.",
+                      "type": "string",
+                      "minLength": 32,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$",
+                      "example": "550e8400e29b41d4a716446655440000"
+                    },
+                    "side": {
+                      "type": "string",
+                      "enum": ["maker", "taker"]
+                    },
+                    "timestamp": {
+                      "type": "integer",
+                      "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                      "example": 1767225600000
+                    },
+                    "sequence": {
+                      "type": "integer"
+                    },
+                    "notional": {
+                      "type": "string"
+                    },
+                    "fee_asset": {
+                      "type": "string",
+                      "description": "Fee asset name",
+                      "example": "pUSD"
+                    },
+                    "fee": {
+                      "type": "string",
+                      "description": "Signed exchange fee for this trade side, excluding builder_fee. Negative values are rebates",
+                      "example": "0.125"
+                    },
+                    "builder_fee": {
+                      "type": "string",
+                      "description": "Actual additional builder fee in the same asset as fee, floored independently for each execution to that asset's token decimals (six for pUSD), with discarded dust and no carry. The fee is non-negative and is zero for older or untagged fills and excluded forced liquidation legs.",
+                      "example": "1.00"
+                    },
+                    "total_fee": {
+                      "type": "string",
+                      "description": "Exact signed sum of exchange fee and builder_fee in the same asset. May be negative when exchange rebates exceed the builder charge.",
+                      "example": "1.125"
+                    },
+                    "fee_rate": {
+                      "type": "string",
+                      "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                      "example": "0.001"
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["ch", "ts", "ets", "sq", "data"]
+          },
+          "examples": [
+            {
+              "name": "Update Example",
+              "payload": {
+                "ch": "builderFills",
+                "ts": 1767225600000,
+                "ets": 1767225600000,
+                "sq": 1234567890,
+                "data": [
+                  {
+                    "earning_id": "1:1:0",
+                    "trade_id": 1,
+                    "order_id": 1234567890,
+                    "instrument_id": 1,
+                    "trader": "0x1234567890abcdef1234567890abcdef12345678",
+                    "buy": true,
+                    "price": "100.00",
+                    "quantity": "10.00",
+                    "client_order_id": "550e8400e29b41d4a716446655440000",
+                    "side": "maker",
+                    "sequence": 1234567890,
+                    "notional": "1000.00",
+                    "timestamp": 1767225600000,
+                    "fee_asset": "pUSD",
+                    "fee": "0.125",
+                    "builder_fee": "1.00",
+                    "total_fee": "1.125",
+                    "fee_rate": "0.001"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "tpsl": {
+      "address": "/v1/ws",
+      "title": "TP/SL",
+      "summary": "Real-time TP/SL lifecycle transitions. Requires authentication, see [Auth](/ws/auth).",
+      "messages": {
+        "SubscribeRequest": {
+          "name": "TpslSubscribeRequest",
+          "title": "Subscribe",
+          "summary": "Subscribe to private TP/SL updates (requires prior auth)",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "TP/SL private channel: \"tpsl\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["tpsl"]
+                },
+                "example": ["tpsl"]
+              }
+            },
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP. After authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account.\nLater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nSigned write posts carrying an `id` are dispatched concurrently (up to 16\nin flight per connection) and may execute and respond out of request\norder, matching the semantics of concurrent HTTP requests. Ordering is\nkept per connection for posts that name the same client order id or\norder id, and `cancelAll`, leverage and margin updates wait for every\nearlier post on the connection while later posts wait for them. Posts\nwithout an `id` are dispatched one at a time but are not ordered after\nearlier `id`-carrying posts still in flight. For strict ordering, await\neach response before sending the next request, or omit `id` on every\npost. Use a unique `id` for every in-flight request on a connection.\nUniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+          },
+          "examples": [
+            {
+              "name": "SubscribeRequest Example",
+              "payload": {
+                "req": "sub",
+                "chs": ["tpsl"]
+              }
+            }
+          ]
+        },
+        "SubscribeResponse": {
+          "name": "TpslSubscribeResponse",
+          "title": "Subscribe Response",
+          "summary": "Response to TP/SL subscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "SubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "UnsubscribeRequest": {
+          "name": "TpslUnsubscribeRequest",
+          "title": "Unsubscribe",
+          "summary": "Unsubscribe from private TP/SL updates",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "TP/SL private channel: \"tpsl\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["tpsl"]
+                },
+                "example": ["tpsl"]
+              }
+            },
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP. After authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account.\nLater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nSigned write posts carrying an `id` are dispatched concurrently (up to 16\nin flight per connection) and may execute and respond out of request\norder, matching the semantics of concurrent HTTP requests. Ordering is\nkept per connection for posts that name the same client order id or\norder id, and `cancelAll`, leverage and margin updates wait for every\nearlier post on the connection while later posts wait for them. Posts\nwithout an `id` are dispatched one at a time but are not ordered after\nearlier `id`-carrying posts still in flight. For strict ordering, await\neach response before sending the next request, or omit `id` on every\npost. Use a unique `id` for every in-flight request on a connection.\nUniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeRequest Example",
+              "payload": {
+                "req": "unsub",
+                "chs": ["tpsl"]
+              }
+            }
+          ]
+        },
+        "UnsubscribeResponse": {
+          "name": "TpslUnsubscribeResponse",
+          "title": "Unsubscribe Response",
+          "summary": "Response to TP/SL unsubscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "Update": {
+          "name": "TpslUpdate",
+          "title": "Update",
+          "summary": "TP/SL lifecycle transitions for authenticated users",
+          "contentType": "application/json",
+          "payload": {
+            "title": "TP/SL Update",
+            "description": "A lifecycle transition for one of the authenticated account's TP/SL legs, one frame per transition. The frame carries only the new state; read the leg's full order, including its live trigger price, from open orders.",
+            "type": "object",
+            "properties": {
+              "ch": {
+                "type": "string",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Most private channels use plain names (e.g. \"fills\", \"orders\"). TP/SL updates are the exception: they are suffixed with the authenticated account's numeric ID (e.g. \"tpsl::12345\"), so match them on the \"tpsl::\" prefix. Subscribe and unsubscribe requests still use the bare \"tpsl\".",
+                "example": "trades::1"
+              },
+              "ts": {
+                "description": "Server send time, Unix milliseconds",
+                "type": "integer",
+                "example": 1767225600000
+              },
+              "ets": {
+                "type": "integer",
+                "description": "Event timestamp — the newest event this update reflects, in Unix milliseconds. Distinct from `ts`, which is the server send time; `ts - ets` is time spent inside the exchange after the event. `ets=0` means no event horizon is attested, and consumers must treat the horizon as unknown.",
+                "example": 1767225600000
+              },
+              "sq": {
+                "type": "integer",
+                "description": "Sequence number",
+                "example": 1234567890
+              },
+              "data": {
+                "type": "object",
+                "required": ["oid", "st"],
+                "properties": {
+                  "oid": {
+                    "type": "integer",
+                    "description": "Order ID",
+                    "example": 1234567890
+                  },
+                  "st": {
+                    "type": "string",
+                    "enum": [
+                      "untriggered",
+                      "armed",
+                      "activated",
+                      "cancelled",
+                      "expired"
+                    ],
+                    "description": "New state of the leg. `untriggered`: accepted and waiting for its parent order to fill. `armed`: live and watching its trigger. `activated`: a trailing stop reached its activation price and started trailing. `cancelled`: cancelled by the account. `expired`: left the book for any other reason, including firing; `reason` says which."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why the leg left the book. Present only when `st` is `expired`. One of `triggered`, `parent_cancelled`, `position_closed`, `position_flipped`, `good_til_time_elapsed`, `reduce_only_invalid_at_trigger`, `instrument_close_only`, `instrument_settled` or `unknown`. Treat other values as `unknown`."
+                  }
+                }
+              }
+            },
+            "required": ["ch", "ts", "ets", "sq", "data"]
+          },
+          "examples": [
+            {
+              "name": "Leg armed",
+              "payload": {
+                "ch": "tpsl::12345",
+                "ts": 1767225600002,
+                "ets": 1767225600000,
+                "sq": 1234567890,
+                "data": {
+                  "oid": 1234567890,
+                  "st": "armed"
+                }
+              }
+            },
+            {
+              "name": "Leg triggered",
+              "payload": {
+                "ch": "tpsl::12345",
+                "ts": 1767225660002,
+                "ets": 1767225660000,
+                "sq": 1234568012,
+                "data": {
+                  "oid": 1234567890,
+                  "st": "expired",
+                  "reason": "triggered"
+                }
               }
             }
           ]
@@ -8787,66 +9415,6 @@
         }
       ]
     },
-    "TpslSubscribe": {
-      "action": "receive",
-      "channel": {
-        "$ref": "#/channels/tpsl"
-      },
-      "summary": "Subscribe to TP/SL updates",
-      "messages": [
-        {
-          "$ref": "#/channels/tpsl/messages/SubscribeRequest"
-        }
-      ]
-    },
-    "TpslSubscribeResponse": {
-      "action": "send",
-      "channel": {
-        "$ref": "#/channels/tpsl"
-      },
-      "summary": "TP/SL subscribe response",
-      "messages": [
-        {
-          "$ref": "#/channels/tpsl/messages/SubscribeResponse"
-        }
-      ]
-    },
-    "TpslUnsubscribe": {
-      "action": "receive",
-      "channel": {
-        "$ref": "#/channels/tpsl"
-      },
-      "summary": "Unsubscribe from TP/SL updates",
-      "messages": [
-        {
-          "$ref": "#/channels/tpsl/messages/UnsubscribeRequest"
-        }
-      ]
-    },
-    "TpslUnsubscribeResponse": {
-      "action": "send",
-      "channel": {
-        "$ref": "#/channels/tpsl"
-      },
-      "summary": "TP/SL unsubscribe response",
-      "messages": [
-        {
-          "$ref": "#/channels/tpsl/messages/UnsubscribeResponse"
-        }
-      ]
-    },
-    "TpslUpdate": {
-      "action": "send",
-      "channel": {
-        "$ref": "#/channels/tpsl"
-      },
-      "summary": "Receive TP/SL updates",
-      "messages": [
-        {
-          "$ref": "#/channels/tpsl/messages/Update"
-        }
-      ]
-    },
     "NotificationsSubscribe": {
       "action": "receive",
       "channel": {
@@ -8952,6 +9520,126 @@
       "messages": [
         {
           "$ref": "#/channels/modifyOrders/messages/Request"
+        }
+      ]
+    },
+    "BuilderFillsSubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/builderFills"
+      },
+      "summary": "Subscribe to fills",
+      "messages": [
+        {
+          "$ref": "#/channels/builderFills/messages/SubscribeRequest"
+        }
+      ]
+    },
+    "BuilderFillsSubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/builderFills"
+      },
+      "summary": "BuilderFills subscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/builderFills/messages/SubscribeResponse"
+        }
+      ]
+    },
+    "BuilderFillsUnsubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/builderFills"
+      },
+      "summary": "Unsubscribe from fills",
+      "messages": [
+        {
+          "$ref": "#/channels/builderFills/messages/UnsubscribeRequest"
+        }
+      ]
+    },
+    "BuilderFillsUnsubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/builderFills"
+      },
+      "summary": "BuilderFills unsubscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/builderFills/messages/UnsubscribeResponse"
+        }
+      ]
+    },
+    "BuilderFillsUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/builderFills"
+      },
+      "summary": "Receive fill updates",
+      "messages": [
+        {
+          "$ref": "#/channels/builderFills/messages/Update"
+        }
+      ]
+    },
+    "TpslSubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "Subscribe to TP/SL updates",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/SubscribeRequest"
+        }
+      ]
+    },
+    "TpslSubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "TP/SL subscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/SubscribeResponse"
+        }
+      ]
+    },
+    "TpslUnsubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "Unsubscribe from TP/SL updates",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/UnsubscribeRequest"
+        }
+      ]
+    },
+    "TpslUnsubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "TP/SL unsubscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/UnsubscribeResponse"
+        }
+      ]
+    },
+    "TpslUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/tpsl"
+      },
+      "summary": "Receive TP/SL updates",
+      "messages": [
+        {
+          "$ref": "#/channels/tpsl/messages/Update"
         }
       ]
     }
