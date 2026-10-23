@@ -23,6 +23,25 @@
   - The builder routes under `/v1/account/*` and the `builder` field on orders belong to the
     authenticated slice, which is not implemented; they are mirrored only.
 
+- **CLOB spec drift (#73).** Rebates, heartbeats and notification type 11. Two signatures change,
+  so this release raises the 0.x minor for clob.
+  - `GET /rebates/current` answers `null` for a maker with no rows, the common case, which
+    `current_rebates` failed on with "invalid type: null, expected a sequence". It now returns
+    `CurrentRebatesRequest`, whose `send()` reads `null` as an empty `Vec<RebatedFees>`;
+    `.current_rebates(date, maker).send().await` compiles as before.
+  - `account_api().heartbeat_v1()` posted no body, so the venue refused every call with a `400`.
+    It is now `heartbeat_v1(heartbeat_id)`, returning `HeartbeatV1Response { heartbeat_id }`:
+    send `""` first, then each ID a response returns. An ID the venue does not hold is the new
+    `ClobError::HeartbeatIdMismatch { expected }`, a `VenueRefusal` that is not a fault, carrying
+    the ID to resend with (empty after a legacy send). `HeartbeatResponse` and
+    `HeartbeatV1Response` are re-exported from `clob`.
+  - Heartbeats arm a dead man's switch, which both methods' docs now say: the first accepted send
+    arms cancellation of every open order the API key owns, 10 seconds without an accepted send
+    queues a cancel-all, and nothing disarms it.
+  - Notifications gain type 11 (taker tier upgraded); `notification_type` is a `u32`, so it
+    already decoded. `GET /rewards/user/total` rows may carry `native_earnings` and
+    `sponsored_earnings`, which `RewardTotalEarnings`' raw `data` already keeps.
+
 ## [0.43.0] - 2026-10-22
 
 Kalshi's catalog routes (#71): the reads a catalog kept in sync needs, and the market-data traits

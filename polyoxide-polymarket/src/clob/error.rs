@@ -77,6 +77,16 @@ pub enum ClobError {
     /// **not** retriable. See `docs/specs/clob/trading-rate-limits.md`.
     #[error(transparent)]
     BurstCapacityExceeded(#[from] BurstCapacityExceeded),
+
+    /// `POST /v1/heartbeats` was sent an ID other than the one the venue holds
+    /// for the API key.
+    ///
+    /// A defined step of the heartbeat protocol, not a fault: resend with
+    /// `expected`, which is empty after a legacy `POST /heartbeats` send.
+    /// Resending the same ID cannot succeed, so it is not retriable. The
+    /// rejected send did not refresh the cancellation deadline.
+    #[error("heartbeat ID mismatch: the venue expects {expected:?}")]
+    HeartbeatIdMismatch { expected: String },
 }
 
 /// Recognise the matching-engine kill outcomes Polymarket reports as HTTP 400.
@@ -112,6 +122,18 @@ fn classify_order_kill(message: &str) -> Option<ClobError> {
     None
 }
 
+/// Recognise `POST /v1/heartbeats`' ID mismatch by its body's shape,
+/// `{"error_msg": .., "heartbeat_id": ..}` (`HeartbeatErrorResponse` in
+/// `docs/specs/clob/openapi.yaml`), which no other route sends.
+fn heartbeat_mismatch(body: &str) -> Option<ClobError> {
+    let body: serde_json::Value = serde_json::from_str(body).ok()?;
+    body.get("error_msg")?.as_str()?;
+    let expected = body.get("heartbeat_id")?.as_str()?;
+    Some(ClobError::HeartbeatIdMismatch {
+        expected: expected.to_string(),
+    })
+}
+
 impl ClobError {
     /// A request refused before anything was sent.
     pub(crate) fn validation(msg: impl Into<String>) -> Self {
@@ -123,8 +145,9 @@ impl ClobError {
 /// own variant.
 ///
 /// A 400 whose message is a FAK or FOK kill is [`ClobError::FakUnmatched`] or
-/// [`ClobError::FokUnfilled`]. Only a 400 is read: a 5xx carrying similar
-/// prose is an engine fault and stays retriable. A refused batch is
+/// [`ClobError::FokUnfilled`], and one with a heartbeat mismatch's body is
+/// [`ClobError::HeartbeatIdMismatch`]. Only a 400 is read: a 5xx carrying
+/// similar prose is an engine fault and stays retriable. A refused batch is
 /// [`ClobError::BurstCapacityExceeded`], and a signing failure is the clob
 /// error the signer raised.
 impl From<ApiError> for ClobError {
@@ -132,6 +155,7 @@ impl From<ApiError> for ClobError {
         match err {
             ApiError::Response(response) if response.status.as_u16() == 400 => {
                 classify_order_kill(&response.message)
+                    .or_else(|| heartbeat_mismatch(&response.body))
                     .unwrap_or_else(|| Self::Api(ApiError::Response(response)))
             }
             ApiError::Refused(refused) => burst_from_refused(&refused).map_or(
@@ -192,7 +216,8 @@ impl From<alloy::hex::FromHexError> for ClobError {
 
 /// The FAK and FOK kills are a [`VenueRefusal`](polyoxide_venue::Class::VenueRefusal)
 /// that is not a fault: the venue killed the order as its time-in-force
-/// says. `Api`, `Gamma`, `Data` and `BurstCapacityExceeded` delegate, local signing
+/// says. So is a heartbeat ID mismatch, a step the heartbeat protocol defines.
+/// `Api`, `Gamma`, `Data` and `BurstCapacityExceeded` delegate, local signing
 /// failures are an `InvalidRequest`, and a tick size that did not parse is a
 /// `Decode`.
 impl polyoxide_venue::Classify for ClobError {
@@ -206,9 +231,9 @@ impl polyoxide_venue::Classify for ClobError {
             Self::Data(err) => err.class(),
             Self::Crypto(_) | Self::Alloy(_) => Class::InvalidRequest,
             Self::InvalidTickSize(_) => Class::Decode,
-            Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => {
-                Class::VenueRefusal { code: None }
-            }
+            Self::FakUnmatched { .. }
+            | Self::FokUnfilled { .. }
+            | Self::HeartbeatIdMismatch { .. } => Class::VenueRefusal { code: None },
             Self::BurstCapacityExceeded(err) => err.class(),
         }
     }
@@ -220,7 +245,9 @@ impl polyoxide_venue::Classify for ClobError {
             Self::Gamma(err) => err.is_fault(),
             #[cfg(feature = "data")]
             Self::Data(err) => err.is_fault(),
-            Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => false,
+            Self::FakUnmatched { .. }
+            | Self::FokUnfilled { .. }
+            | Self::HeartbeatIdMismatch { .. } => false,
             Self::BurstCapacityExceeded(err) => err.is_fault(),
             Self::Crypto(_) | Self::Alloy(_) | Self::InvalidTickSize(_) => true,
         }
@@ -239,7 +266,8 @@ impl polyoxide_venue::Classify for ClobError {
             | Self::Alloy(_)
             | Self::InvalidTickSize(_)
             | Self::FakUnmatched { .. }
-            | Self::FokUnfilled { .. } => None,
+            | Self::FokUnfilled { .. }
+            | Self::HeartbeatIdMismatch { .. } => None,
         }
     }
 }
@@ -632,5 +660,64 @@ FAK orders are partially filled or killed if no match is found.";
             ClobError::from(ApiError::Refused(other)),
             ClobError::Api(ApiError::Refused(_))
         ));
+    }
+
+    /// A response with `status` and a raw JSON `body`.
+    fn raw(status: u16, body: &str) -> ApiError {
+        ErrorResponse::new(
+            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
+            Default::default(),
+            body.to_string(),
+        )
+        .into()
+    }
+
+    const HEARTBEAT_MISMATCH: &str = r#"{"error_msg":"Invalid Heartbeat ID","heartbeat_id":"550e8400-e29b-41d4-a716-446655440000"}"#;
+
+    #[test]
+    fn the_decode_splits_out_a_heartbeat_mismatch_only_on_a_400() {
+        assert!(matches!(
+            ClobError::from(raw(400, HEARTBEAT_MISMATCH)),
+            ClobError::HeartbeatIdMismatch { expected }
+                if expected == "550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(matches!(
+            ClobError::from(raw(500, HEARTBEAT_MISMATCH)),
+            ClobError::Api(ApiError::Response(r)) if r.status.as_u16() == 500
+        ));
+    }
+
+    #[test]
+    fn a_heartbeat_mismatch_needs_both_fields() {
+        for body in [
+            r#"{"error":"Invalid payload"}"#,
+            r#"{"error_msg":"Invalid Heartbeat ID"}"#,
+            r#"{"error":"Invalid Heartbeat ID","heartbeat_id":"x"}"#,
+            r#"{"error_msg":"Invalid Heartbeat ID","heartbeat_id":null}"#,
+            "Invalid Heartbeat ID",
+        ] {
+            assert!(
+                matches!(ClobError::from(raw(400, body)), ClobError::Api(_)),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_heartbeat_mismatch_is_a_venue_refusal_and_not_a_fault() {
+        let err = ClobError::HeartbeatIdMismatch {
+            expected: String::new(),
+        };
+        assert_eq!(
+            err.class(),
+            polyoxide_venue::Class::VenueRefusal { code: None }
+        );
+        assert!(!err.is_retriable());
+        assert!(!err.is_fault());
+        assert_eq!(Classify::retry_after(&err), None);
+        assert_eq!(
+            err.to_string(),
+            r#"heartbeat ID mismatch: the venue expects """#
+        );
     }
 }

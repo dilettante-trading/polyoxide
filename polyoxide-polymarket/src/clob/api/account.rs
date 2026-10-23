@@ -88,11 +88,21 @@ impl AccountApi {
         Ok(serde_json::from_str(&text).map_err(ApiError::from)?)
     }
 
-    /// Send a basic heartbeat to keep the session alive
+    /// Send one legacy order heartbeat (`POST /heartbeats`).
     ///
-    /// Calls `POST /heartbeats`. No request body; returns `{"status": "ok"}` on success.
-    /// If heartbeats are not sent regularly, all open orders for the user will be
-    /// automatically canceled.
+    /// No request body; returns `{"status": "ok"}` on success.
+    ///
+    /// **The first accepted send arms a dead man's switch** on every open order
+    /// the API key owns, across markets and processes. Once 10 seconds pass
+    /// without an accepted send on either heartbeat route, a scan that runs
+    /// every five seconds drops the registration and queues a best-effort
+    /// cancel of all of them. Send every 5 seconds to keep the orders open.
+    /// Nothing disarms it: stopping the sends or dropping the client leaves
+    /// the deadline running, and socket keep-alives do not refresh it. Each
+    /// call sends one heartbeat; this client schedules none.
+    ///
+    /// It shares the key's registration with [`heartbeat_v1`](Self::heartbeat_v1),
+    /// and resets the ID that route expects to the empty string.
     pub async fn heartbeat(&self) -> Result<HeartbeatResponse, ClobError> {
         Request::<HeartbeatResponse, ClobError>::new(
             self.http_client.clone(),
@@ -104,16 +114,33 @@ impl AccountApi {
         .await
     }
 
-    /// Send a v1 heartbeat with session tracking via heartbeat ID
+    /// Send one order heartbeat with a rotating ID (`POST /v1/heartbeats`).
     ///
-    /// Calls `POST /v1/heartbeats`.
-    pub async fn heartbeat_v1(&self) -> Result<serde_json::Value, ClobError> {
-        Request::<serde_json::Value, ClobError>::new(
+    /// Arms and refreshes the same deadline as [`heartbeat`](Self::heartbeat).
+    /// Send `""` first, then the [`HeartbeatV1Response::heartbeat_id`] each
+    /// accepted send returns, one send at a time per API key. An ID the venue
+    /// does not hold is [`ClobError::HeartbeatIdMismatch`], whose `expected` is
+    /// the ID to resend with; the rejected send did not refresh the deadline.
+    /// A send can be accepted and its response lost, so an error does not
+    /// prove the deadline is disarmed.
+    pub async fn heartbeat_v1(
+        &self,
+        heartbeat_id: impl Into<String>,
+    ) -> Result<HeartbeatV1Response, ClobError> {
+        #[derive(Serialize)]
+        struct Body {
+            heartbeat_id: String,
+        }
+
+        Request::<HeartbeatV1Response, ClobError>::new(
             self.http_client.clone(),
             "/v1/heartbeats".to_string(),
         )
         .method(Method::POST)
         .authenticator(self.l2.clone())
+        .body(&Body {
+            heartbeat_id: heartbeat_id.into(),
+        })?
         .send()
         .await
     }
@@ -341,6 +368,13 @@ pub struct BalanceAllowanceResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatResponse {
     pub status: String,
+}
+
+/// Response from `POST /v1/heartbeats`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatV1Response {
+    /// The ID the next send must carry.
+    pub heartbeat_id: String,
 }
 
 /// A session key authorized for a Deposit Wallet.

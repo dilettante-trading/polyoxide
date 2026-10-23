@@ -24,7 +24,7 @@ Base URL: `https://clob.polymarket.com`
 }]
 ```
 
-`type` is an integer enum: 1=cancel, 2=fill, 3=market registered, 4=resolved, 5=reward, 6=child comment.
+`type` is an integer enum: 1=cancel, 2=fill, 3=market registered, 4=resolved, 5=reward, 6=child comment, 11=taker tier upgraded. For type 11, `payload` holds `previous_tier`, `tier` and `rebate_bps` as integers and `snapshot_date`, the UTC snapshot day, as a `YYYY-MM-DD` string.
 
 ## Dismiss Notifications
 

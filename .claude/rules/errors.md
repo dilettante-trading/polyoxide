@@ -24,9 +24,10 @@ paths:
   - gamma's and relay's are the derived `#[from]`;
   - data's turns a v2 envelope into `V2`;
   - perps' turns a `{status: "err", error, ref}` body into `Venue`;
-  - clob's turns a 400 kill into `FakUnmatched` or `FokUnfilled`, a refused signer cost into
-    `BurstCapacityExceeded` (`polyoxide_polymarket::shared`, the signer layer's refusal), and a
-    `Sign` back into its clob error;
+  - clob's turns a 400 kill into `FakUnmatched` or `FokUnfilled`, a 400 with
+    `/v1/heartbeats`' `{error_msg, heartbeat_id}` body into `HeartbeatIdMismatch`, a refused
+    signer cost into `BurstCapacityExceeded` (`polyoxide_polymarket::shared`, the signer layer's
+    refusal), and a `Sign` back into its clob error;
   - Binance's goes by status first (`418`, `429`, `451`, `403`), then its `{code, msg}` body;
   - Kalshi's turns an unsuccessful response whose body has one of its three shapes
     (`{"error": {"code", "message", "details"}}`, `{"error": "<text>"}`, `{"msg": "<text>"}`) into
@@ -51,8 +52,8 @@ inner and auxiliary types included: `V2Error`, `VenueError`, `BurstCapacityExcee
   `Network`, `Unavailable` and `RateLimited` are retriable (`is_retriable()`): connection failures
   and timeouts, `408`, `425 Too Early`, `429` and 5xx. The class decides retriability for callers;
   the send loop retries only what its policy decides (`send-loop.md`).
-- `is_fault()` is false only where the venue answered as designed: the FAK and FOK kills, and a
-  451 region block wherever a status decides the class.
+- `is_fault()` is false only where the venue answered as designed: the FAK and FOK kills, clob's
+  heartbeat ID mismatch, and a 451 region block wherever a status decides the class.
 - `retry_after()` is the wait the server asked for.
 - No error has an inherent `is_retriable` or `retry_after`, the socket errors included. Data's v2
   `retryable` flag is surfaced on `V2Error`, not obeyed. Binance's `418`, `451` and firewall `403`

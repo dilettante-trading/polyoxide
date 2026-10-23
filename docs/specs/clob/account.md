@@ -45,7 +45,9 @@ Parameters same as GET. Returns `BalanceAllowanceResponse`.
 
 **Auth:** L2
 
-Keeps session alive. If heartbeats are not sent regularly, all open orders for the user will be automatically canceled.
+Sends one legacy order heartbeat for the authenticated API key. The first accepted send enables timeout cancellation for all open orders owned by that API key, across markets and processes. Keep sending accepted heartbeats every 5 seconds. No scheduler or disarm operation is provided: stopping sends or closing a client leaves the deadline active. It shares the key's registration with `POST /v1/heartbeats` and resets the expected v1 heartbeat ID to an empty string.
+
+After 10 seconds without an accepted send, a five-second scan removes the registration and queues a best-effort cancel-all. Cancellation timing and success are not guaranteed, and later accepted sends register again. A lost response may follow an accepted send. WebSocket keep-alives do not refresh the deadline. Stop placing orders, and cancel and verify the orders to remove, before shutdown.
 
 **Response:** `HeartbeatResponse`
 
@@ -59,7 +61,7 @@ Keeps session alive. If heartbeats are not sent regularly, all open orders for t
 
 **Auth:** L2
 
-Newer variant that tracks session with a heartbeat ID. The first request sends an empty `heartbeat_id`; the response returns a new ID that must be echoed in subsequent requests. Mismatched IDs are rejected.
+Sends one order heartbeat with a rotating ID, on the same per-key registration and deadline as `POST /heartbeats`. Start with an empty `heartbeat_id` and keep each new ID a successful response returns; serialize sends per key. Rejected requests do not refresh the deadline, and a lost response may follow an accepted send, so a failure does not prove the registration is inactive.
 
 **Request:** `HeartbeatRequest`
 
@@ -72,6 +74,16 @@ Newer variant that tracks session with a heartbeat ID. The first request sends a
 ```json
 {"heartbeat_id": "550e8400-e29b-41d4-a716-446655440000"}
 ```
+
+**Errors:** `400` either way the send is refused:
+
+- ID mismatch (`HeartbeatErrorResponse`): `error_msg` and the `heartbeat_id` the venue expects, which is empty after a legacy send. Retry with that ID.
+
+  ```json
+  {"error_msg": "Invalid Heartbeat ID", "heartbeat_id": "550e8400-e29b-41d4-a716-446655440000"}
+  ```
+
+- A body that could not be decoded (`ErrorResponse`): `{"error": "Invalid payload"}`.
 
 ## Get Ban Status
 

@@ -3005,6 +3005,7 @@ paths:
         - Market resolved
         - Reward payout
         - Child comment created
+        - Taker tier upgraded (type 11)
       operationId: getNotifications
       tags:
         - Notifications
@@ -4046,6 +4047,7 @@ paths:
       summary: Get current rebated fees for a maker
       description: |
         Returns the current rebated fees for a maker address on a given date.
+        Returns null when the maker has no rebated-fee rows.
 
         Each entry includes the condition ID, asset address, and the USDC amount rebated.
 
@@ -4076,6 +4078,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/RebatedFees'
               example:
@@ -4111,10 +4114,19 @@ paths:
     post:
       summary: Send heartbeat
       description: |
-        Sends a heartbeat signal to maintain active session status.
-        If heartbeats are not sent regularly, all open orders for the user will be automatically canceled.
-        This is useful for automated trading systems that need to ensure orders are canceled
-        if the system becomes unresponsive.
+        Sends one legacy order heartbeat for the authenticated API key.
+        The first accepted send enables timeout cancellation for all open orders
+        owned by that API key, across markets and processes. Keep sending accepted
+        heartbeats every 5 seconds. No scheduler or disarm operation is provided;
+        stopping sends or closing a client leaves the deadline active.
+        It shares the key's registration with POST /v1/heartbeats and resets the
+        expected modern heartbeat ID to an empty string.
+        After 10 seconds without an accepted send, a five-second scan removes the
+        registration and queues a best-effort cancel-all attempt. Cancellation
+        timing and success are not guaranteed. Later accepted sends register again.
+        A lost response may follow an accepted send. WebSocket keepalive does not
+        refresh this deadline. Stop placing orders and explicitly cancel/verify
+        orders you intend to remove before shutdown.
       operationId: sendHeartbeat
       tags:
         - Trade
@@ -4153,15 +4165,24 @@ paths:
     post:
       summary: Send heartbeat (v1)
       description: |
-        Sends a heartbeat signal with session tracking via heartbeat ID.
+        Sends one order heartbeat with a rotating ID for the authenticated API key.
+        The first accepted send enables timeout cancellation for all open orders
+        owned by that API key, across markets and processes. Keep sending accepted
+        heartbeats every 5 seconds. No scheduler or disarm operation is provided;
+        stopping sends or closing a client leaves the deadline active.
 
-        The first request should include an empty or initial heartbeat_id. The response will contain
-        a new heartbeat_id that must be used in subsequent requests. If the provided heartbeat_id
-        doesn't match the expected value, the request will fail.
+        Start with an empty heartbeat_id and retain each new ID returned by a
+        successful response. Serialize sends per key. A mismatch returns HTTP 400
+        with error_msg "Invalid Heartbeat ID" and the currently expected
+        heartbeat_id, which may be empty after a legacy send. Retry explicitly with
+        that ID. Rejected requests do not refresh the deadline. A lost response may
+        follow an accepted send, so failure does not prove registration is inactive.
 
-        If heartbeats are not sent regularly, all open orders for the user will be automatically canceled.
-        This is useful for automated trading systems that need to ensure orders are canceled
-        if the system becomes unresponsive.
+        After 10 seconds without an accepted send, a five-second scan removes the
+        registration and queues a best-effort cancel-all attempt. Cancellation
+        timing and success are not guaranteed. Later accepted sends register again.
+        WebSocket keepalive does not refresh this deadline. Stop placing orders and
+        explicitly cancel/verify orders you intend to remove before shutdown.
       operationId: sendHeartbeatV1
       tags:
         - Trade
@@ -4196,14 +4217,23 @@ paths:
               example:
                 heartbeat_id: 550e8400-e29b-41d4-a716-446655440000
         '400':
-          description: Invalid heartbeat ID - ID doesn't match expected value
+          description: Invalid payload, or heartbeat ID does not match the registered ID
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HeartbeatErrorResponse'
-              example:
-                error: Invalid Heartbeat ID
-                heartbeat_id: 550e8400-e29b-41d4-a716-446655440000
+                oneOf:
+                  - $ref: '#/components/schemas/HeartbeatErrorResponse'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                id_mismatch:
+                  summary: Registered ID mismatch (does not refresh deadline)
+                  value:
+                    error_msg: Invalid Heartbeat ID
+                    heartbeat_id: 550e8400-e29b-41d4-a716-446655440000
+                invalid_payload:
+                  summary: Body could not be decoded
+                  value:
+                    error: Invalid payload
         '401':
           description: Unauthorized - Invalid API key or authentication failed
           content:
@@ -5682,6 +5712,7 @@ components:
             - 4: Market resolved
             - 5: Reward payout
             - 6: Child comment created
+            - 11: Taker tier upgraded
           enum:
             - 1
             - 2
@@ -5689,9 +5720,13 @@ components:
             - 4
             - 5
             - 6
+            - 11
         payload:
           type: object
-          description: Dynamic payload containing notification-specific data
+          description: |
+            Notification-specific data. For type 11 (taker tier upgraded),
+            previous_tier, tier, and rebate_bps are integers, and snapshot_date
+            is the UTC snapshot day as a YYYY-MM-DD string.
           additionalProperties: true
         timestamp:
           type: integer
@@ -5772,6 +5807,14 @@ components:
           type: number
           format: double
           description: Total amount of earnings in the asset
+        native_earnings:
+          type: number
+          format: double
+          description: Native rewards included in the total, when the breakdown is returned
+        sponsored_earnings:
+          type: number
+          format: double
+          description: Sponsored rewards included in the total, when the breakdown is returned
         asset_rate:
           type: number
           format: double
@@ -6207,7 +6250,7 @@ components:
           type: string
           description: |
             The heartbeat ID from the previous response. For the first request,
-            this should be empty or a new UUID. Subsequent requests must use
+            this should be empty. Subsequent requests must use
             the heartbeat_id returned from the previous response.
           example: 550e8400-e29b-41d4-a716-446655440000
     HeartbeatV1Response:
@@ -6225,17 +6268,16 @@ components:
       type: object
       description: Error response when heartbeat ID doesn't match
       required:
-        - error
+        - error_msg
         - heartbeat_id
       properties:
-        error:
+        error_msg:
           type: string
           description: Error message
           example: Invalid Heartbeat ID
         heartbeat_id:
           type: string
-          format: uuid
-          description: The expected heartbeat ID that should have been used
+          description: The expected heartbeat ID; can be empty after a legacy send
           example: 550e8400-e29b-41d4-a716-446655440000
     OrderScoringResponse:
       type: object

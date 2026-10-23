@@ -55,10 +55,16 @@ pub struct Notification {
     /// Numeric notification ID. Integer on the wire — upstream's schema agrees
     /// (`id: type: integer`) — so this is not a string despite the `id` name.
     pub id: u64,
+    /// 1 order cancellation, 2 order fill, 3 market registered, 4 market
+    /// resolved, 5 reward payout, 6 child comment created, 11 taker tier
+    /// upgraded. A plain integer, so a type the venue adds still decodes.
     #[serde(rename = "type")]
     pub notification_type: u32,
     /// API key of the notification owner; empty for broadcast notifications.
     pub owner: String,
+    /// The type's own data. For type 11, `previous_tier`, `tier` and
+    /// `rebate_bps` are integers and `snapshot_date` is the UTC snapshot day
+    /// as `YYYY-MM-DD`.
     #[serde(default)]
     pub payload: serde_json::Value,
     /// RFC3339 timestamp, e.g. `2026-08-03T14:54:12.384486Z`.

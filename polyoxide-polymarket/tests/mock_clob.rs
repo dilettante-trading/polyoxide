@@ -4883,3 +4883,155 @@ async fn a_proxy_order_with_no_funder_is_refused_without_gamma() {
     profile.assert_async().await;
     order.assert_async().await;
 }
+
+/// A maker with no rebated-fee rows gets a bare `null` with HTTP 200 (schema
+/// drift #73; probed live 2026-10-23), which reads as an empty list.
+#[tokio::test]
+async fn current_rebates_null_is_empty() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/rebates/current")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("null")
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let rebates = clob
+        .public_rewards()
+        .current_rebates("2026-10-22", "0x0000000000000000000000000000000000000001")
+        .send()
+        .await
+        .unwrap();
+
+    assert!(rebates.is_empty());
+
+    mock.assert_async().await;
+}
+
+/// `POST /v1/heartbeats` requires a `heartbeat_id` body: the empty string
+/// first, then each ID a response returns (schema drift #73).
+#[tokio::test]
+async fn heartbeat_v1_sends_the_id_and_returns_the_next_one() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/v1/heartbeats")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_SIGNATURE", Matcher::Any)
+        .match_body(Matcher::JsonString(r#"{"heartbeat_id": ""}"#.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"heartbeat_id":"550e8400-e29b-41d4-a716-446655440000"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob.account_api().unwrap().heartbeat_v1("").await.unwrap();
+
+    assert_eq!(resp.heartbeat_id, "550e8400-e29b-41d4-a716-446655440000");
+    mock.assert_async().await;
+}
+
+/// A mismatch is a 400 carrying the ID the venue expects, which the caller
+/// resends with; resending the same ID cannot succeed.
+#[tokio::test]
+async fn heartbeat_v1_mismatch_is_typed_with_the_expected_id() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/v1/heartbeats")
+        .match_body(Matcher::JsonString(r#"{"heartbeat_id": "stale"}"#.into()))
+        .with_status(400)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"error_msg":"Invalid Heartbeat ID","heartbeat_id":"550e8400-e29b-41d4-a716-446655440000"}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .account_api()
+        .unwrap()
+        .heartbeat_v1("stale")
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::HeartbeatIdMismatch { expected } => {
+            assert_eq!(expected, "550e8400-e29b-41d4-a716-446655440000");
+        }
+        other => panic!("expected HeartbeatIdMismatch, got {other:?}"),
+    }
+    assert_eq!(
+        err.class(),
+        polyoxide_venue::Class::VenueRefusal { code: None }
+    );
+    assert!(!err.is_retriable());
+    assert!(!err.is_fault());
+    mock.assert_async().await;
+}
+
+/// After a legacy `POST /heartbeats` send the venue expects an empty ID.
+#[tokio::test]
+async fn heartbeat_v1_mismatch_after_a_legacy_send_expects_an_empty_id() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/v1/heartbeats")
+        .with_status(400)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error_msg":"Invalid Heartbeat ID","heartbeat_id":""}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .account_api()
+        .unwrap()
+        .heartbeat_v1("550e8400-e29b-41d4-a716-446655440000")
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::HeartbeatIdMismatch { expected } => assert_eq!(expected, ""),
+        other => panic!("expected HeartbeatIdMismatch, got {other:?}"),
+    }
+    mock.assert_async().await;
+}
+
+/// The route's other 400, a body it could not decode, is the generic error.
+#[tokio::test]
+async fn heartbeat_v1_invalid_payload_stays_a_generic_400() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/v1/heartbeats")
+        .with_status(400)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error":"Invalid payload"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .account_api()
+        .unwrap()
+        .heartbeat_v1("")
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::Api(polyoxide_core::ApiError::Response(response)) => {
+            assert_eq!(response.status.as_u16(), 400);
+            assert_eq!(response.message, "Invalid payload");
+        }
+        other => panic!("expected a generic 400, got {other:?}"),
+    }
+    mock.assert_async().await;
+}

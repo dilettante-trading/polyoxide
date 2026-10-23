@@ -59,6 +59,8 @@ Base URL: `https://clob.polymarket.com`
 }]
 ```
 
+When the breakdown is returned, each object also carries `native_earnings` and `sponsored_earnings`, the native and sponsored rewards included in `earnings`.
+
 ## Get Reward Percentages
 
 `GET /rewards/user/percentages`
@@ -156,7 +158,7 @@ Supports extensive filtering: `q`, `tag_slug`, `event_id`, `order_by`, `position
 
 **Auth:** None
 
-Returns the current rebated fees for a maker address on a given date.
+Returns the current rebated fees for a maker address on a given date, or `null` when the maker has no rebated-fee rows.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
