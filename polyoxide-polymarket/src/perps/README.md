@@ -32,9 +32,11 @@ for instrument in &instruments {
 # }
 ```
 
-## Competitions and position snapshots
+## Competitions, builders and position snapshots
 
-`perps.competitions()` reads the trading competitions: the list, one competition's
+`perps.public().builder(address)` reads an address's public builder profile, and
+a `PositionFill` carries the builder fee charged on top of the exchange fee
+(`builder_fee`, with `total_fee` their sum). `perps.competitions()` reads the trading competitions: the list, one competition's
 settings and prize table, its leaderboard, an account's standing and the live widget.
 `perps.public().position_snapshots(address)` posts a selection of open positions and
 past fills and returns share-card numbers and a small chart for each; without the

@@ -46,6 +46,11 @@ const EXPECTED_ABSENT: &[(&str, &str, &str)] = &[
         "sent only when another page exists",
     ),
     (
+        "position_fills",
+        "/data[]/builder",
+        "sent only on the authenticated account's own fills",
+    ),
+    (
         "instruments",
         "[]/settlement",
         "sent only for a settled instrument, which the listing leaves out",
@@ -154,6 +159,7 @@ fn every_fixture_agrees_with_its_type() {
     check::<InviteCheck>("invite", &mut used);
     check::<Vec<Instrument>>("instrument_settled", &mut used);
     check::<Registered>("registered", &mut used);
+    check::<BuilderProfile>("builder", &mut used);
     check::<PositionSnapshots>("position_snapshots", &mut used);
     check::<CompetitionList>("competitions", &mut used);
     check::<CompetitionDetail>("competition", &mut used);

@@ -95,6 +95,7 @@ def main():
     save("position_fills", "/v1/info/position-fills", address=address, instrument_id=fill_iid)
     save("invite", "/v1/info/invite", code="polyoxide-fixture")
     save("registered", "/v1/info/registered", address=address)
+    save("builder", "/v1/info/builder", address=address)
 
     fills = capture_common.require_ok(
         get("/v1/info/position-fills", address=address, instrument_id=fill_iid), "position fills")

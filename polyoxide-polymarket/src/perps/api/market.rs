@@ -337,7 +337,8 @@ pub struct ExchangeStatistics {
     /// When `open_interest` was sampled, Unix ms. Null when no sample exists
     /// in the range.
     pub open_interest_timestamp: Option<u64>,
-    /// Fees collected over the range.
+    /// Gross maker and taker fees collected over the range, in USD;
+    /// rebates, incentives, referral payments and builder fees excluded.
     #[serde(with = "rust_decimal::serde::str")]
     pub fees: Decimal,
 }

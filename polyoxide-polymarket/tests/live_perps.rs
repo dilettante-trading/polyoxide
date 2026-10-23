@@ -17,6 +17,7 @@ use polyoxide_polymarket::perps::{
     Perps,
 };
 use polyoxide_test_support::{environmental, fail, ResultExt};
+use rust_decimal::Decimal;
 
 fn client() -> Perps {
     Perps::new().or_fail("perps client")
@@ -351,5 +352,70 @@ async fn live_roi_registration_snapshots_and_competitions() {
             .await
             .or_fail("competition account");
         assert_eq!(standing.competition_id, id);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_builder_profile_and_fill_fees() {
+    let perps = client();
+    let stranger = perps
+        .public()
+        .builder("0x0000000000000000000000000000000000000001")
+        .send()
+        .await
+        .or_fail("builder, unknown address");
+    assert!(!stranger.registered);
+    assert!(!stranger.enabled);
+    assert_eq!(stranger.name, None);
+
+    let board = perps
+        .public()
+        .leaderboard()
+        .window(LeaderboardWindow::Week)
+        .limit(20)
+        .send()
+        .await
+        .or_fail("leaderboard");
+    // Selects an account holding a position, so its fills are not empty.
+    let mut fills = Vec::new();
+    for entry in &board.entries {
+        let portfolio = perps
+            .public()
+            .portfolio(&entry.account)
+            .send()
+            .await
+            .or_fail("portfolio");
+        let Some(position) = portfolio.positions.first() else {
+            continue;
+        };
+        fills = perps
+            .public()
+            .position_fills(&entry.account, position.instrument_id)
+            .send()
+            .await
+            .or_fail("position fills")
+            .data;
+        if !fills.is_empty() {
+            break;
+        }
+    }
+    if fills.is_empty() {
+        environmental("no account on the weekly leaderboard holds a position with fills");
+    }
+    for fill in &fills {
+        assert!(
+            fill.builder_fee >= Decimal::ZERO,
+            "a builder fee is never negative"
+        );
+        assert_eq!(
+            fill.fee.checked_add(fill.builder_fee),
+            Some(fill.total_fee),
+            "total_fee is fee plus builder_fee"
+        );
+        assert_eq!(
+            fill.builder, None,
+            "public history omits the builder's terms"
+        );
     }
 }

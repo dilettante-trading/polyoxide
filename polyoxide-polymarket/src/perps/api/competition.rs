@@ -315,6 +315,9 @@ pub struct CompetitionEntry {
     pub paid_at: Option<u64>,
     /// The prize payment's transaction hash.
     pub payout_tx_hash: Option<String>,
+    /// The account's first counted fill in the competition, Unix ms, which
+    /// breaks a tie after boosted volume; absent without one.
+    pub first_fill_at: Option<u64>,
 }
 
 /// `GET /v1/info/competition/account`.
@@ -383,6 +386,9 @@ pub struct CompetitionAccount {
     pub paid_at: Option<u64>,
     /// The prize payment's transaction hash.
     pub payout_tx_hash: Option<String>,
+    /// The account's first counted fill in the competition, Unix ms, which
+    /// breaks a tie after boosted volume; absent without one.
+    pub first_fill_at: Option<u64>,
     /// When the standing was last updated, Unix ms.
     pub updated_at: Option<u64>,
 }
