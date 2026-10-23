@@ -132,6 +132,8 @@ polyoxide_venue::open_enum! {
         NegRisk => "neg_risk",
         /// `combo`: a polymarket-v2 combo.
         Combo => "combo",
+        /// `directional`: a polymarket-v2 directional market.
+        Directional => "directional",
     }
 }
 

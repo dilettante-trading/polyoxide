@@ -32,9 +32,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "status"
-                  ],
+                  "required": ["status"],
                   "properties": {
                     "status": {
                       "type": "string",
@@ -991,48 +989,6 @@
                 }
               }
             }
-          },
-          "429": {
-            "$ref": "#/components/responses/Error429Response"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error500Response"
-          }
-        }
-      }
-    },
-    "/v1/info/registered": {
-      "get": {
-        "operationId": "getRegistered",
-        "summary": "Get Registration",
-        "security": [],
-        "x-mint": {
-          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached — `true` up to 1 day at the edge, `false` up to 10s</Badge>\n"
-        },
-        "description": "Check whether an address has a Perps account. Registration is permanent,\nso a `true` answer never changes; a `false` answer flips as soon as the\naddress registers.\n",
-        "parameters": [
-          {
-            "name": "address",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/address"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Registration status for the address.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegisteredResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error400Response"
           },
           "429": {
             "$ref": "#/components/responses/Error429Response"
@@ -2426,9 +2382,7 @@
                         },
                         {
                           "not": {
-                            "required": [
-                              "transfer_id"
-                            ]
+                            "required": ["transfer_id"]
                           }
                         }
                       ]
@@ -3270,9 +3224,7 @@
                 "byIds": {
                   "summary": "Mark specific ids read",
                   "value": {
-                    "ids": [
-                      "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
-                    ]
+                    "ids": ["0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"]
                   }
                 },
                 "beforeCursor": {
@@ -3563,6 +3515,543 @@
           },
           "503": {
             "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
+    "/v1/account/builder-earnings": {
+      "get": {
+        "operationId": "getBuilderEarnings",
+        "summary": "Get authenticated builder receipts",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "description": "Returns this account's builder credits only. The time window is inclusive,\ndefaults to the last seven days, and is bounded to 90 days. Supply the same\nstart_timestamp, end_timestamp and as_of_sequence to compare list and summary.\nOlder receipts remain queryable by selecting a past window. Zero-fee eligible\nfills count toward volume. Each receipt identifies only the attributed trader's\nmain wallet and own order details, including its signed platform fee and total_fee.\nclient_order_id is omitted when the order did not supply one. Credits are ordinary\ncollateral, not a claim balance. Recover a disconnected builder fill feed through\nthis endpoint using overlapping windows and earning_id deduplication. The live\nfeed can precede indexing. Retry REST until as_of_sequence covers the event.\n",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_timestamp",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/timestamp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_timestamp",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/timestamp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of_sequence",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/sequence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete-prefix builder accounting response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderEarnings"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
+    "/v1/account/builder-earnings-summary": {
+      "get": {
+        "operationId": "getBuilderEarningsSummary",
+        "summary": "Get authenticated builder settled earnings summary",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "description": "Returns this account's builder credits only. The time window is inclusive,\ndefaults to the last seven days, and is bounded to 90 days. Supply the same\nstart_timestamp, end_timestamp and as_of_sequence to compare list and summary.\nOlder receipts remain queryable by selecting a past window. Zero-fee eligible\nfills count toward volume and trader_count. trader_count deduplicates trading\naccounts across assets, markets and maker/taker roles within this window/cutoff.\nactive_approval_count instead reflects current positive grants to this builder,\nexcluding revocations, independent of this window/cutoff and builder enablement.\nCredits are ordinary collateral, not a claim balance.\n",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_timestamp",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/timestamp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_timestamp",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/timestamp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of_sequence",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/sequence"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete-prefix builder accounting response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderEarningsSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
+    "/v1/info/builder": {
+      "get": {
+        "operationId": "getBuilder",
+        "summary": "Get builder profile and eligibility",
+        "description": "Public builder profile for an address. Returns the saved display name and\ncurrent registration, enablement, platform admission and fee-cap fields.\nThe name is null for unregistered addresses or builders without a saved name.\n",
+        "security": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Address",
+              "example": "0x1234567890abcdef1234567890abcdef12345678"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Builder profile and current eligibility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "address",
+                        "registered",
+                        "enabled",
+                        "admission_enabled",
+                        "max_fee_rate"
+                      ],
+                      "properties": {
+                        "address": {
+                          "type": "string",
+                          "description": "Address",
+                          "example": "0x1234567890abcdef1234567890abcdef12345678"
+                        },
+                        "registered": {
+                          "type": "boolean"
+                        },
+                        "enabled": {
+                          "type": "boolean",
+                          "description": "Builder is enabled for new requests. Existing saved terms remain valid when disabled."
+                        },
+                        "admission_enabled": {
+                          "type": "boolean",
+                          "description": "Platform builder code admission switch. Initially false."
+                        },
+                        "max_fee_rate": {
+                          "type": "string",
+                          "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                          "example": "0.001"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["name"],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Saved builder display name, or null when this address is not a registered builder or has no saved name."
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — the request was malformed or failed validation (bad query\nparameters, unparseable body, invalid signature, or a domain pre-check).\nThe `error` field is a human-readable validation detail. Rejections also\ncarry the server `ts` in Unix milliseconds and a `ref` that support can\nuse to locate the matching structured trace.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error400",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    },
+                    "arts": {
+                      "type": "integer",
+                      "x-js-safe-integer": true,
+                      "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                      "example": 1767225600000
+                    },
+                    "ts": {
+                      "type": "integer",
+                      "x-js-safe-integer": true,
+                      "description": "Server rejection timestamp in Unix milliseconds.",
+                      "example": 1767225600000
+                    },
+                    "ref": {
+                      "type": "string",
+                      "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                      "example": "g-0011223344556"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — missing or invalid `POLYMARKET-PROXY` / `POLYMARKET-SECRET`\ncredentials. `error` is `unauthorized`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error401",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "Request Timeout — the request body was not delivered within the\ngateway's read deadline. Protects against slow uploads holding\nconnections open; send the complete body promptly and retry.\n`error` is `request_body_timeout`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error408",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. `error` distinguishes the limit that was hit:\n`ip_rate_limited` (per-IP token bucket), `action_rate_limited` (per-account\naction rate), or `open_orders_limit` (resting open-order cap).\n",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying. Present only on token-bucket\nrate-limit rejections (`ip_rate_limited` and `action_rate_limited`); a\nconservative estimate of when enough capacity will have refilled to\nadmit the request. Absent on `open_orders_limit`, which is a capacity\nlimit, not a rate limit — waiting does not free order slots; cancel\nresting orders or wait for fills instead.\n",
+                "schema": {
+                  "type": "integer",
+                  "x-js-safe-integer": true,
+                  "example": 2
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error429",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. `error` is `internal_error`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error500",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable — safe to retry with backoff, honoring\n`Retry-After` when present. `error` is `service_unavailable`.\n\nMost causes are a request deliberately shed before it reached the\nengine, so the request definitely did not execute: the replica's\npod-level in-flight cap (shed before dispatch, with `Retry-After`), a\ndatabase read shed as backpressure under overload (by the local read\ngate or by the database server's concurrency cap — the query never\nexecuted), a required internal cache that is stale or not yet primed\nand would return wrong data, or a full bounded deferred-write queue.\n\nOn a subset of order/state-mutating routes, this status is also\nreturned when the engine round-trip itself times out with zero\nresponses observed. That is retryable engine backpressure, but —\nunlike the sheds above — it does not prove non-execution: the command\nmay already have been admitted, with its response simply not reaching\nthe gateway before the deadline. This status is only used for that\ncase on routes that are safe to retry regardless (idempotent\nstate-setting, or an engine-side replay guard); routes where a bare\nretry cannot safely resolve the ambiguity keep the outcome a\nnon-retryable 500 instead.\n",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying. Present on pre-dispatch\nin-flight-cap sheds — a transient overload signal, so the hint is\nshort and constant.\n",
+                "schema": {
+                  "type": "integer",
+                  "x-js-safe-integer": true,
+                  "example": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error503",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/account/builder-approvals": {
+      "get": {
+        "operationId": "getBuilderApprovals",
+        "summary": "Read builder approvals, including retained revoked versions",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "builder",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read builder approvals, including retained revoked versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderApprovals"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "approveBuilder",
+        "summary": "Approve or revoke builder fees with an account owner signature",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuilderApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approve or revoke builder fees with an account owner signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderApproval"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
+    "/v1/info/registered": {
+      "get": {
+        "operationId": "getRegistered",
+        "summary": "Get Registration",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached — `true` up to 1 day at the edge, `false` up to 10s</Badge>\n"
+        },
+        "description": "Check whether an address has a Perps account. Registration is permanent,\nso a `true` answer never changes; a `false` answer flips as soon as the\naddress registers.\n",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registration status for the address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisteredResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
           }
         }
       }
@@ -3884,6 +4373,285 @@
           }
         }
       }
+    },
+    "/v1/account/builder": {
+      "patch": {
+        "operationId": "updateBuilder",
+        "summary": "Update your builder display name",
+        "description": "Sign with the owner wallet of an existing registered Perps builder using\nthe standard signed-operation format: op.type is updateBuilder and\nop.args contains only name. No Admin credentials or trading proxy are needed.\nThe signer determines the account; no address or version parameter is accepted.\nNames are trimmed and must contain 1 to 100 Unicode characters without control characters.\n\nName edits use last-write-wins. Repeating the saved name succeeds.\nDisabled builders can edit their name. This operation does not change\nregistration, enablement, the platform admission switch, approvals or fees.\n",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "type": "object",
+                    "required": ["op"],
+                    "properties": {
+                      "op": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["type", "args"],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": ["updateBuilder"]
+                          },
+                          "args": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["name"],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "description": "Builder display name. Trimmed before saving; must contain 1 to 100 Unicode characters and no control characters."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["sig", "salt", "ts"],
+                    "properties": {
+                      "sig": {
+                        "type": "string",
+                        "description": "Signature in hex format",
+                        "example": "0x1234567890..."
+                      },
+                      "salt": {
+                        "type": "integer",
+                        "x-js-safe-integer": false,
+                        "description": "Salt",
+                        "example": 1234567890
+                      },
+                      "ts": {
+                        "type": "integer",
+                        "x-js-safe-integer": true,
+                        "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                        "example": 1767225600000
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved, trimmed name and current builder status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "address",
+                        "registered",
+                        "enabled",
+                        "admission_enabled",
+                        "max_fee_rate"
+                      ],
+                      "properties": {
+                        "address": {
+                          "type": "string",
+                          "description": "Address",
+                          "example": "0x1234567890abcdef1234567890abcdef12345678"
+                        },
+                        "registered": {
+                          "type": "boolean"
+                        },
+                        "enabled": {
+                          "type": "boolean",
+                          "description": "Builder is enabled for new requests. Existing saved terms remain valid when disabled."
+                        },
+                        "admission_enabled": {
+                          "type": "boolean",
+                          "description": "Platform builder code admission switch. Initially false."
+                        },
+                        "max_fee_rate": {
+                          "type": "string",
+                          "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+                          "example": "0.001"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["name"],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Saved builder display name, or null when this address is not a registered builder or has no saved name."
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — the request was malformed or failed validation (bad query\nparameters, unparseable body, invalid signature, or a domain pre-check).\nThe `error` field is a human-readable validation detail. Rejections also\ncarry the server `ts` in Unix milliseconds and a `ref` that support can\nuse to locate the matching structured trace.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error400",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    },
+                    "arts": {
+                      "type": "integer",
+                      "x-js-safe-integer": true,
+                      "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                      "example": 1767225600000
+                    },
+                    "ts": {
+                      "type": "integer",
+                      "x-js-safe-integer": true,
+                      "description": "Server rejection timestamp in Unix milliseconds.",
+                      "example": 1767225600000
+                    },
+                    "ref": {
+                      "type": "string",
+                      "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                      "example": "g-0011223344556"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized — missing or invalid `POLYMARKET-PROXY` / `POLYMARKET-SECRET`\ncredentials. `error` is `unauthorized`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error401",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests. `error` distinguishes the limit that was hit:\n`ip_rate_limited` (per-IP token bucket), `action_rate_limited` (per-account\naction rate), or `open_orders_limit` (resting open-order cap).\n",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying. Present only on token-bucket\nrate-limit rejections (`ip_rate_limited` and `action_rate_limited`); a\nconservative estimate of when enough capacity will have refilled to\nadmit the request. Absent on `open_orders_limit`, which is a capacity\nlimit, not a rate limit — waiting does not free order slots; cancel\nresting orders or wait for fills instead.\n",
+                "schema": {
+                  "type": "integer",
+                  "x-js-safe-integer": true,
+                  "example": 2
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error429",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. `error` is `internal_error`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error500",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable — safe to retry with backoff, honoring\n`Retry-After` when present. `error` is `service_unavailable`.\n\nMost causes are a request deliberately shed before it reached the\nengine, so the request definitely did not execute: the replica's\npod-level in-flight cap (shed before dispatch, with `Retry-After`), a\ndatabase read shed as backpressure under overload (by the local read\ngate or by the database server's concurrency cap — the query never\nexecuted), a required internal cache that is stale or not yet primed\nand would return wrong data, or a full bounded deferred-write queue.\n\nOn a subset of order/state-mutating routes, this status is also\nreturned when the engine round-trip itself times out with zero\nresponses observed. That is retryable engine backpressure, but —\nunlike the sheds above — it does not prove non-execution: the command\nmay already have been admitted, with its response simply not reaching\nthe gateway before the deadline. This status is only used for that\ncase on routes that are safe to retry regardless (idempotent\nstate-setting, or an engine-side replay guard); routes where a bare\nretry cannot safely resolve the ambiguity keep the outcome a\nnon-retryable 500 instead.\n",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying. Present on pre-dispatch\nin-flight-cap sheds — a transient overload signal, so the hint is\nshort and constant.\n",
+                "schema": {
+                  "type": "integer",
+                  "x-js-safe-integer": true,
+                  "example": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Error503",
+                  "type": "object",
+                  "required": ["status", "error"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["err"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `instrument_close_only`, `instrument_settled`, `settlement_price_unavailable`, `settlement_insurance_insufficient`, `settlement_invalid_state`, `settlement_close_only_required`, `unauthorized`, `not_found`. `instrument_close_only` means user orders must reduce an existing position; `instrument_settled` is permanent. Settlement readiness errors leave the instrument and accounts unchanged. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                      "example": "insufficient_margin"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3910,16 +4678,11 @@
       "Error429": {
         "title": "Error429",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -3929,16 +4692,11 @@
       "Error500": {
         "title": "Error500",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -3948,16 +4706,11 @@
       "Error503": {
         "title": "Error503",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -3971,9 +4724,7 @@
       },
       "Time": {
         "type": "object",
-        "required": [
-          "time"
-        ],
+        "required": ["time"],
         "properties": {
           "time": {
             "$ref": "#/components/schemas/time"
@@ -4069,13 +4820,7 @@
       },
       "Asset": {
         "type": "object",
-        "required": [
-          "asset",
-          "address",
-          "decimals",
-          "collateral_ratio",
-          "withdrawal_fee"
-        ],
+        "required": ["asset", "address", "decimals", "collateral_ratio", "withdrawal_fee"],
         "properties": {
           "asset": {
             "$ref": "#/components/schemas/asset"
@@ -4101,19 +4846,12 @@
       "instrument_type": {
         "type": "string",
         "description": "Instrument type",
-        "enum": [
-          "perpetual"
-        ]
+        "enum": ["perpetual"]
       },
       "category": {
         "type": "string",
         "description": "Instrument category",
-        "enum": [
-          "equity",
-          "commodity",
-          "index",
-          "crypto"
-        ]
+        "enum": ["equity", "commodity", "index", "crypto"]
       },
       "isolated_only": {
         "type": "boolean",
@@ -4123,11 +4861,6 @@
         "type": "string",
         "description": "Instrument symbol",
         "example": "NVDA-USDC"
-      },
-      "display_symbol": {
-        "type": "string",
-        "description": "Optional presentation override for the full instrument symbol, such as USA500-USD. Use display_symbol when present and fall back to symbol otherwise. This is a label, not an identifier; use instrument_id for trading and storage. Canonical symbol, base_asset, and price-feed identifiers are unchanged. Metadata normally refreshes once per minute; HTTP caching can add delay.",
-        "example": "USA500-USD"
       },
       "base_asset": {
         "type": "string",
@@ -4196,10 +4929,7 @@
       },
       "RiskTier": {
         "type": "object",
-        "required": [
-          "lower_bound",
-          "max_leverage"
-        ],
+        "required": ["lower_bound", "max_leverage"],
         "properties": {
           "lower_bound": {
             "$ref": "#/components/schemas/lower_bound"
@@ -4316,16 +5046,11 @@
       "Error400": {
         "title": "Error400",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -4422,9 +5147,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "timestamp"
-            ],
+            "required": ["timestamp"],
             "properties": {
               "timestamp": {
                 "$ref": "#/components/schemas/timestamp"
@@ -4462,7 +5185,7 @@
       },
       "exchange_fees": {
         "type": "string",
-        "description": "Gross positive maker and taker trading fees in USD for the requested window, as an unformatted numeric string. Rebates, incentives, and referral payments are excluded.",
+        "description": "Gross positive maker and taker trading fees in USD for the requested window, as an unformatted numeric string. Rebates, incentives, referral payments, and additional builder fees are excluded.",
         "example": "1245.67"
       },
       "open_price": {
@@ -4473,15 +5196,7 @@
       "kline": {
         "type": "array",
         "description": "- `1767225600000` - Open time\n- `\"100.00\"` - Open price\n- `\"105.00\"` - High price\n- `\"99.00\"` - Low price\n- `\"102.00\"` - Close price\n- `\"500.00\"` - Volume (base unit)\n- `42` - Number of trades\n",
-        "example": [
-          1767225600000,
-          "100.00",
-          "105.00",
-          "99.00",
-          "102.00",
-          "500.00",
-          42
-        ]
+        "example": [1767225600000, "100.00", "105.00", "99.00", "102.00", "500.00", 42]
       },
       "klines": {
         "type": "array",
@@ -4492,13 +5207,7 @@
       },
       "Statistic": {
         "type": "object",
-        "required": [
-          "instrument_id",
-          "symbol",
-          "volume",
-          "open_price",
-          "klines"
-        ],
+        "required": ["instrument_id", "symbol", "volume", "open_price", "klines"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/iid"
@@ -4551,19 +5260,7 @@
       "interval": {
         "type": "string",
         "description": "Kline interval",
-        "enum": [
-          "1s",
-          "1m",
-          "5m",
-          "15m",
-          "30m",
-          "1h",
-          "4h",
-          "6h",
-          "12h",
-          "1d",
-          "1w"
-        ]
+        "enum": ["1s", "1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "1d", "1w"]
       },
       "start_timestamp": {
         "type": "integer",
@@ -4581,10 +5278,7 @@
       },
       "KlinesResponse": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -4600,10 +5294,7 @@
       },
       "MarkHistoryResponse": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -4620,10 +5311,7 @@
       "mark_point": {
         "type": "array",
         "description": "- `1767225600000` - Bucket open time (ms)\n- `\"160.00\"` - Last mark price in bucket\n",
-        "example": [
-          1767225600000,
-          "160.00"
-        ]
+        "example": [1767225600000, "160.00"]
       },
       "best_bid_price": {
         "type": "string",
@@ -4690,12 +5378,7 @@
       "depth": {
         "type": "integer",
         "description": "Number of book levels to return",
-        "enum": [
-          10,
-          100,
-          500,
-          1000
-        ],
+        "enum": [10, 100, 500, 1000],
         "default": 100
       },
       "level": {
@@ -4705,10 +5388,7 @@
         },
         "maxItems": 2,
         "description": "- `\"100.00\"` - Price\n- `\"10.00\"` - Quantity\n",
-        "example": [
-          "100.00",
-          "10.00"
-        ]
+        "example": ["100.00", "10.00"]
       },
       "sequence": {
         "type": "integer",
@@ -4717,13 +5397,7 @@
       },
       "Book": {
         "type": "object",
-        "required": [
-          "instrument_id",
-          "bids",
-          "asks",
-          "timestamp",
-          "sequence"
-        ],
+        "required": ["instrument_id", "bids", "asks", "timestamp", "sequence"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/instrument_id"
@@ -4767,12 +5441,7 @@
       },
       "IndexConstituent": {
         "type": "object",
-        "required": [
-          "source",
-          "symbol",
-          "weight",
-          "price"
-        ],
+        "required": ["source", "symbol", "weight", "price"],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/source"
@@ -4790,12 +5459,7 @@
       },
       "Index": {
         "type": "object",
-        "required": [
-          "asset",
-          "index_price",
-          "constituents",
-          "ts"
-        ],
+        "required": ["asset", "index_price", "constituents", "ts"],
         "properties": {
           "asset": {
             "$ref": "#/components/schemas/asset"
@@ -4822,10 +5486,7 @@
       "side": {
         "type": "string",
         "description": "Side",
-        "enum": [
-          "long",
-          "short"
-        ]
+        "enum": ["long", "short"]
       },
       "p": {
         "type": "string",
@@ -4884,10 +5545,7 @@
       },
       "Trades": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -4964,11 +5622,7 @@
       },
       "PublicPortfolio": {
         "type": "object",
-        "required": [
-          "positions",
-          "equity",
-          "timestamp"
-        ],
+        "required": ["positions", "equity", "timestamp"],
         "properties": {
           "positions": {
             "type": "array",
@@ -4991,10 +5645,7 @@
       },
       "FundingRate": {
         "type": "object",
-        "required": [
-          "funding_rate",
-          "timestamp"
-        ],
+        "required": ["funding_rate", "timestamp"],
         "properties": {
           "funding_rate": {
             "$ref": "#/components/schemas/fr"
@@ -5006,10 +5657,7 @@
       },
       "FundingHistory": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -5024,12 +5672,12 @@
       },
       "taker_fee_rate": {
         "type": "string",
-        "description": "Taker fee rate",
+        "description": "Exchange taker fee rate as a decimal fraction, excluding any per-order builder fee",
         "example": "0.0002"
       },
       "maker_fee_rate": {
         "type": "string",
-        "description": "Maker fee rate",
+        "description": "Exchange maker fee rate as a decimal fraction, excluding any per-order builder fee",
         "example": "-0.00005"
       },
       "min_volume_30d": {
@@ -5039,11 +5687,7 @@
       },
       "FeeTier": {
         "type": "object",
-        "required": [
-          "min_volume_30d",
-          "taker_fee_rate",
-          "maker_fee_rate"
-        ],
+        "required": ["min_volume_30d", "taker_fee_rate", "maker_fee_rate"],
         "properties": {
           "min_volume_30d": {
             "$ref": "#/components/schemas/min_volume_30d"
@@ -5088,9 +5732,7 @@
       },
       "FeesInfo": {
         "type": "object",
-        "required": [
-          "fee_schedule"
-        ],
+        "required": ["fee_schedule"],
         "properties": {
           "fee_schedule": {
             "type": "array",
@@ -5175,9 +5817,7 @@
       },
       "InviteCheckResponse": {
         "type": "object",
-        "required": [
-          "valid"
-        ],
+        "required": ["valid"],
         "properties": {
           "valid": {
             "type": "boolean",
@@ -5189,18 +5829,6 @@
           }
         }
       },
-      "RegisteredResponse": {
-        "type": "object",
-        "required": [
-          "registered"
-        ],
-        "properties": {
-          "registered": {
-            "type": "boolean",
-            "description": "Whether the address has a Perps account."
-          }
-        }
-      },
       "buy": {
         "type": "boolean",
         "description": "Is buy",
@@ -5209,11 +5837,7 @@
       "tif": {
         "type": "string",
         "description": "Time in force",
-        "enum": [
-          "gtc",
-          "ioc",
-          "fok"
-        ]
+        "enum": ["gtc", "ioc", "fok"]
       },
       "po": {
         "type": "boolean",
@@ -5247,18 +5871,11 @@
       "tpsl": {
         "type": "string",
         "description": "Trigger type",
-        "enum": [
-          "tp",
-          "sl"
-        ]
+        "enum": ["tp", "sl"]
       },
       "CreateOrder": {
         "type": "object",
-        "required": [
-          "iid",
-          "buy",
-          "qty"
-        ],
+        "required": ["iid", "buy", "qty"],
         "properties": {
           "iid": {
             "$ref": "#/components/schemas/iid"
@@ -5298,29 +5915,24 @@
                 "$ref": "#/components/schemas/tpsl"
               }
             }
+          },
+          "builder": {
+            "$ref": "#/components/schemas/Builder"
           }
         }
       },
       "grp": {
         "type": "string",
         "description": "TPSL grouping",
-        "enum": [
-          "order",
-          "position"
-        ]
+        "enum": ["order", "position"]
       },
       "OpCreateOrders": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "createOrders"
-            ]
+            "enum": ["createOrders"]
           },
           "args": {
             "type": "array",
@@ -5345,11 +5957,7 @@
       },
       "BaseOp": {
         "type": "object",
-        "required": [
-          "sig",
-          "salt",
-          "ts"
-        ],
+        "required": ["sig", "salt", "ts"],
         "properties": {
           "sig": {
             "$ref": "#/components/schemas/sig"
@@ -5371,9 +5979,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpCreateOrders"
@@ -5400,16 +6006,11 @@
       },
       "OrderAccepted": {
         "type": "object",
-        "required": [
-          "status",
-          "oid"
-        ],
+        "required": ["status", "oid"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "oid": {
             "$ref": "#/components/schemas/oid"
@@ -5417,21 +6018,19 @@
           "coid": {
             "$ref": "#/components/schemas/coid",
             "description": "Echoed only when the request carried a client_order_id."
+          },
+          "builder": {
+            "$ref": "#/components/schemas/Builder"
           }
         }
       },
       "OrderRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -5456,16 +6055,11 @@
       },
       "OpCancelOrders": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "cancelOrders"
-            ]
+            "enum": ["cancelOrders"]
           },
           "args": {
             "type": "array",
@@ -5480,9 +6074,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpCancelOrders"
@@ -5504,17 +6096,11 @@
       },
       "CancelAccepted": {
         "type": "object",
-        "required": [
-          "status",
-          "oid",
-          "ts"
-        ],
+        "required": ["status", "oid", "ts"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "oid": {
             "$ref": "#/components/schemas/oid"
@@ -5530,17 +6116,11 @@
       },
       "CancelRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "error",
-          "ts"
-        ],
+        "required": ["status", "error", "ts"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "oid": {
             "$ref": "#/components/schemas/oid"
@@ -5568,16 +6148,11 @@
       },
       "OpCancelAll": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "cancelAll"
-            ]
+            "enum": ["cancelAll"]
           },
           "args": {
             "type": "object",
@@ -5594,9 +6169,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpCancelAll"
@@ -5618,30 +6191,21 @@
       },
       "GenericAccepted": {
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           }
         }
       },
       "OpCancelOrdersByCoid": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "cancelOrdersCOID"
-            ]
+            "enum": ["cancelOrdersCOID"]
           },
           "args": {
             "type": "array",
@@ -5656,9 +6220,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpCancelOrdersByCoid"
@@ -5680,22 +6242,15 @@
       },
       "OpAutoCancel": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "autoCancel"
-            ]
+            "enum": ["autoCancel"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "time"
-            ],
+            "required": ["time"],
             "properties": {
               "time": {
                 "$ref": "#/components/schemas/time"
@@ -5708,9 +6263,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpAutoCancel"
@@ -5730,16 +6283,11 @@
       "AutoCancelResponse": {
         "description": "The auto-cancel schedule now in effect. The deadline field echoes the\narmed time in Unix milliseconds, or 0 if you cleared the schedule.\n",
         "type": "object",
-        "required": [
-          "status",
-          "deadline"
-        ],
+        "required": ["status", "deadline"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "deadline": {
             "$ref": "#/components/schemas/auto_cancel_deadline"
@@ -5749,16 +6297,11 @@
       "Error404": {
         "title": "Error404",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -5768,16 +6311,11 @@
       "Error408": {
         "title": "Error408",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -5787,16 +6325,11 @@
       "Error413": {
         "title": "Error413",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -5805,16 +6338,11 @@
       },
       "GenericRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -5832,24 +6360,15 @@
       },
       "OpUpdateLeverage": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "updateLeverage"
-            ]
+            "enum": ["updateLeverage"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "iid",
-              "lev",
-              "cross"
-            ],
+            "required": ["iid", "lev", "cross"],
             "properties": {
               "iid": {
                 "$ref": "#/components/schemas/iid"
@@ -5868,9 +6387,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpUpdateLeverage"
@@ -5885,18 +6402,11 @@
       "LeverageResponse": {
         "description": "The instrument's effective leverage configuration after the update.",
         "type": "object",
-        "required": [
-          "status",
-          "instrument_id",
-          "leverage",
-          "cross"
-        ],
+        "required": ["status", "instrument_id", "leverage", "cross"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "instrument_id": {
             "$ref": "#/components/schemas/iid"
@@ -5911,11 +6421,7 @@
       },
       "OpUpdateLeveragesArgsItem": {
         "type": "object",
-        "required": [
-          "iid",
-          "lev",
-          "cross"
-        ],
+        "required": ["iid", "lev", "cross"],
         "properties": {
           "iid": {
             "$ref": "#/components/schemas/iid"
@@ -5930,16 +6436,11 @@
       },
       "OpUpdateLeverages": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "updateLeverages"
-            ]
+            "enum": ["updateLeverages"]
           },
           "args": {
             "type": "array",
@@ -5955,9 +6456,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpUpdateLeverages"
@@ -5971,17 +6470,11 @@
       },
       "LeverageRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "instrument_id",
-          "error"
-        ],
+        "required": ["status", "instrument_id", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "instrument_id": {
             "$ref": "#/components/schemas/iid"
@@ -6018,24 +6511,15 @@
       },
       "OpCreateProxy": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "createProxy"
-            ]
+            "enum": ["createProxy"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "owner",
-              "proxy",
-              "expiry"
-            ],
+            "required": ["owner", "proxy", "expiry"],
             "properties": {
               "owner": {
                 "$ref": "#/components/schemas/owner"
@@ -6059,9 +6543,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpCreateProxy"
@@ -6091,16 +6573,11 @@
       },
       "ProxyResponse": {
         "type": "object",
-        "required": [
-          "status",
-          "secret"
-        ],
+        "required": ["status", "secret"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "secret": {
             "$ref": "#/components/schemas/secret"
@@ -6109,22 +6586,15 @@
       },
       "OpDeleteProxy": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "deleteProxy"
-            ]
+            "enum": ["deleteProxy"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "proxy"
-            ],
+            "required": ["proxy"],
             "properties": {
               "proxy": {
                 "$ref": "#/components/schemas/proxy"
@@ -6137,9 +6607,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpDeleteProxy"
@@ -6153,10 +6621,7 @@
       },
       "Key": {
         "type": "object",
-        "required": [
-          "proxy",
-          "expiry"
-        ],
+        "required": ["proxy", "expiry"],
         "properties": {
           "proxy": {
             "$ref": "#/components/schemas/proxy"
@@ -6171,10 +6636,7 @@
       },
       "Credentials": {
         "type": "object",
-        "required": [
-          "address",
-          "keys"
-        ],
+        "required": ["address", "keys"],
         "properties": {
           "address": {
             "$ref": "#/components/schemas/address"
@@ -6190,16 +6652,11 @@
       "Error401": {
         "title": "Error401",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/error"
@@ -6238,18 +6695,12 @@
       "kind": {
         "type": "string",
         "description": "Conditional order type (TakeProfit / StopLoss)",
-        "enum": [
-          "tp",
-          "sl"
-        ]
+        "enum": ["tp", "sl"]
       },
       "tr_scope": {
         "type": "string",
         "description": "How the conditional order sizes itself.\n- `order` - child of a parent entry (bracket / OCO ladder). Quantity is required.\n- `position` - attached to an open position. v1 always closes the full position (`qty` must be `\"0\"`).\n",
-        "enum": [
-          "order",
-          "position"
-        ]
+        "enum": ["order", "position"]
       },
       "parent_oid": {
         "type": "integer",
@@ -6266,11 +6717,7 @@
       "TpSlOrderFields": {
         "type": "object",
         "description": "TP/SL-specific fields surfaced alongside the regular order shape.",
-        "required": [
-          "kind",
-          "scope",
-          "trp"
-        ],
+        "required": ["kind", "scope", "trp"],
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/kind"
@@ -6356,6 +6803,9 @@
           "tpsl": {
             "$ref": "#/components/schemas/TpSlOrderFields",
             "description": "Conditional-order fields. Present only when the order is a TP/SL conditional order — `null`/omitted for regular orders."
+          },
+          "builder": {
+            "$ref": "#/components/schemas/Builder"
           }
         }
       },
@@ -6371,11 +6821,7 @@
       },
       "Balance": {
         "type": "object",
-        "required": [
-          "asset",
-          "balance",
-          "value"
-        ],
+        "required": ["asset", "balance", "value"],
         "properties": {
           "asset": {
             "$ref": "#/components/schemas/asset"
@@ -6540,7 +6986,7 @@
       },
       "fee_tier": {
         "type": "integer",
-        "description": "Zero-based index into `tiers` of the single perpetual fee schedule returned by `/v1/info/fees`, which applies to every perpetual regardless of category. Defaults to 0 without a current tier assignment and is capped at the highest configured tier. WebSocket tier changes appear on the next portfolio update, published every 5 seconds.",
+        "description": "Zero-based index into `tiers` of the single perpetual fee schedule returned by `/v1/info/fees`, which applies to every perpetual regardless of category. Builder fees are additional and are not part of this tier. Defaults to 0 without a current tier assignment and is capped at the highest configured tier. WebSocket tier changes appear on the next portfolio update, published every 5 seconds.",
         "example": 0
       },
       "Portfolio": {
@@ -6595,10 +7041,7 @@
         "type": "string",
         "description": "Time sort direction. `desc` (default) returns newest fills first; `asc` returns oldest first.",
         "default": "desc",
-        "enum": [
-          "desc",
-          "asc"
-        ]
+        "enum": ["desc", "asc"]
       },
       "taker": {
         "type": "boolean",
@@ -6606,7 +7049,7 @@
       },
       "fee": {
         "type": "string",
-        "description": "Fee amount for this trade side",
+        "description": "Signed exchange fee for this trade side, excluding builder_fee. Negative values are rebates",
         "example": "1.25"
       },
       "fea": {
@@ -6648,15 +7091,17 @@
           "quantity",
           "taker",
           "fee",
+          "builder_fee",
+          "total_fee",
           "fee_asset",
           "previous_size",
           "previous_entry_price",
           "pnl",
           "timestamp",
-          "settlement",
           "liquidation",
           "adl",
-          "hash"
+          "hash",
+          "settlement"
         ],
         "properties": {
           "trade_id": {
@@ -6693,7 +7138,8 @@
             "$ref": "#/components/schemas/pep"
           },
           "pnl": {
-            "$ref": "#/components/schemas/pnl"
+            "$ref": "#/components/schemas/pnl",
+            "description": "Realized trading PnL before exchange and builder fees. Subtract total_fee once to calculate this fill's net trading result."
           },
           "liquidation": {
             "$ref": "#/components/schemas/liq"
@@ -6707,6 +7153,16 @@
           "hash": {
             "$ref": "#/components/schemas/hash"
           },
+          "builder_fee": {
+            "$ref": "#/components/schemas/builder_fee"
+          },
+          "total_fee": {
+            "$ref": "#/components/schemas/total_fee"
+          },
+          "builder": {
+            "$ref": "#/components/schemas/Builder",
+            "description": "Saved terms, only on authenticated account fill surfaces. Public account history omits identity and rate, even when builder_fee is nonzero."
+          },
           "settlement": {
             "$ref": "#/components/schemas/settlement_fill"
           }
@@ -6714,10 +7170,7 @@
       },
       "AccountTrades": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -6736,20 +7189,14 @@
       },
       "EquityHistory": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
             "description": "- `1767225600000` - Timestamp\n- `\"10000.00\"` - Equity\n",
             "items": {
               "type": "array",
-              "example": [
-                1767225600000,
-                "10000.00"
-              ]
+              "example": [1767225600000, "10000.00"]
             },
             "maxItems": 1000
           },
@@ -6761,29 +7208,18 @@
       "pnl_interval": {
         "type": "string",
         "description": "PnL interval",
-        "enum": [
-          "1h",
-          "4h",
-          "1d",
-          "1w"
-        ]
+        "enum": ["1h", "4h", "1d", "1w"]
       },
       "PnlHistory": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
-            "description": "- `1767225600000` - Timestamp\n- `\"100.50\"` - PnL\n",
+            "description": "- `1767225600000` - Timestamp\n- `\"100.50\"` - Net PnL after exchange and builder fees, including funding. Do not subtract fill fees again.\n",
             "items": {
               "type": "array",
-              "example": [
-                1767225600000,
-                "100.50"
-              ]
+              "example": [1767225600000, "100.50"]
             },
             "maxItems": 1000
           },
@@ -6865,10 +7301,7 @@
       },
       "AccountBackstops": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -6882,9 +7315,7 @@
           "coverage": {
             "type": "object",
             "description": "Present when backstop history is unavailable because its schema is pending.",
-            "required": [
-              "notes"
-            ],
+            "required": ["notes"],
             "properties": {
               "notes": {
                 "type": "array",
@@ -6943,10 +7374,7 @@
       },
       "AccountFundingHistory": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -6986,25 +7414,15 @@
       },
       "OpWithdraw": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "withdraw"
-            ]
+            "enum": ["withdraw"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "account",
-              "token",
-              "amount",
-              "to"
-            ],
+            "required": ["account", "token", "amount", "to"],
             "properties": {
               "account": {
                 "$ref": "#/components/schemas/account"
@@ -7026,9 +7444,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpWithdraw"
@@ -7046,16 +7462,11 @@
       },
       "WithdrawAccepted": {
         "type": "object",
-        "required": [
-          "status",
-          "withdraw_id"
-        ],
+        "required": ["status", "withdraw_id"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "withdraw_id": {
             "$ref": "#/components/schemas/withdraw_id"
@@ -7064,17 +7475,11 @@
       },
       "WithdrawRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "withdraw_id",
-          "error"
-        ],
+        "required": ["status", "withdraw_id", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "withdraw_id": {
             "$ref": "#/components/schemas/withdraw_id"
@@ -7086,25 +7491,15 @@
       },
       "OpInternalTransfer": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "internalTransfer"
-            ]
+            "enum": ["internalTransfer"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "account",
-              "token",
-              "amount",
-              "to"
-            ],
+            "required": ["account", "token", "amount", "to"],
             "properties": {
               "account": {
                 "$ref": "#/components/schemas/account"
@@ -7126,9 +7521,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpInternalTransfer"
@@ -7154,16 +7547,11 @@
       },
       "InternalTransferAccepted": {
         "type": "object",
-        "required": [
-          "status",
-          "transfer_id"
-        ],
+        "required": ["status", "transfer_id"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "transfer_id": {
             "$ref": "#/components/schemas/transfer_id"
@@ -7172,17 +7560,11 @@
       },
       "InternalTransferRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "transfer_id",
-          "error"
-        ],
+        "required": ["status", "transfer_id", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "transfer_id": {
             "$ref": "#/components/schemas/transfer_id"
@@ -7195,11 +7577,7 @@
       "deposit_status": {
         "type": "string",
         "description": "Deposit status",
-        "enum": [
-          "pending",
-          "confirmed",
-          "removed"
-        ]
+        "enum": ["pending", "confirmed", "removed"]
       },
       "from": {
         "type": "string",
@@ -7274,10 +7652,7 @@
       },
       "Deposits": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -7293,10 +7668,7 @@
       "direction": {
         "type": "string",
         "description": "Transfer direction relative to the authenticated account",
-        "enum": [
-          "in",
-          "out"
-        ]
+        "enum": ["in", "out"]
       },
       "counterparty": {
         "type": "string",
@@ -7339,10 +7711,7 @@
       },
       "InternalTransfers": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -7358,12 +7727,7 @@
       "withdrawal_status": {
         "type": "string",
         "description": "Withdrawal status",
-        "enum": [
-          "pending",
-          "confirmed",
-          "removed",
-          "failed"
-        ]
+        "enum": ["pending", "confirmed", "removed", "failed"]
       },
       "Withdrawal": {
         "type": "object",
@@ -7417,10 +7781,7 @@
       },
       "Withdrawals": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -7600,11 +7961,7 @@
       },
       "AccountRewardInstrument": {
         "type": "object",
-        "required": [
-          "instrument_id",
-          "reward_pool",
-          "reward_amount"
-        ],
+        "required": ["instrument_id", "reward_pool", "reward_amount"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/instrument_id"
@@ -7624,10 +7981,7 @@
       },
       "AccountRewardOi": {
         "type": "object",
-        "required": [
-          "account_oi",
-          "reward_amount"
-        ],
+        "required": ["account_oi", "reward_amount"],
         "properties": {
           "account_oi": {
             "$ref": "#/components/schemas/account_oi"
@@ -7639,12 +7993,7 @@
       },
       "AccountReward": {
         "type": "object",
-        "required": [
-          "date",
-          "maker_share_7d",
-          "reward_distributed",
-          "breakdown"
-        ],
+        "required": ["date", "maker_share_7d", "reward_distributed", "breakdown"],
         "properties": {
           "date": {
             "$ref": "#/components/schemas/date"
@@ -7668,10 +8017,7 @@
       },
       "AccountRewards": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -7687,11 +8033,7 @@
       "AccountConfig": {
         "description": "Account configuration.",
         "type": "object",
-        "required": [
-          "instrument_id",
-          "leverage",
-          "cross"
-        ],
+        "required": ["instrument_id", "leverage", "cross"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/iid"
@@ -7721,12 +8063,7 @@
       },
       "AutoCancelStatus": {
         "type": "object",
-        "required": [
-          "deadline",
-          "triggered",
-          "daily_limit",
-          "next_reset"
-        ],
+        "required": ["deadline", "triggered", "daily_limit", "next_reset"],
         "properties": {
           "deadline": {
             "$ref": "#/components/schemas/auto_cancel_deadline"
@@ -7748,18 +8085,11 @@
       },
       "CreateInviteResponse": {
         "type": "object",
-        "required": [
-          "status",
-          "code",
-          "referrals_available",
-          "cooldown_ms"
-        ],
+        "required": ["status", "code", "referrals_available", "cooldown_ms"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "code": {
             "$ref": "#/components/schemas/code"
@@ -7794,7 +8124,7 @@
       },
       "children_fees": {
         "type": "string",
-        "description": "Total fees paid by directly referred child accounts since their referral was applied",
+        "description": "Exchange fees paid by directly referred child accounts since their referral was applied. This excludes additional builder fees.",
         "example": "312.75"
       },
       "referrals_left": {
@@ -7848,9 +8178,7 @@
       },
       "AccountReferralRequest": {
         "type": "object",
-        "required": [
-          "code"
-        ],
+        "required": ["code"],
         "properties": {
           "code": {
             "$ref": "#/components/schemas/code"
@@ -7861,9 +8189,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpUpdateMargin"
@@ -7877,23 +8203,15 @@
       },
       "OpUpdateMargin": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "updateMargin"
-            ]
+            "enum": ["updateMargin"]
           },
           "args": {
             "type": "object",
-            "required": [
-              "iid",
-              "amt"
-            ],
+            "required": ["iid", "amt"],
             "properties": {
               "iid": {
                 "$ref": "#/components/schemas/iid"
@@ -7939,11 +8257,7 @@
       },
       "NotificationItem": {
         "type": "object",
-        "required": [
-          "notification",
-          "read_at",
-          "ts"
-        ],
+        "required": ["notification", "read_at", "ts"],
         "properties": {
           "notification": {
             "type": "object",
@@ -7969,13 +8283,7 @@
       },
       "NotificationsResponse": {
         "type": "object",
-        "required": [
-          "items",
-          "unread",
-          "durable_source_seq",
-          "has_more",
-          "next_cursor"
-        ],
+        "required": ["items", "unread", "durable_source_seq", "has_more", "next_cursor"],
         "properties": {
           "items": {
             "type": "array",
@@ -8007,9 +8315,7 @@
         "oneOf": [
           {
             "type": "object",
-            "required": [
-              "ids"
-            ],
+            "required": ["ids"],
             "additionalProperties": false,
             "properties": {
               "ids": {
@@ -8023,9 +8329,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "before"
-            ],
+            "required": ["before"],
             "additionalProperties": false,
             "properties": {
               "before": {
@@ -8043,10 +8347,7 @@
       },
       "BlpInstrument": {
         "type": "object",
-        "required": [
-          "instrument_id",
-          "symbol"
-        ],
+        "required": ["instrument_id", "symbol"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/instrument_id"
@@ -8058,10 +8359,7 @@
       },
       "BlpEnrollment": {
         "type": "object",
-        "required": [
-          "blp",
-          "instruments"
-        ],
+        "required": ["blp", "instruments"],
         "properties": {
           "blp": {
             "$ref": "#/components/schemas/blp"
@@ -8082,10 +8380,7 @@
       },
       "BlpEnrollRequest": {
         "type": "object",
-        "required": [
-          "instrument_id",
-          "active"
-        ],
+        "required": ["instrument_id", "active"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/instrument_id"
@@ -8114,21 +8409,12 @@
         "type": "string",
         "description": "Time sort direction. `desc` (default) returns the most recent liquidations first; `asc` returns the oldest first.",
         "default": "desc",
-        "enum": [
-          "desc",
-          "asc"
-        ]
+        "enum": ["desc", "asc"]
       },
       "BlpLiquidationTrade": {
         "type": "object",
         "description": "One trade booked for a position absorbed in the liquidation.",
-        "required": [
-          "trade_id",
-          "instrument_id",
-          "side",
-          "quantity",
-          "price"
-        ],
+        "required": ["trade_id", "instrument_id", "side", "quantity", "price"],
         "properties": {
           "trade_id": {
             "$ref": "#/components/schemas/tid"
@@ -8150,13 +8436,7 @@
       "BlpLiquidation": {
         "type": "object",
         "description": "One absorption of an account's positions and margin, matching a single `backstop` WebSocket frame.",
-        "required": [
-          "liquidation_id",
-          "timestamp",
-          "cross",
-          "margin",
-          "trades"
-        ],
+        "required": ["liquidation_id", "timestamp", "cross", "margin", "trades"],
         "properties": {
           "liquidation_id": {
             "$ref": "#/components/schemas/lid"
@@ -8181,10 +8461,7 @@
       },
       "BlpLiquidations": {
         "type": "object",
-        "required": [
-          "data",
-          "more"
-        ],
+        "required": ["data", "more"],
         "properties": {
           "data": {
             "type": "array",
@@ -8200,16 +8477,11 @@
       },
       "ModifyAccepted": {
         "type": "object",
-        "required": [
-          "status",
-          "order"
-        ],
+        "required": ["status", "order"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           },
           "order": {
             "$ref": "#/components/schemas/Order"
@@ -8220,9 +8492,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpModifyOrdersByCoid"
@@ -8245,11 +8515,7 @@
       "ModifyOrder": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "oid",
-          "p",
-          "qty"
-        ],
+        "required": ["oid", "p", "qty"],
         "properties": {
           "oid": {
             "$ref": "#/components/schemas/oid"
@@ -8265,11 +8531,7 @@
       "ModifyOrderByCoid": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "coid",
-          "p",
-          "qty"
-        ],
+        "required": ["coid", "p", "qty"],
         "properties": {
           "coid": {
             "$ref": "#/components/schemas/coid"
@@ -8284,16 +8546,11 @@
       },
       "ModifyRejected": {
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "oid": {
             "$ref": "#/components/schemas/oid"
@@ -8310,9 +8567,7 @@
         "allOf": [
           {
             "type": "object",
-            "required": [
-              "op"
-            ],
+            "required": ["op"],
             "properties": {
               "op": {
                 "$ref": "#/components/schemas/OpModifyOrders"
@@ -8344,16 +8599,11 @@
       },
       "OpModifyOrders": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "modifyOrders"
-            ]
+            "enum": ["modifyOrders"]
           },
           "args": {
             "type": "array",
@@ -8366,16 +8616,11 @@
       },
       "OpModifyOrdersByCoid": {
         "type": "object",
-        "required": [
-          "type",
-          "args"
-        ],
+        "required": ["type", "args"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "modifyOrdersCOID"
-            ]
+            "enum": ["modifyOrdersCOID"]
           },
           "args": {
             "type": "array",
@@ -8445,6 +8690,9 @@
           },
           "coid": {
             "$ref": "#/components/schemas/coid"
+          },
+          "builder": {
+            "$ref": "#/components/schemas/Builder"
           }
         }
       },
@@ -8452,23 +8700,13 @@
         "type": "string",
         "description": "Leaderboard window, anchored to calendar UTC boundaries. `day` starts at 00:00 UTC today, `week` at Monday 00:00 UTC, `month` at the first of the month 00:00 UTC, `all` at exchange launch.",
         "default": "day",
-        "enum": [
-          "day",
-          "week",
-          "month",
-          "all"
-        ]
+        "enum": ["day", "week", "month", "all"]
       },
       "sort_by": {
         "type": "string",
         "description": "Leaderboard ranking metric",
         "default": "pnl",
-        "enum": [
-          "pnl",
-          "notional",
-          "account_value",
-          "roi"
-        ]
+        "enum": ["pnl", "notional", "account_value", "roi"]
       },
       "offset": {
         "type": "integer",
@@ -8478,13 +8716,7 @@
       },
       "Leaderboard": {
         "type": "object",
-        "required": [
-          "window",
-          "sort_by",
-          "timestamp",
-          "total",
-          "entries"
-        ],
+        "required": ["window", "sort_by", "timestamp", "total", "entries"],
         "properties": {
           "window": {
             "$ref": "#/components/schemas/window"
@@ -8517,14 +8749,7 @@
       },
       "LeaderboardEntry": {
         "type": "object",
-        "required": [
-          "rank",
-          "account",
-          "pnl",
-          "notional",
-          "account_value",
-          "roi"
-        ],
+        "required": ["rank", "account", "pnl", "notional", "account_value", "roi"],
         "properties": {
           "rank": {
             "$ref": "#/components/schemas/rank"
@@ -8561,21 +8786,10 @@
         "description": "Current account equity in USD as an unformatted numeric string",
         "example": "9238345.12"
       },
-      "roi": {
-        "type": "string",
-        "description": "Return on investment over the window as a fraction, not a percentage (\"0.4527\" is 45.27%): `pnl / max(100, starting_equity + max_net_deposits)`. `pnl` is this row's `pnl`. `starting_equity` is the account equity sampled last before the window start (0 for `all`, and 0 for accounts with no earlier sample). `max_net_deposits` is the running maximum, over the window, of cumulative credited deposits minus withdrawals plus transfers in minus transfers out, starting from 0 at the window start; it is never negative. The 100 USD floor keeps tiny accounts from producing extreme ratios. Rounded half-even to 6 decimal places with trailing zeros removed; \"0\" when `pnl` is 0.",
-        "example": "0.4527"
-      },
       "LeaderboardAccount": {
         "type": "object",
         "description": "Leaderboard row for the requested address. `rank` is absent when the account has no activity in the window, or when sorting by account value and that account has no computed equity in the published census. A collateral-only display fallback does not establish an equity rank.",
-        "required": [
-          "account",
-          "pnl",
-          "notional",
-          "account_value",
-          "roi"
-        ],
+        "required": ["account", "pnl", "notional", "account_value", "roi"],
         "properties": {
           "rank": {
             "$ref": "#/components/schemas/rank"
@@ -8596,6 +8810,354 @@
             "$ref": "#/components/schemas/roi"
           }
         }
+      },
+      "builder_fee": {
+        "type": "string",
+        "description": "Actual additional builder fee in the same asset as fee, floored independently for each execution to that asset's token decimals (six for pUSD), with discarded dust and no carry. The fee is non-negative and is zero for older or untagged fills and excluded forced liquidation legs.",
+        "example": "20.00"
+      },
+      "builder_fee_rate": {
+        "type": "string",
+        "description": "Additional builder fee as a decimal fraction of executed notional, from 0 through 0.001 (10 basis points). Zero approval revokes future admission. Never a percentage string.",
+        "example": "0.001"
+      },
+      "BuilderEarning": {
+        "type": "object",
+        "required": [
+          "earning_id",
+          "trade_id",
+          "order_id",
+          "instrument_id",
+          "trader",
+          "buy",
+          "price",
+          "quantity",
+          "side",
+          "timestamp",
+          "sequence",
+          "notional",
+          "fee_asset",
+          "fee",
+          "builder_fee",
+          "total_fee",
+          "fee_rate"
+        ],
+        "properties": {
+          "earning_id": {
+            "type": "string",
+            "description": "Stable side-specific receipt identity, unique for this builder. Use this to deduplicate, not sequence or trade_id alone."
+          },
+          "trade_id": {
+            "$ref": "#/components/schemas/tid"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "side": {
+            "type": "string",
+            "enum": ["maker", "taker"]
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "notional": {
+            "type": "string"
+          },
+          "fee_asset": {
+            "$ref": "#/components/schemas/fea"
+          },
+          "builder_fee": {
+            "$ref": "#/components/schemas/builder_fee"
+          },
+          "fee_rate": {
+            "$ref": "#/components/schemas/builder_fee_rate"
+          },
+          "trader": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/address"
+              }
+            ],
+            "description": "Main address of the attributed trading account, not its signing proxy or the counterparty."
+          },
+          "buy": {
+            "$ref": "#/components/schemas/buy"
+          },
+          "price": {
+            "$ref": "#/components/schemas/price"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/quantity"
+          },
+          "client_order_id": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/coid"
+              }
+            ],
+            "description": "Included only when the attributed order supplied a client_order_id."
+          },
+          "fee": {
+            "$ref": "#/components/schemas/fee"
+          },
+          "total_fee": {
+            "$ref": "#/components/schemas/total_fee"
+          }
+        }
+      },
+      "BuilderEarnings": {
+        "type": "object",
+        "required": ["data", "more", "start_timestamp", "end_timestamp", "as_of_sequence"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuilderEarning"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Opaque continuation preserving account, time window and fully indexed cutoff. Reuse unchanged."
+          },
+          "start_timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "end_timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "as_of_sequence": {
+            "type": "integer",
+            "description": "Complete indexed event prefix shared with the summary. Never the largest row seen."
+          }
+        }
+      },
+      "BuilderEarningsAsset": {
+        "type": "object",
+        "required": ["fee_asset", "fill_count", "notional", "builder_fee"],
+        "properties": {
+          "fee_asset": {
+            "$ref": "#/components/schemas/fea"
+          },
+          "fill_count": {
+            "type": "integer"
+          },
+          "notional": {
+            "type": "string",
+            "description": "Eligible executed notional including zero-fee fills."
+          },
+          "builder_fee": {
+            "$ref": "#/components/schemas/builder_fee"
+          }
+        }
+      },
+      "BuilderEarningsSummary": {
+        "type": "object",
+        "description": "Settled earnings in the requested window, not available funds or a claim balance. Normal account balances describe spendable collateral.",
+        "required": [
+          "data",
+          "start_timestamp",
+          "end_timestamp",
+          "as_of_sequence",
+          "trader_count",
+          "active_approval_count"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuilderEarningsAsset"
+            }
+          },
+          "start_timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "end_timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "as_of_sequence": {
+            "type": "integer"
+          },
+          "trader_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distinct trading accounts with at least one attributed fill in this window and indexed cutoff, including zero-fee fills and counting once across markets, assets and maker/taker roles."
+          },
+          "active_approval_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Current positive, unrevoked approvals to this builder. This count is independent of the historical window and cutoff. Disabling a builder or platform admission does not erase grants."
+          }
+        }
+      },
+      "BuilderStatus": {
+        "type": "object",
+        "required": [
+          "address",
+          "registered",
+          "enabled",
+          "admission_enabled",
+          "max_fee_rate"
+        ],
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/address"
+          },
+          "registered": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Builder is enabled for new requests. Existing saved terms remain valid when disabled."
+          },
+          "admission_enabled": {
+            "type": "boolean",
+            "description": "Platform builder code admission switch. Initially false."
+          },
+          "max_fee_rate": {
+            "$ref": "#/components/schemas/builder_fee_rate"
+          }
+        }
+      },
+      "builder_approval_version": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Exactly the previous version plus one, starting at 1. Revocation retains the version and prevents signed approval replay."
+      },
+      "BuilderApproval": {
+        "type": "object",
+        "required": [
+          "trader",
+          "builder",
+          "max_fee_rate",
+          "approval_version",
+          "timestamp",
+          "sequence"
+        ],
+        "properties": {
+          "trader": {
+            "$ref": "#/components/schemas/address"
+          },
+          "builder": {
+            "$ref": "#/components/schemas/address"
+          },
+          "max_fee_rate": {
+            "$ref": "#/components/schemas/builder_fee_rate"
+          },
+          "approval_version": {
+            "$ref": "#/components/schemas/builder_approval_version"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "sequence": {
+            "type": "integer"
+          }
+        }
+      },
+      "BuilderApprovals": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuilderApproval"
+            }
+          }
+        }
+      },
+      "OpApproveBuilder": {
+        "type": "object",
+        "required": ["type", "args"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["approveBuilder"]
+          },
+          "args": {
+            "type": "object",
+            "required": ["builder", "max_fee_rate", "approval_version"],
+            "properties": {
+              "builder": {
+                "$ref": "#/components/schemas/address"
+              },
+              "max_fee_rate": {
+                "$ref": "#/components/schemas/builder_fee_rate"
+              },
+              "approval_version": {
+                "$ref": "#/components/schemas/builder_approval_version"
+              }
+            }
+          }
+        }
+      },
+      "BuilderApprovalRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": ["op"],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpApproveBuilder"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "total_fee": {
+        "type": "string",
+        "description": "Exact signed sum of exchange fee and builder_fee in the same asset. May be negative when exchange rebates exceed the builder charge.",
+        "example": "24.00"
+      },
+      "Builder": {
+        "type": "object",
+        "description": "Saved builder terms. Address is the registered Perps account, and fee_rate is an additional fraction of executed notional. Terms survive approval revocation for existing orders.",
+        "required": ["address", "fee_rate"],
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/address"
+          },
+          "fee_rate": {
+            "$ref": "#/components/schemas/builder_fee_rate"
+          }
+        }
+      },
+      "quantity": {
+        "type": "string",
+        "description": "Quantity in number of contracts",
+        "example": "10.00"
+      },
+      "display_symbol": {
+        "type": "string",
+        "description": "Optional presentation override for the full instrument symbol, such as USA500-USD. Use display_symbol when present and fall back to symbol otherwise. This is a label, not an identifier; use instrument_id for trading and storage. Canonical symbol, base_asset, and price-feed identifiers are unchanged. Metadata normally refreshes once per minute; HTTP caching can add delay.",
+        "example": "USA500-USD"
+      },
+      "RegisteredResponse": {
+        "type": "object",
+        "required": ["registered"],
+        "properties": {
+          "registered": {
+            "type": "boolean",
+            "description": "Whether the address has a Perps account."
+          }
+        }
+      },
+      "roi": {
+        "type": "string",
+        "description": "Return on investment over the window as a fraction, not a percentage (\"0.4527\" is 45.27%): `pnl / max(100, starting_equity + max_net_deposits)`. `pnl` is this row's `pnl`. `starting_equity` is the account equity sampled last before the window start (0 for `all`, and 0 for accounts with no earlier sample). `max_net_deposits` is the running maximum, over the window, of cumulative credited deposits minus withdrawals plus transfers in minus transfers out, starting from 0 at the window start; it is never negative. The 100 USD floor keeps tiny accounts from producing extreme ratios. Rounded half-even to 6 decimal places with trailing zeros removed; \"0\" when `pnl` is 0.",
+        "example": "0.4527"
       },
       "CompetitionAccount": {
         "type": "object",
@@ -8663,6 +9225,9 @@
           },
           "boosted_volume": {
             "type": "string"
+          },
+          "first_fill_at": {
+            "$ref": "#/components/schemas/competition_first_fill_at"
           },
           "min_volume": {
             "type": "string"
@@ -8858,6 +9423,9 @@
           "boosted_volume": {
             "type": "string"
           },
+          "first_fill_at": {
+            "$ref": "#/components/schemas/competition_first_fill_at"
+          },
           "prize": {
             "type": "string",
             "description": "Projected prize while live, prize won once ended; absent outside the prize zone"
@@ -8915,10 +9483,7 @@
       },
       "CompetitionList": {
         "type": "object",
-        "required": [
-          "timestamp",
-          "competitions"
-        ],
+        "required": ["timestamp", "competitions"],
         "properties": {
           "timestamp": {
             "$ref": "#/components/schemas/update_timestamp"
@@ -8941,10 +9506,7 @@
       "CompetitionLockedPosition": {
         "type": "object",
         "description": "A position open when the competition started. Its market does not count until it is fully closed.",
-        "required": [
-          "instrument_id",
-          "size_at_start"
-        ],
+        "required": ["instrument_id", "size_at_start"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/instrument_id"
@@ -8962,10 +9524,7 @@
       "CompetitionMarket": {
         "type": "object",
         "description": "A market in the competition. `boost` multiplies its volume toward boosted volume (never PnL).",
-        "required": [
-          "instrument_id",
-          "boost"
-        ],
+        "required": ["instrument_id", "boost"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/instrument_id"
@@ -8980,11 +9539,7 @@
       "CompetitionPrizeTier": {
         "type": "object",
         "description": "One band of the prize table. Every rank from `from_rank` to `to_rank` inclusive is paid `amount`.",
-        "required": [
-          "from_rank",
-          "to_rank",
-          "amount"
-        ],
+        "required": ["from_rank", "to_rank", "amount"],
         "properties": {
           "from_rank": {
             "type": "integer",
@@ -9060,9 +9615,7 @@
       "CompetitionWidget": {
         "type": "object",
         "description": "The live competition at a glance for the trading page. Without a live competition only `timestamp` is present.",
-        "required": [
-          "timestamp"
-        ],
+        "required": ["timestamp"],
         "properties": {
           "timestamp": {
             "$ref": "#/components/schemas/update_timestamp"
@@ -9102,16 +9655,11 @@
       "CompetitionRead_Error400": {
         "title": "Error400",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/CompetitionRead_error"
@@ -9131,16 +9679,11 @@
       "CompetitionRead_Error404": {
         "title": "Error404",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/CompetitionRead_error"
@@ -9150,16 +9693,11 @@
       "CompetitionRead_Error429": {
         "title": "Error429",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/CompetitionRead_error"
@@ -9169,16 +9707,11 @@
       "CompetitionRead_Error500": {
         "title": "Error500",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/CompetitionRead_error"
@@ -9188,16 +9721,11 @@
       "CompetitionRead_Error503": {
         "title": "Error503",
         "type": "object",
-        "required": [
-          "status",
-          "error"
-        ],
+        "required": ["status", "error"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "err"
-            ]
+            "enum": ["err"]
           },
           "error": {
             "$ref": "#/components/schemas/CompetitionRead_error"
@@ -9218,13 +9746,7 @@
       "competition_row_state": {
         "type": "string",
         "description": "How a leaderboard row is shown. `live` while running (prize is projected), `provisional` while in review, `disqualified` for a rule violation, `final` once results are finalized, `paid` once the prize is paid.",
-        "enum": [
-          "live",
-          "provisional",
-          "disqualified",
-          "final",
-          "paid"
-        ]
+        "enum": ["live", "provisional", "disqualified", "final", "paid"]
       },
       "competition_score": {
         "type": "string",
@@ -9234,12 +9756,7 @@
       "competition_status": {
         "type": "string",
         "description": "Competition lifecycle status. `upcoming` before start, `live` while running, `in_review` from the end until every prize is paid (ranks can still change after disqualifications), `ended` once results are final and every prize is paid.",
-        "enum": [
-          "upcoming",
-          "live",
-          "in_review",
-          "ended"
-        ]
+        "enum": ["upcoming", "live", "in_review", "ended"]
       },
       "CompetitionRead_error": {
         "type": "string",
@@ -9283,12 +9800,7 @@
       "InstrumentSettlement": {
         "type": "object",
         "description": "Permanent settlement record. Its sequence and timestamp are the cutoff after which all unapplied funding is waived. Previously applied funding is preserved. An instrument with this record is delisted and cannot resume trading.",
-        "required": [
-          "sequence",
-          "timestamp",
-          "price",
-          "insurance_debit"
-        ],
+        "required": ["sequence", "timestamp", "price", "insurance_debit"],
         "properties": {
           "sequence": {
             "$ref": "#/components/schemas/settlement_sequence"
@@ -9311,9 +9823,7 @@
       "PositionSnapshotsRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "address"
-        ],
+        "required": ["address"],
         "properties": {
           "address": {
             "$ref": "#/components/schemas/address"
@@ -9342,11 +9852,7 @@
       "PositionSnapshotFill": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "instrument_id",
-          "trade_id",
-          "timestamp"
-        ],
+        "required": ["instrument_id", "trade_id", "timestamp"],
         "properties": {
           "instrument_id": {
             "type": "integer",
@@ -9370,11 +9876,7 @@
       },
       "PositionSnapshots": {
         "type": "object",
-        "required": [
-          "active",
-          "history",
-          "history_as_of_at"
-        ],
+        "required": ["active", "history", "history_as_of_at"],
         "properties": {
           "history_as_of_at": {
             "type": "integer",
@@ -9397,9 +9899,7 @@
       },
       "PositionSnapshotResult": {
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "instrument_id": {
             "$ref": "#/components/schemas/iid"
@@ -9450,10 +9950,7 @@
           },
           "side": {
             "type": "string",
-            "enum": [
-              "long",
-              "short"
-            ]
+            "enum": ["long", "short"]
           },
           "started_at": {
             "type": "integer",
@@ -9502,10 +9999,7 @@
       },
       "PositionSnapshotChart": {
         "type": "object",
-        "required": [
-          "candles",
-          "markers"
-        ],
+        "required": ["candles", "markers"],
         "properties": {
           "candles": {
             "type": "array",
@@ -9525,13 +10019,7 @@
       },
       "PositionSnapshotCandle": {
         "type": "object",
-        "required": [
-          "position",
-          "open",
-          "high",
-          "low",
-          "close"
-        ],
+        "required": ["position", "open", "high", "low", "close"],
         "properties": {
           "position": {
             "type": "number",
@@ -9553,22 +10041,22 @@
       },
       "PositionSnapshotMarker": {
         "type": "object",
-        "required": [
-          "position",
-          "kind"
-        ],
+        "required": ["position", "kind"],
         "properties": {
           "position": {
             "type": "number"
           },
           "kind": {
             "type": "string",
-            "enum": [
-              "increase",
-              "decrease"
-            ]
+            "enum": ["increase", "decrease"]
           }
         }
+      },
+      "competition_first_fill_at": {
+        "type": "integer",
+        "x-js-safe-integer": true,
+        "description": "Time of the account's first counted fill in this competition, in Unix milliseconds; absent when unavailable or the account has no counted fills. Ranked ties use the configured tie-breaks, normally boosted volume then first fill order. Fill order can distinguish fills within the same millisecond.",
+        "example": 1793001234567
       }
     },
     "responses": {

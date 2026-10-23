@@ -66,6 +66,7 @@ ENDPOINT_CLAIMS = [
 
 CHANNEL_CLAIMS = [
     ("docs/specs/perps/asyncapi.json", "docs/specs/INDEX.md", "Perps WebSocket ({n} channels)"),
+    ("docs/specs/kalshi/asyncapi.yaml", "docs/specs/INDEX.md", "Trade API WebSocket ({n} channels)"),
 ]
 
 

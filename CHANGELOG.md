@@ -1,24 +1,46 @@
 ## [Unreleased]
 
-The CLOB mirror adopts the upstream revision drift issue #73 reported on 2026-10-22. Two signatures change, so the
-release that carries this raises the 0.x minor.
+- **Data v2 token module `directional` (#78).** Upstream's `TokenModule` schema gained
+  `directional`, which `data::v2::types::TokenModule` gains as `Directional`. The enum is open, so
+  this is additive, but a `directional` row that decoded as `Other("directional")` now decodes as
+  `Directional`. No such token has been seen on the wire yet.
 
-- **`GET /rebates/current` answers `null` for a maker with no rows.** `current_rebates`
-  failed on it with "invalid type: null, expected a sequence", which is the common case. It now
-  returns `CurrentRebatesRequest`, whose `send()` reads `null` as an empty `Vec<RebatedFees>`.
-  `.current_rebates(date, maker).send().await` compiles as before.
-- **`heartbeat_v1` sends its required body.** `account_api().heartbeat_v1()` posted no body, so
-  the venue refused every call with a `400`. It is now `heartbeat_v1(heartbeat_id)`, returning
-  `HeartbeatV1Response { heartbeat_id }`: send `""` first, then each ID a response returns. An ID
-  the venue does not hold is the new `ClobError::HeartbeatIdMismatch { expected }`, a
-  `VenueRefusal` that is not a fault, carrying the ID to resend with (empty after a legacy send).
-  `HeartbeatResponse` and `HeartbeatV1Response` are re-exported from `clob`.
-- **Heartbeats arm a dead man's switch.** The docs of both heartbeat methods now say what
-  upstream does: the first accepted send arms cancellation of every open order the API key owns,
-  10 seconds without an accepted send queues a cancel-all, and nothing disarms it.
-- **Notifications** gain type 11 (taker tier upgraded); `notification_type` is a `u32`, so it
-  already decoded. `GET /rewards/user/total` rows may carry `native_earnings` and
-  `sponsored_earnings`, which `RewardTotalEarnings`' raw `data` already keeps.
+- **Perps spec drift (#76).** Builder fees, `/v1/info/builder` and `first_fill_at` (DRIFT R18).
+  Two field types change, so this release raises the 0.x minor for perps.
+  - `PositionFill::builder_fee` and `PositionFill::total_fee` (`perps::api::public`) are `Decimal`
+    where they were `Option<Decimal>`: the spec now documents and requires both, and the host sent
+    them on every row. Replace `Some(x)` with `x`. `builder_fee` is the builder's additional fee,
+    never negative; `total_fee` is `fee` plus `builder_fee`, and `pnl` is before both.
+  - `PositionFill` gains `builder: Option<BuilderTerms>`, the order's saved builder address and
+    fee rate. The host sends it only on an authenticated account's own fills, so the public route
+    always gives `None`.
+  - `CompetitionEntry` and `CompetitionAccount` (`perps::api::competition`) gain
+    `first_fill_at: Option<u64>`, the account's first counted fill, a tie-break after boosted
+    volume.
+  - New route: `perps.public().builder(address)`, an address's public builder profile
+    (`BuilderProfile`: registration, enablement, the platform's admission switch, the fee cap and
+    the display name).
+  - The builder routes under `/v1/account/*` and the `builder` field on orders belong to the
+    authenticated slice, which is not implemented; they are mirrored only.
+
+- **CLOB spec drift (#73).** Rebates, heartbeats and notification type 11. Two signatures change,
+  so this release raises the 0.x minor for clob.
+  - `GET /rebates/current` answers `null` for a maker with no rows, the common case, which
+    `current_rebates` failed on with "invalid type: null, expected a sequence". It now returns
+    `CurrentRebatesRequest`, whose `send()` reads `null` as an empty `Vec<RebatedFees>`;
+    `.current_rebates(date, maker).send().await` compiles as before.
+  - `account_api().heartbeat_v1()` posted no body, so the venue refused every call with a `400`.
+    It is now `heartbeat_v1(heartbeat_id)`, returning `HeartbeatV1Response { heartbeat_id }`:
+    send `""` first, then each ID a response returns. An ID the venue does not hold is the new
+    `ClobError::HeartbeatIdMismatch { expected }`, a `VenueRefusal` that is not a fault, carrying
+    the ID to resend with (empty after a legacy send). `HeartbeatResponse` and
+    `HeartbeatV1Response` are re-exported from `clob`.
+  - Heartbeats arm a dead man's switch, which both methods' docs now say: the first accepted send
+    arms cancellation of every open order the API key owns, 10 seconds without an accepted send
+    queues a cancel-all, and nothing disarms it.
+  - Notifications gain type 11 (taker tier upgraded); `notification_type` is a `u32`, so it
+    already decoded. `GET /rewards/user/total` rows may carry `native_earnings` and
+    `sponsored_earnings`, which `RewardTotalEarnings`' raw `data` already keeps.
 
 ## [0.43.0] - 2026-10-22
 

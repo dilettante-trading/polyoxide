@@ -245,7 +245,7 @@ fn token_module_spells_what_the_schema_enumerates() {
     // list to the schema itself; the variant is open, so a later module still decodes.
     assert_eq!(
         wire(TokenModule::ALL),
-        set(&["v1_ctf", "binary", "neg_risk", "combo"]),
+        set(&["v1_ctf", "binary", "neg_risk", "combo", "directional"]),
         "TokenModule"
     );
     round_trips(TokenModule::ALL);

@@ -41,6 +41,17 @@ adopted.
 | `instrument_settled.json` | `https://api.perpetuals.polymarket.com/v1/info/instruments?instrument_id=51` |
 | `competitions.json` | `https://api.perpetuals.polymarket.com/v1/info/competitions?address=0xE0Ebcff994a0f3A644634927aE1B68913ad58A39` |
 
+## Captured 2026-10-23 (drift #76)
+
+One fixture was added for the route the drift adopted; the rest were not
+recaptured. The hand-written `competition_leaderboard.json` and
+`competition_account.json` gained the now-documented `first_fill_at` on the
+ranked, paid row.
+
+| Fixture | Request |
+|---------|---------|
+| `builder.json` | `https://api.perpetuals.polymarket.com/v1/info/builder?address=0xE0Ebcff994a0f3A644634927aE1B68913ad58A39` |
+
 No competition existed at capture time: every competition id answered 404, and
 the widget held only its timestamp,
 so these were written by hand from `docs/specs/perps/openapi.json` and kept:

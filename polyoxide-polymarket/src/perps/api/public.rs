@@ -1,5 +1,5 @@
 //! Public-by-address lookups and the invite check:
-//! `/v1/info/{portfolio,position-fills,leaderboard,invite,registered,position-snapshots}`.
+//! `/v1/info/{portfolio,position-fills,leaderboard,invite,registered,builder,position-snapshots}`.
 
 use std::collections::BTreeSet;
 
@@ -73,6 +73,15 @@ impl PublicApi {
     pub fn registered(&self, address: impl Into<String>) -> Fetch<Registered> {
         Fetch {
             request: Request::new(self.http_client.clone(), "/v1/info/registered")
+                .query("address", address.into()),
+        }
+    }
+
+    /// `GET /v1/info/builder`: an address's public builder profile, whether
+    /// or not it is a registered builder.
+    pub fn builder(&self, address: impl Into<String>) -> Fetch<BuilderProfile> {
+        Fetch {
+            request: Request::new(self.http_client.clone(), "/v1/info/builder")
                 .query("address", address.into()),
         }
     }
@@ -305,6 +314,42 @@ pub struct Registered {
     pub registered: bool,
 }
 
+/// Builder terms an order saved: who receives the additional fee, and at
+/// what rate. Saved terms outlive a revoked approval for orders already
+/// placed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct BuilderTerms {
+    /// The builder's registered Perps account.
+    pub address: String,
+    /// Additional fee as a fraction of executed notional, `0` to `0.001`.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub fee_rate: Decimal,
+}
+
+/// `GET /v1/info/builder`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct BuilderProfile {
+    /// The address asked about.
+    pub address: String,
+    /// Whether the address is a registered builder.
+    pub registered: bool,
+    /// Whether the builder takes new orders; saved terms stay valid while
+    /// it is disabled.
+    pub enabled: bool,
+    /// The platform-wide switch admitting builder codes on orders.
+    pub admission_enabled: bool,
+    /// Highest additional fee a builder may charge, as a fraction of
+    /// executed notional. The host sends the platform cap, `0.001`, for an
+    /// unregistered address too.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub max_fee_rate: Decimal,
+    /// Saved display name; `None` for an unregistered address or a builder
+    /// that saved none.
+    pub name: Option<String>,
+}
+
 /// `POST /v1/info/position-snapshots`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -458,9 +503,6 @@ pub struct PositionFills {
 }
 
 /// One fill behind a current position.
-///
-/// `builder_fee` and `total_fee` are on the wire and not in the published
-/// schema (`docs/specs/perps/OBSERVED.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PositionFill {
@@ -480,17 +522,23 @@ pub struct PositionFill {
     pub quantity: Decimal,
     /// Whether the account was the taker.
     pub taker: bool,
-    /// Fee paid.
+    /// Exchange fee, excluding `builder_fee`. Negative is a rebate.
     #[serde(with = "rust_decimal::serde::str")]
     pub fee: Decimal,
-    /// Asset the fee was paid in.
+    /// Asset `fee`, `builder_fee` and `total_fee` are paid in.
     pub fee_asset: String,
-    /// Fee paid to the order's builder. Undocumented.
-    #[serde(default, with = "rust_decimal::serde::str_option")]
-    pub builder_fee: Option<Decimal>,
-    /// `fee` plus `builder_fee`. Undocumented.
-    #[serde(default, with = "rust_decimal::serde::str_option")]
-    pub total_fee: Option<Decimal>,
+    /// Additional fee paid to the order's builder, never negative: `0` for
+    /// an untagged fill, an older one or a forced liquidation leg.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub builder_fee: Decimal,
+    /// `fee` plus `builder_fee`, exactly. Negative when the rebate exceeds
+    /// the builder's charge.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub total_fee: Decimal,
+    /// The builder terms the order saved. Sent only on the authenticated
+    /// account's own fills, so always `None` here, even when `builder_fee`
+    /// is not zero.
+    pub builder: Option<BuilderTerms>,
     /// Whether this fill closed the position at an instrument's permanent
     /// settlement, at the settlement price with no fee or liquidation
     /// penalty. Neither a market trade nor auto-deleveraging.
@@ -501,7 +549,8 @@ pub struct PositionFill {
     /// Entry price before the fill.
     #[serde(with = "rust_decimal::serde::str")]
     pub previous_entry_price: Decimal,
-    /// Realised PnL from the fill.
+    /// Realised trading PnL from the fill, before the exchange and builder
+    /// fees: subtract `total_fee` once for the fill's net result.
     #[serde(with = "rust_decimal::serde::str")]
     pub pnl: Decimal,
     /// Whether the fill was a liquidation.

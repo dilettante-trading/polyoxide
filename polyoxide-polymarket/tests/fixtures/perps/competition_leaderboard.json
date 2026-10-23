@@ -16,7 +16,8 @@
       "row_state": "paid",
       "prize": "10000",
       "paid_at": 1792627300000,
-      "payout_tx_hash": "0x9f3c1e2d4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0"
+      "payout_tx_hash": "0x9f3c1e2d4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0",
+      "first_fill_at": 1792022461234
     },
     {
       "account": "0x1234567890abcdef1234567890abcdef12345678",
