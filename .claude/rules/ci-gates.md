@@ -194,7 +194,7 @@ stage does not hold, printing each one's key to copy there.
   gained `MIGRATION` (R16); and sixteen perps items that adopting its drift (#56) moved, among them
   `spec_agreement_perps`'s and `wire_agreement_perps`'s tables, four `mock_perps` tests,
   `perps::types`' enum test and the `leaderboard.json` and `leaderboard_account.json` fixtures
-  (R17).
+  (R17), seven of which adopting its builder-fee drift (#76) moved again and now cite R18.
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

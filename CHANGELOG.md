@@ -5,6 +5,24 @@
   this is additive, but a `directional` row that decoded as `Other("directional")` now decodes as
   `Directional`. No such token has been seen on the wire yet.
 
+- **Perps spec drift (#76).** Builder fees, `/v1/info/builder` and `first_fill_at` (DRIFT R18).
+  Two field types change, so this release raises the 0.x minor for perps.
+  - `PositionFill::builder_fee` and `PositionFill::total_fee` (`perps::api::public`) are `Decimal`
+    where they were `Option<Decimal>`: the spec now documents and requires both, and the host sent
+    them on every row. Replace `Some(x)` with `x`. `builder_fee` is the builder's additional fee,
+    never negative; `total_fee` is `fee` plus `builder_fee`, and `pnl` is before both.
+  - `PositionFill` gains `builder: Option<BuilderTerms>`, the order's saved builder address and
+    fee rate. The host sends it only on an authenticated account's own fills, so the public route
+    always gives `None`.
+  - `CompetitionEntry` and `CompetitionAccount` (`perps::api::competition`) gain
+    `first_fill_at: Option<u64>`, the account's first counted fill, a tie-break after boosted
+    volume.
+  - New route: `perps.public().builder(address)`, an address's public builder profile
+    (`BuilderProfile`: registration, enablement, the platform's admission switch, the fee cap and
+    the display name).
+  - The builder routes under `/v1/account/*` and the `builder` field on orders belong to the
+    authenticated slice, which is not implemented; they are mirrored only.
+
 ## [0.43.0] - 2026-10-22
 
 Kalshi's catalog routes (#71): the reads a catalog kept in sync needs, and the market-data traits

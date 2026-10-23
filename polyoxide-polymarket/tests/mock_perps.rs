@@ -444,7 +444,7 @@ async fn portfolio_position_fills_and_invite_decode() {
             Matcher::UrlEncoded("cursor".into(), "c1".into()),
             Matcher::UrlEncoded("sort".into(), "asc".into()),
         ]))
-        .with_body(r#"{"data":[{"trade_id":1,"order_id":2,"instrument_id":1,"side":"short","price":"1","quantity":"2","taker":true,"fee":"0.1","fee_asset":"pUSD","settlement":false,"previous_size":"0","previous_entry_price":"0","pnl":"0","liquidation":false,"adl":false,"timestamp":1,"hash":"0x"}],"more":true,"cursor":"c2"}"#)
+        .with_body(r#"{"data":[{"trade_id":1,"order_id":2,"instrument_id":1,"side":"short","price":"1","quantity":"2","taker":true,"fee":"0.1","builder_fee":"0","total_fee":"0.1","fee_asset":"pUSD","settlement":false,"previous_size":"0","previous_entry_price":"0","pnl":"0","liquidation":false,"adl":false,"timestamp":1,"hash":"0x"}],"more":true,"cursor":"c2"}"#)
         .create_async()
         .await;
     let invite = server
@@ -785,6 +785,56 @@ async fn registered_sends_the_address_and_decodes() {
         .expect("registered");
     mock.assert_async().await;
     assert!(!answer.registered);
+}
+
+#[tokio::test]
+async fn builder_sends_the_address_and_decodes() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/builder")
+        .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
+        .with_body(r#"{"address":"0xabc","registered":true,"enabled":false,"admission_enabled":true,"max_fee_rate":"0.0005","name":"Desk"}"#)
+        .create_async()
+        .await;
+
+    let profile = test_perps(&server)
+        .public()
+        .builder("0xabc")
+        .send()
+        .await
+        .expect("builder");
+    mock.assert_async().await;
+    assert!(profile.registered);
+    assert!(!profile.enabled);
+    assert!(profile.admission_enabled);
+    assert_eq!(profile.max_fee_rate, Decimal::new(5, 4));
+    assert_eq!(profile.name.as_deref(), Some("Desk"));
+}
+
+#[tokio::test]
+async fn a_fill_with_a_builder_fee_decodes_its_terms_and_signed_total() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/position-fills")
+        .match_query(Matcher::Any)
+        .with_body(r#"{"data":[{"trade_id":1,"order_id":2,"instrument_id":1,"side":"long","price":"100","quantity":"2","taker":false,"fee":"-0.01","builder_fee":"0.2","total_fee":"0.19","builder":{"address":"0xb","fee_rate":"0.001"},"fee_asset":"pUSD","settlement":false,"previous_size":"0","previous_entry_price":"0","pnl":"0","liquidation":false,"adl":false,"timestamp":1,"hash":"0x"}],"more":false}"#)
+        .create_async()
+        .await;
+
+    let fills = test_perps(&server)
+        .public()
+        .position_fills("0xabc", InstrumentId(1))
+        .send()
+        .await
+        .expect("position fills");
+    mock.assert_async().await;
+    let fill = &fills.data[0];
+    assert_eq!(fill.fee, Decimal::new(-1, 2));
+    assert_eq!(fill.builder_fee, Decimal::new(2, 1));
+    assert_eq!(fill.total_fee, Decimal::new(19, 2));
+    let terms = fill.builder.as_ref().expect("builder terms");
+    assert_eq!(terms.address, "0xb");
+    assert_eq!(terms.fee_rate, Decimal::new(1, 3));
 }
 
 #[tokio::test]

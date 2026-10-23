@@ -128,8 +128,6 @@ fn ref_name(r: &str) -> &str {
 /// `Option` on the type and have an entry in OBSERVED.md.
 const OBSERVED_EXTRA: &[(&str, &str)] = &[
     ("Instrument", "logo"),
-    ("AccountTradeData", "builder_fee"),
-    ("AccountTradeData", "total_fee"),
     ("LeaderboardEntry", "instruments_traded"),
     ("LeaderboardEntry", "top_instrument_ids"),
     ("LeaderboardAccount", "instruments_traded"),
@@ -190,6 +188,7 @@ agreement! {
     "PublicPortfolioPosition" => PublicPortfolioPosition,
     "AccountTrades" => PositionFills,
     "AccountTradeData" => PositionFill,
+    "Builder" => BuilderTerms,
     "Leaderboard" => Leaderboard,
     "LeaderboardEntry" => LeaderboardEntry,
     "LeaderboardAccount" => LeaderboardAccount,
@@ -269,6 +268,22 @@ fn every_reachable_object_schema_is_modelled_or_excused() {
         unaccounted.is_empty(),
         "schemas neither modelled nor excused: {unaccounted:?}"
     );
+}
+
+/// `GET /v1/info/builder` answers an inline `allOf` rather than a named
+/// schema, so its type is held to that schema under a name of its own.
+#[test]
+fn the_builder_profile_agrees_with_its_inline_schema() {
+    let mut schemas = schemas();
+    let inline = spec()["paths"]["/v1/info/builder"]["get"]["responses"]["200"]["content"]
+        ["application/json"]["schema"]
+        .clone();
+    assert!(
+        inline.get("allOf").is_some(),
+        "the response is still inline"
+    );
+    schemas.insert("BuilderProfile".to_owned(), inline);
+    check::<BuilderProfile>(&schemas, "BuilderProfile");
 }
 
 #[test]
@@ -494,6 +509,9 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v1/info/registered", "registered", |p| {
         Box::pin(async move { p.public().registered("0xabc").send().await.map(|_| ()) })
+    }),
+    ("/v1/info/builder", "builder", |p| {
+        Box::pin(async move { p.public().builder("0xabc").send().await.map(|_| ()) })
     }),
     ("/v1/info/competitions", "competitions", |p| {
         Box::pin(async move {

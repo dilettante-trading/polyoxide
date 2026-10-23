@@ -228,10 +228,10 @@ pub struct FeeScheduleEntry {
     pub instrument_type: InstrumentType,
     /// Category.
     pub category: InstrumentCategory,
-    /// Base taker fee rate.
+    /// Base exchange taker fee rate, excluding any builder fee.
     #[serde(with = "rust_decimal::serde::str")]
     pub taker_fee_rate: Decimal,
-    /// Base maker fee rate.
+    /// Base exchange maker fee rate, excluding any builder fee.
     #[serde(with = "rust_decimal::serde::str")]
     pub maker_fee_rate: Decimal,
     /// Volume tiers.
@@ -245,10 +245,10 @@ pub struct FeeTier {
     /// 30-day volume at which the tier starts.
     #[serde(with = "rust_decimal::serde::str")]
     pub min_volume_30d: Decimal,
-    /// Taker fee rate.
+    /// Exchange taker fee rate, excluding any builder fee.
     #[serde(with = "rust_decimal::serde::str")]
     pub taker_fee_rate: Decimal,
-    /// Maker fee rate.
+    /// Exchange maker fee rate, excluding any builder fee.
     #[serde(with = "rust_decimal::serde::str")]
     pub maker_fee_rate: Decimal,
 }

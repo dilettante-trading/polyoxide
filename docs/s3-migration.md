@@ -154,6 +154,27 @@ renamed, and no signature changes.
   `perps::types`. No competition has existed yet, so the competition types are modelled from the
   spec alone.
 
+## Perps: the spec's builder-fee drift (#76)
+
+**Consumer impact: breaking for perps.** Two field types change (DRIFT R18); nothing is
+removed, and the rest is additive.
+
+- `PositionFill::builder_fee` and `PositionFill::total_fee` (`perps::api::public`) are `Decimal`
+  where they were `Option<Decimal>`: the spec now documents and requires both, and the host sent
+  them on every row. Replace `Some(x)` with `x`. `builder_fee` is the builder's additional fee,
+  never negative; `total_fee` is `fee` plus `builder_fee`, and `pnl` is before both.
+- `PositionFill` gains `builder: Option<BuilderTerms>`, the order's saved builder address and
+  fee rate. The host sends it only on an authenticated account's own fills, so the public route
+  always gives `None`.
+- `CompetitionEntry` and `CompetitionAccount` (`perps::api::competition`) gain
+  `first_fill_at: Option<u64>`, the account's first counted fill, a tie-break after boosted
+  volume.
+- New route: `perps.public().builder(address)`, an address's public builder profile
+  (`BuilderProfile`: registration, enablement, the platform's admission switch, the fee cap and
+  the display name).
+- The builder routes under `/v1/account/*` and the `builder` field on orders belong to the
+  authenticated slice, which is not implemented; they are mirrored only.
+
 ## Epic 9: Kalshi published
 
 **Consumer impact: additive.** Nothing is removed or renamed, and no signature changes; code

@@ -16,8 +16,6 @@ modelled as an `Option` and allowed through `OBSERVED_EXTRA` in
 | Schema | Field | Seen as | Note |
 |--------|-------|---------|------|
 | `Instrument` | `logo` | `{"light": URL, "dark": URL}` | on 84 of 88 rows; an object, one SVG per colour scheme, never a bare URL |
-| `AccountTradeData` | `builder_fee` | `"0"` | on every row |
-| `AccountTradeData` | `total_fee` | decimal string | on every row; equal to `fee` when `builder_fee` is `0` |
 | `LimitTier` | `connects_per_minute_limit` | `4294967295` on every tier | WebSocket budget name |
 | `LimitTier` | `max_connections` | `4294967295` on every tier | WebSocket budget name |
 | `LimitTier` | `ws_messages_burst_limit` | `4294967295` on every tier | WebSocket budget name |
@@ -29,6 +27,9 @@ modelled as an `Option` and allowed through `OBSERVED_EXTRA` in
 Until the 2026-10-21 adoption (#56) the table also held `Instrument`'s `display_symbol`
 and `close_only` and both trade schemas' `settlement`, which the spec now documents;
 `close_only` and `settlement` were on every row, so they became plain `bool`s.
+Until the 2026-10-23 adoption (#76) it also held `AccountTradeData`'s `builder_fee` and
+`total_fee`, which the spec now documents and requires; both were on all 59 rows of a
+2026-10-23 sample, as on every captured row before, so they became plain `Decimal`s.
 
 The four `LimitTier` extras are `u32::MAX` on all four tiers in
 `limit_tiers.json`: a sentinel (unset or unlimited), not a budget. They must
@@ -311,3 +312,19 @@ that day and pushed a trade within 4 s.
   leaves the socket open. Not soaked. `LimitTier`'s WebSocket fields are a
   sentinel (see above). The supervised tier retries a rate-limited subscribe
   three times with backoff.
+
+## Builders (`/v1/info/builder`, builder fees on fills)
+
+Probed 2026-10-23 (`builder.json` in the fixtures).
+
+- `GET /v1/info/builder` answers `200` for any well-formed address, registered or not.
+  An unregistered one comes back `registered: false`, `enabled: false`, `name: null`,
+  with `max_fee_rate` `"0.001"`, the platform cap, rather than a zero, and
+  `admission_enabled: true`, the platform switch, which the spec says starts `false`.
+  Without `address` it is a `400` (`invalid query parameters: missing field
+  \`address\``), and with a malformed one a `400` `invalid address`.
+- `GET /v1/info/position-fills` sent no `builder` object on any of 59 rows across two
+  instruments, as the spec says of public history; every `builder_fee` was `"0"`, and
+  `total_fee` equalled `fee` plus `builder_fee` exactly. Some fees carry 29 significant
+  digits, so a check of that sum needs more than Python's default 28-digit `Decimal`
+  context; `rust_decimal` holds them.

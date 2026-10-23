@@ -10,7 +10,7 @@ paths:
 
 # Polymarket perps
 
-The `perps` module implements the 28 public `/v1/info/*` routes of `api.perpetuals.polymarket.com`
+The `perps` module implements the 29 public `/v1/info/*` routes of `api.perpetuals.polymarket.com`
 (`perps::Perps::new()`; namespaces `health()`, `exchange()`, `market()`, `public()`,
 `competitions()`; its own builder knob is `with_rate_limiter`). Pending: credentials (perps has
 its own `POLYMARKET-PROXY`/`POLYMARKET-SECRET` header auth, not the L1/L2 scheme), the

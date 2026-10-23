@@ -32,5 +32,6 @@
   "score_to_prize_zone": "0",
   "paid_at": 1792627300000,
   "payout_tx_hash": "0x9f3c1e2d4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0",
+  "first_fill_at": 1792022461234,
   "updated_at": 1792627200000
 }
