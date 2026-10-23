@@ -1,5 +1,23 @@
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-23
+
+Six schema-drift issues adopted (#72 to #76 and #78). Two of them change public signatures, in perps
+(#76) and the CLOB (#73), so the 0.x minor rises. Nothing is removed, so
+[`docs/s3-removals.md`](docs/s3-removals.md) still lists nothing, and no build gains a crate. The
+perps AsyncAPI (#74) and Kalshi OpenAPI (#75) mirrors are adopted with no code change: every route
+or channel they add or change is one the client does not implement.
+
+- **Kalshi's order-book clock (#72).** Upstream's AsyncAPI requires `clock` on
+  `orderbook_snapshot` and `orderbook_delta`: an exchange clock that every connection sends the
+  same, so a consumer with redundant connections can line its books up by it.
+  `OrderbookSnapshot` and `OrderbookDelta` (`predictions::ws`) gain `clock: Option<u64>`, `None`
+  until a frame carries it, since no capture has one yet. The socket still finds a missed frame by
+  `seq`: a market's clock skips values and can go down across exchange maintenance. The raw
+  `frames::SnapshotMsg` and `frames::DeltaMsg` gain the same field, and they are not
+  `#[non_exhaustive]`, so a struct literal of either needs `clock`. The new RFQ batch channel and
+  `quote_executed`'s `rfq_batch_id` are mirrored only.
+
 - **Data v2 token module `directional` (#78).** Upstream's `TokenModule` schema gained
   `directional`, which `data::v2::types::TokenModule` gains as `Directional`. The enum is open, so
   this is additive, but a `directional` row that decoded as `Other("directional")` now decodes as
@@ -41,6 +59,23 @@
   - Notifications gain type 11 (taker tier upgraded); `notification_type` is a `u32`, so it
     already decoded. `GET /rewards/user/total` rows may carry `native_earnings` and
     `sponsored_earnings`, which `RewardTotalEarnings`' raw `data` already keeps.
+
+### 🚀 Features
+
+- *(perps)* Adopt the perps builder-fee spec drift ([#76](https://github.com/dilettante-trading/polyoxide/issues/76))
+- *(data)* TokenModule::Directional, adopting drift issue [#78](https://github.com/dilettante-trading/polyoxide/issues/78)
+- *(kalshi)* Adopt Kalshi's AsyncAPI drift, the order book's exchange clock ([#72](https://github.com/dilettante-trading/polyoxide/issues/72))
+
+### 🐛 Bug Fixes
+
+- *(clob)* Adopt schema drift [#73](https://github.com/dilettante-trading/polyoxide/issues/73): null rebates, heartbeat_v1's body
+
+### 📚 Documentation
+
+- *(claude)* Split CLAUDE.md into a lean root and path-scoped rules
+- *(mutants)* Re-cite and re-prove rows (e) after ClobError::HeartbeatIdMismatch
+- *(spec)* Adopt the perps AsyncAPI drift ([#74](https://github.com/dilettante-trading/polyoxide/issues/74))
+- *(specs)* Adopt Kalshi's OpenAPI drift ([#75](https://github.com/dilettante-trading/polyoxide/issues/75))
 
 ## [0.43.0] - 2026-10-22
 
