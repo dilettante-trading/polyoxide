@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+- **Data v2 token module `directional` (#78).** Upstream's `TokenModule` schema gained
+  `directional`, which `data::v2::types::TokenModule` gains as `Directional`. The enum is open, so
+  this is additive, but a `directional` row that decoded as `Other("directional")` now decodes as
+  `Directional`. No such token has been seen on the wire yet.
+
 - **Perps spec drift (#76).** Builder fees, `/v1/info/builder` and `first_fill_at` (DRIFT R18).
   Two field types change, so this release raises the 0.x minor for perps.
   - `PositionFill::builder_fee` and `PositionFill::total_fee` (`perps::api::public`) are `Decimal`

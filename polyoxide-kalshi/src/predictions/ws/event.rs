@@ -66,6 +66,11 @@ pub struct OrderbookSnapshot {
     pub bids: Vec<Level>,
     /// The YES asks, lowest price first: the NO bids, in YES pricing.
     pub asks: Vec<Level>,
+    /// The exchange clock of the newest change the book includes, 0 when the market has
+    /// had none, when Kalshi said. The book holds every change at or below it and none
+    /// above, and every connection sends the same clock, so a consumer with redundant
+    /// connections can line their books up by it.
+    pub clock: Option<u64>,
 }
 
 /// One change to one price level of a book, in YES pricing.
@@ -81,6 +86,12 @@ pub struct OrderbookDelta {
     pub price: Decimal,
     /// The change to the size resting there: negative when contracts left.
     pub delta: Decimal,
+    /// The exchange clock of the action that made the change, when Kalshi said. Every
+    /// connection sends the same clock for the same change, and the deltas one action
+    /// makes share it. A market's clock skips values, can go down across exchange
+    /// maintenance and is not comparable with another market's, so the socket finds a
+    /// missed frame by `seq`, never by the clock.
+    pub clock: Option<u64>,
     /// When Kalshi recorded the change, when it said.
     pub ts: Option<UnixMillis>,
     /// The `client_order_id` of the account's own order that caused the change, when it
@@ -204,6 +215,7 @@ impl From<frames::SnapshotMsg> for OrderbookSnapshot {
             market_id: msg.market_id,
             bids,
             asks,
+            clock: msg.clock,
         }
     }
 }
@@ -219,6 +231,7 @@ impl From<frames::DeltaMsg> for OrderbookDelta {
             side,
             price: msg.price_dollars,
             delta: msg.delta_fp,
+            clock: msg.clock,
             ts: msg.ts_ms.map(UnixMillis),
             client_order_id: msg.client_order_id,
         }
@@ -410,6 +423,10 @@ pub mod frames {
         pub market_ticker: String,
         /// The market's id.
         pub market_id: String,
+        /// The exchange clock of the newest change the snapshot includes. The mirror
+        /// requires it (#72); the captures predate it, so it is optional.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub clock: Option<u64>,
         /// The YES levels; the key is absent when the side has no offers.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub yes_dollars_fp: Vec<PriceLevel>,
@@ -456,6 +473,10 @@ pub mod frames {
         pub market_ticker: String,
         /// The market's id.
         pub market_id: String,
+        /// The exchange clock of the action that made the change. The mirror requires it
+        /// (#72); the captures predate it, so it is optional.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub clock: Option<u64>,
         /// The level's price.
         #[serde(with = "rust_decimal::serde::str")]
         pub price_dollars: Decimal,
@@ -592,8 +613,9 @@ pub mod frames {
 mod tests {
     use super::*;
 
-    // The mirror's own example (`docs/specs/kalshi/asyncapi.yaml`, version 2.0.0), as the
-    // `msg` of a snapshot, in the order Kalshi lists a side: ascending price.
+    // The mirror's own example (`docs/specs/kalshi/asyncapi.yaml`, version 2.0.0) before
+    // upstream added `clock` (#72), as the `msg` of a snapshot, in the order Kalshi lists a
+    // side: ascending price.
     const SNAPSHOT_MSG: &str = r#"{"market_ticker":"FED-23DEC-T3.00","market_id":"9b0f6b43-5b68-4f9f-9f02-9a2d1b8ac1a1","yes_dollars_fp":[["0.0800","300.00"],["0.2200","333.00"]],"no_dollars_fp":[["0.5400","20.00"],["0.5600","146.00"]]}"#;
 
     fn level(price: &str, size: &str) -> Level {
@@ -677,6 +699,42 @@ mod tests {
     fn an_unknown_side_does_not_decode() {
         let sideways = r#"{"market_ticker":"A-1","market_id":"id","price_dollars":"0.5000","delta_fp":"1.00","side":"maybe"}"#;
         assert!(serde_json::from_str::<frames::DeltaMsg>(sideways).is_err());
+    }
+
+    // The mirror's examples since upstream added the exchange clock (#72), as the `msg` of
+    // a snapshot and of a delta.
+    const CLOCKED_SNAPSHOT_MSG: &str = r#"{"market_ticker":"FED-23DEC-T3.00","market_id":"9b0f6b43-5b68-4f9f-9f02-9a2d1b8ac1a1","clock":4182057,"yes_dollars_fp":[["0.0800","300.00"],["0.2200","333.00"]],"no_dollars_fp":[["0.5400","20.00"],["0.5600","146.00"]]}"#;
+    const CLOCKED_DELTA_MSG: &str = r#"{"market_ticker":"FED-23DEC-T3.00","market_id":"9b0f6b43-5b68-4f9f-9f02-9a2d1b8ac1a1","clock":4182061,"price_dollars":"0.9600","delta_fp":"-54.00","side":"yes","ts":"2022-11-22T20:44:01Z","ts_ms":1669149841000}"#;
+
+    #[test]
+    fn a_snapshot_and_a_delta_carry_the_exchange_clock() {
+        assert_eq!(snapshot(CLOCKED_SNAPSHOT_MSG).clock, Some(4_182_057));
+        assert_eq!(delta(CLOCKED_DELTA_MSG).clock, Some(4_182_061));
+    }
+
+    #[test]
+    fn a_snapshot_and_a_delta_without_a_clock_still_decode() {
+        // Bug: requiring the key because the mirror does, before the wire is seen to send
+        // it, which would skip every order-book frame the captures hold.
+        assert_eq!(snapshot(SNAPSHOT_MSG).clock, None);
+        let unclocked = CLOCKED_DELTA_MSG.replace(r#""clock":4182061,"#, "");
+        assert_ne!(
+            unclocked, CLOCKED_DELTA_MSG,
+            "the replacement found its key"
+        );
+        assert_eq!(delta(&unclocked).clock, None);
+    }
+
+    #[test]
+    fn the_snapshot_and_delta_types_write_back_every_key_the_mirrors_examples_carry() {
+        // Bug: a clock the frame types drop, which the live suite's drift detector would
+        // call unmodelled once the wire sends it.
+        let wire: serde_json::Value = serde_json::from_str(CLOCKED_SNAPSHOT_MSG).unwrap();
+        let msg = serde_json::from_str::<frames::SnapshotMsg>(CLOCKED_SNAPSHOT_MSG).unwrap();
+        assert_eq!(serde_json::to_value(msg).unwrap(), wire);
+        let wire: serde_json::Value = serde_json::from_str(CLOCKED_DELTA_MSG).unwrap();
+        let msg = serde_json::from_str::<frames::DeltaMsg>(CLOCKED_DELTA_MSG).unwrap();
+        assert_eq!(serde_json::to_value(msg).unwrap(), wire);
     }
     // The mirror's own examples for the two channels (`docs/specs/kalshi/asyncapi.yaml`,
     // version 2.0.0), as the `msg` of a frame.
