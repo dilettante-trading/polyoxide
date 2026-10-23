@@ -19,9 +19,13 @@ use serde_json::Value;
 const ASYNCAPI: &str = include_str!("../../docs/specs/kalshi/asyncapi.yaml");
 
 /// `(schema, key)`: keys the mirror requires of a payload's `msg` that the capture does not
-/// carry, each an `Option` of its type and recorded in `docs/specs/kalshi/OBSERVED.md`. Empty
-/// until the capture lacks a key the mirror requires; a developer who meets one adds its row.
-const ABSENT_ON_THE_WIRE: &[(&str, &str)] = &[];
+/// carry, each an `Option` of its type and recorded in `docs/specs/kalshi/OBSERVED.md`. A
+/// developer who meets one adds its row, and removes it once a capture carries the key.
+const ABSENT_ON_THE_WIRE: &[(&str, &str)] = &[
+    // Upstream required the exchange clock on 2026-10-22 (#72), after the captures.
+    ("orderbookSnapshotPayload", "clock"),
+    ("orderbookDeltaPayload", "clock"),
+];
 
 fn asyncapi() -> Value {
     let options = serde_saphyr::options! { budget: None };
@@ -322,6 +326,66 @@ fn the_ticker_and_trade_types_write_every_key_the_asyncapi_requires_of_them() {
             );
         }
     }
+}
+
+/// Every key the mirror requires of `schema`'s `msg` is one `T` writes for the captured
+/// `text`. A key the capture lacks (`ABSENT_ON_THE_WIRE`) is added to it first, with the
+/// value of `message`'s example in the mirror, and the frame must still agree, so an excused
+/// key is one the type models, not one it merely skips.
+fn assert_models_every_required_key<T: DeserializeOwned + Serialize>(
+    spec: &Value,
+    schema: &str,
+    message: &str,
+    text: &str,
+) {
+    let required = spec["components"]["schemas"][schema]["properties"]["msg"]["required"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{schema} lists no required keys in the mirror"));
+    let example = &spec["components"]["messages"][message]["examples"][0]["payload"]["msg"];
+    let mut frame: Value = serde_json::from_str(text).expect("the fixture is JSON");
+    for key in required.iter().filter_map(Value::as_str) {
+        if !ABSENT_ON_THE_WIRE.contains(&(schema, key)) {
+            continue;
+        }
+        assert!(
+            frame["msg"].get(key).is_none(),
+            "{schema}: the capture carries {key}, so its ABSENT_ON_THE_WIRE row is stale"
+        );
+        assert!(
+            !example[key].is_null(),
+            "{message}: the mirror's example carries no {key} to add"
+        );
+        frame["msg"][key] = example[key].clone();
+    }
+    let completed = frame.to_string();
+    assert_agrees::<T>(schema, &completed);
+    let written = written_msg_keys::<T>(&completed);
+    for key in required.iter().filter_map(Value::as_str) {
+        assert!(
+            written.contains(key),
+            "{schema}: the mirror requires {key}, which the type does not write"
+        );
+    }
+}
+
+#[test]
+fn the_snapshot_and_delta_types_model_every_key_the_asyncapi_requires_of_them() {
+    // The spec-agreement coverage of `orderbookSnapshotPayload` and `orderbookDeltaPayload`,
+    // as the ticker and trade test above is of theirs.
+    let spec = asyncapi();
+    assert_models_every_required_key::<Snapshot>(
+        &spec,
+        "orderbookSnapshotPayload",
+        "orderbookSnapshot",
+        &ws().text("snapshot"),
+    );
+    let deltas = ws().json("deltas");
+    assert_models_every_required_key::<Delta>(
+        &spec,
+        "orderbookDeltaPayload",
+        "orderbookDelta",
+        &deltas[0].to_string(),
+    );
 }
 
 #[test]

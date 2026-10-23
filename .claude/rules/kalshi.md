@@ -102,6 +102,12 @@ mirrored in `docs/specs/kalshi/`, and `OBSERVED.md` records where its hosts part
   `get_snapshot`; at once and unrecorded during an outage, since the replay brings a fresh snapshot
   of every ticker; and `PredictionsWsError::InvalidRequest` for a ticker outside the membership or
   without the order-book channel.
+- **The exchange clock.** `OrderbookSnapshot::clock` and `OrderbookDelta::clock` carry the
+  `clock` the AsyncAPI has required since #72 (2026-10-22): the same on every connection, so a
+  consumer with redundant connections can match a market's updates by it. They are optional,
+  since no capture carries the key yet (`ABSENT_ON_THE_WIRE` in
+  `wire_agreement_predictions_ws.rs`). The socket finds a gap by `seq` alone, and `Books` does
+  not read the clock.
 - The kit's `request` consumes an answer before `decode` sees it, so the request's correlation
   closure counts the answers and the pushes it reads while it waits, and `decode` counts a push
   the closure kept only once; a gap an answer showed is raised by the next frame.

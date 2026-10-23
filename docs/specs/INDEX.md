@@ -109,5 +109,5 @@ entirely.
 | [rtds/asyncapi-live-data.json](rtds/asyncapi-live-data.json) | RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md) | `polyoxide-polymarket` |
 | [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (29 channels) — six public channels implemented (`perps-ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md) | `polyoxide-polymarket` |
 | [combos-rfq/asyncapi.json](combos-rfq/asyncapi.json) | RFQ quoter gateway — not implemented | — |
-| [kalshi/asyncapi.yaml](kalshi/asyncapi.yaml) | Trade API WebSocket (15 channels); `orderbook_delta`, `ticker` and `trade` are implemented | `polyoxide-kalshi` |
+| [kalshi/asyncapi.yaml](kalshi/asyncapi.yaml) | Trade API WebSocket (16 channels); `orderbook_delta`, `ticker` and `trade` are implemented | `polyoxide-kalshi` |
 <!-- generated:end index-asyncapi -->
