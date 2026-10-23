@@ -215,7 +215,10 @@ the live host 2026-10-18; its fixture is `tests/fixtures/data/v2/tokens.json`.
 - **Rows always carry every key.** The five required properties were present on every
   row seen, and each nullable one was present as `null`, never omitted. Only `v1_ctf`
   and `neg_risk` rows were seen: no `binary` or `combo` token turned up, so those two
-  spellings come from the schema's enum alone, and `module` stays open.
+  spellings come from the schema's enum alone, and `module` stays open. The enum gained
+  `directional` (#78, 2026-10-23) with no description of it; the 188 tokens of the
+  latest 500 `/v2/trades` rows were all `v1_ctf` that day, so it too is the schema's
+  spelling alone.
 - **No cache header.** The response carries no `cache-control`. The route was not
   soaked, so it takes the client's general bucket and no row of its own.
 

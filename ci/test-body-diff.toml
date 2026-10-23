@@ -113,7 +113,7 @@ file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
 item = "SPEC"
 kind = "const"
 row = "R14"
-sha256 = "cefc50db48cb95cd49e68c4ec804919a1b1e9c9948fa82cd148954e0a27b19f5"
+sha256 = "779ea523d410e808667b42801a3846a452a67849cf1841208109a47b5eb66d8a"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
