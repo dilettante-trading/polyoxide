@@ -154,9 +154,10 @@ pub use crate::shared::SessionSignerScope;
 pub use account::{save_private_key_to_keychain, KEYCHAIN_SERVICE};
 pub use api::{
     account::{
-        BalanceAllowanceResponse, BuilderTrade, ListBuilderTrades, ListBuilderTradesResponse,
-        ListClobTrades, ListTradesResponse, MakerOrder, RateLimitTierDetails,
-        RateLimitTierResponse, SessionSigner, SessionSigners, Trade,
+        BalanceAllowanceResponse, BuilderTrade, HeartbeatResponse, HeartbeatV1Response,
+        ListBuilderTrades, ListBuilderTradesResponse, ListClobTrades, ListTradesResponse,
+        MakerOrder, RateLimitTierDetails, RateLimitTierResponse, SessionSigner, SessionSigners,
+        Trade,
     },
     auth::{
         ApiKeyInfo, ApiKeyResponse, BuilderApiKeyResponse, ClosedOnlyResponse,
@@ -176,10 +177,10 @@ pub use api::{
         OrderScoringResponse,
     },
     rewards::{
-        ListMultiRewardMarkets, ListRewardMarkets, ListUserRewardMarkets, MultiMarketOrderBy,
-        Paginated, PublicRewards, RebatedFees, RewardEarnings, RewardMarket, RewardMarketEarning,
-        RewardMarketRequest, RewardPercentages, RewardTotalEarnings, SortPosition,
-        UserEarningsRequest, UserPercentagesRequest, UserRewardMarketOrderBy,
+        CurrentRebatesRequest, ListMultiRewardMarkets, ListRewardMarkets, ListUserRewardMarkets,
+        MultiMarketOrderBy, Paginated, PublicRewards, RebatedFees, RewardEarnings, RewardMarket,
+        RewardMarketEarning, RewardMarketRequest, RewardPercentages, RewardTotalEarnings,
+        SortPosition, UserEarningsRequest, UserPercentagesRequest, UserRewardMarketOrderBy,
         UserTotalEarningsRequest,
     },
 };

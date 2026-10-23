@@ -49,6 +49,17 @@ and `FokUnfilled` (FOK could not fill in full). They are deterministic and never
 signal available, since the venue ships no error code. Upstream's error catalogue is
 https://docs.polymarket.com/resources/error-codes; `docs/specs/clob/openapi.yaml` omits these rows.
 
+## Heartbeats arm a dead man's switch
+
+`account_api().heartbeat()` (`POST /heartbeats`) and `heartbeat_v1(id)` (`POST /v1/heartbeats`)
+each send one heartbeat and schedule none. The first accepted send on either route arms the API
+key's cancellation deadline: 10 seconds without another accepted send queues a cancel of every
+open order the key owns, and nothing disarms it (`docs/specs/clob/account.md`). `heartbeat_v1`
+sends `""` first, then each ID a response returns; a 400 with the route's `{error_msg,
+heartbeat_id}` body is `ClobError::HeartbeatIdMismatch { expected }`, a `VenueRefusal` that is
+not a fault, recognised by that body's shape. `live_heartbeat` arms the deadline of the key it
+runs under, so every order that key has resting is cancelled some 10 to 15 seconds later.
+
 ## `clob::venue`: the market-data traits
 
 `MarketData` and `Candles` on `Clob` with `clob` alone, `Trades` with `data` as well and

@@ -1,5 +1,25 @@
 ## [Unreleased]
 
+The CLOB mirror adopts the upstream revision drift issue #73 reported on 2026-10-22. Two signatures change, so the
+release that carries this raises the 0.x minor.
+
+- **`GET /rebates/current` answers `null` for a maker with no rows.** `current_rebates`
+  failed on it with "invalid type: null, expected a sequence", which is the common case. It now
+  returns `CurrentRebatesRequest`, whose `send()` reads `null` as an empty `Vec<RebatedFees>`.
+  `.current_rebates(date, maker).send().await` compiles as before.
+- **`heartbeat_v1` sends its required body.** `account_api().heartbeat_v1()` posted no body, so
+  the venue refused every call with a `400`. It is now `heartbeat_v1(heartbeat_id)`, returning
+  `HeartbeatV1Response { heartbeat_id }`: send `""` first, then each ID a response returns. An ID
+  the venue does not hold is the new `ClobError::HeartbeatIdMismatch { expected }`, a
+  `VenueRefusal` that is not a fault, carrying the ID to resend with (empty after a legacy send).
+  `HeartbeatResponse` and `HeartbeatV1Response` are re-exported from `clob`.
+- **Heartbeats arm a dead man's switch.** The docs of both heartbeat methods now say what
+  upstream does: the first accepted send arms cancellation of every open order the API key owns,
+  10 seconds without an accepted send queues a cancel-all, and nothing disarms it.
+- **Notifications** gain type 11 (taker tier upgraded); `notification_type` is a `u32`, so it
+  already decoded. `GET /rewards/user/total` rows may carry `native_earnings` and
+  `sponsored_earnings`, which `RewardTotalEarnings`' raw `data` already keeps.
+
 ## [0.43.0] - 2026-10-22
 
 Kalshi's catalog routes (#71): the reads a catalog kept in sync needs, and the market-data traits

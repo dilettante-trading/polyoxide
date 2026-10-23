@@ -104,7 +104,7 @@ impl Rewards {
         &self,
         date: impl Into<String>,
         maker_address: impl Into<String>,
-    ) -> Request<Vec<RebatedFees>, ClobError> {
+    ) -> CurrentRebatesRequest {
         self.public().current_rebates(date, maker_address)
     }
 }
@@ -166,10 +166,12 @@ impl PublicRewards {
         &self,
         date: impl Into<String>,
         maker_address: impl Into<String>,
-    ) -> Request<Vec<RebatedFees>, ClobError> {
-        Request::new(self.http_client.clone(), "/rebates/current")
-            .query("date", date.into())
-            .query("maker_address", maker_address.into())
+    ) -> CurrentRebatesRequest {
+        CurrentRebatesRequest {
+            request: Request::new(self.http_client.clone(), "/rebates/current")
+                .query("date", date.into())
+                .query("maker_address", maker_address.into()),
+        }
     }
 }
 
@@ -371,6 +373,21 @@ impl UserPercentagesRequest {
     /// Execute the request.
     pub async fn send(self) -> Result<RewardPercentages, ClobError> {
         self.request.send().await
+    }
+}
+
+/// Request builder for `GET /rebates/current`.
+pub struct CurrentRebatesRequest {
+    request: Request<Option<Vec<RebatedFees>>, ClobError>,
+}
+
+impl CurrentRebatesRequest {
+    /// Execute the request.
+    ///
+    /// The venue answers a bare `null` for a maker with no rebated-fee rows on
+    /// that date, which is returned as an empty list.
+    pub async fn send(self) -> Result<Vec<RebatedFees>, ClobError> {
+        Ok(self.request.send().await?.unwrap_or_default())
     }
 }
 
