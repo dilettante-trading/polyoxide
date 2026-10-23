@@ -210,6 +210,7 @@ mod tests {
             market_id: "id".to_owned(),
             bids: ladder(bids),
             asks: ladder(asks),
+            clock: None,
         })
     }
 
@@ -219,6 +220,7 @@ mod tests {
             side,
             price: price.parse().unwrap(),
             delta: delta.parse().unwrap(),
+            clock: None,
             ts: None,
             client_order_id: None,
         })
