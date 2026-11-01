@@ -69,7 +69,8 @@ pub struct OrderbookSnapshot {
     /// The exchange clock of the newest change the book includes, 0 when the market has
     /// had none, when Kalshi said. The book holds every change at or below it and none
     /// above, and every connection sends the same clock, so a consumer with redundant
-    /// connections can line their books up by it.
+    /// connections can line their books up by it. That holds because the socket
+    /// subscribes in real-time mode: it never asks for conflated updates.
     pub clock: Option<u64>,
 }
 
@@ -90,7 +91,8 @@ pub struct OrderbookDelta {
     /// connection sends the same clock for the same change, and the deltas one action
     /// makes share it. A market's clock skips values, can go down across exchange
     /// maintenance and is not comparable with another market's, so the socket finds a
-    /// missed frame by `seq`, never by the clock.
+    /// missed frame by `seq`, never by the clock. The socket subscribes in real-time
+    /// mode, where these hold; it never asks for conflated updates.
     pub clock: Option<u64>,
     /// When Kalshi recorded the change, when it said.
     pub ts: Option<UnixMillis>,

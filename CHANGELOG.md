@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+- **Kalshi AsyncAPI drift (#79).** Mirror only, with no code change. Upstream adds opt-in
+  conflated order-book updates (`update_interval_ms` on `subscribe`, and error code 29), which
+  the socket does not offer: it subscribes in real-time mode, where the exchange clock keeps
+  #72's guarantees. The `batch_communications` channel is folded into `communications`, which
+  the client does not implement, so the mirror lists 15 channels.
+
 - **Data v2 range-event activity types (#83).** Upstream's spec lists four more values
   `/v2/activity`'s `type` accepts, the operations on range events, which
   `data::v2::types::ActivityType` gains as `DirectionalSplit`, `DirectionalMerge`,
