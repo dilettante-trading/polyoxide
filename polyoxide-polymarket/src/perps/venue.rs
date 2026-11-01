@@ -201,7 +201,7 @@ fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {
     });
     instrument.extensions = Extensions::of(InstrumentExt {
         instrument_type: Some(row.instrument_type),
-        category: Some(row.category),
+        category: Some(row.category.clone()),
         display_symbol: row.display_symbol.clone(),
         close_only: Some(row.close_only),
         settlement: row.settlement.clone(),

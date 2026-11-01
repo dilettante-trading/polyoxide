@@ -25,6 +25,8 @@ its own `POLYMARKET-PROXY`/`POLYMARKET-SECRET` header auth, not the L1/L2 scheme
   caller filters client-side; `/v1/info/tickers` has honoured it since 2026-10-27.
 - The four WebSocket fields on `LimitTier` are a `u32::MAX` sentinel, not a budget, and must not
   size a bucket.
+- The host lists a `pre_ipo` category the spec does not; `InstrumentCategory` is an `open_enum!`
+  for that reason, with `PreIpo`.
 - Every index has empty constituents today.
 - The host is fronted by CloudFront; its measured rate rows are in `rate-limits.md`.
 - Three test files hold it in place, on the pattern of Data v2: `tests/spec_agreement_perps.rs`

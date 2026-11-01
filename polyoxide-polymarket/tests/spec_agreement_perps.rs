@@ -314,10 +314,13 @@ fn every_enum_matches_the_spec() {
         wire(InstrumentType::ALL),
         documented(&schemas, "instrument_type")
     );
-    assert_eq!(
-        wire(InstrumentCategory::ALL),
-        documented(&schemas, "category")
+    // `pre_ipo` is listed by the host but not the spec (OBSERVED.md).
+    let mut categories = documented(&schemas, "category");
+    assert!(
+        categories.insert("pre_ipo".to_owned()),
+        "the spec now documents pre_ipo"
     );
+    assert_eq!(wire(InstrumentCategory::ALL), categories);
     assert_eq!(wire(LeaderboardWindow::ALL), documented(&schemas, "window"));
     assert_eq!(wire(LeaderboardSort::ALL), documented(&schemas, "sort_by"));
     assert_eq!(wire(SortOrder::ALL), documented(&schemas, "sort"));

@@ -57,6 +57,15 @@ it is documented; callers must filter `statistics` themselves until the host
 does. `tickers.json` predates the change and still holds 88 rows; the next
 capture will hold one.
 
+## Undocumented category `pre_ipo`
+
+The schema's `category` enum lists `equity`, `commodity`, `index` and `crypto`
+(re-checked against the published spec 2026-11-01). By 2026-10-28 the host
+also lists instrument 97, `ANT-USD`, with `"category": "pre_ipo"`, and
+`?category=pre_ipo` filters to it. `InstrumentCategory` is an `open_enum!`
+with `PreIpo`, so a further undocumented category decodes as `Other` instead of
+failing the whole `/v1/info/instruments` page (#82).
+
 ## Every index has empty constituents
 
 On 2026-09-30 `GET /v1/info/index?asset=…` answered 200 with

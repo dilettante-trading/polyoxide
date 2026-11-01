@@ -61,9 +61,15 @@ polyoxide_venue::wire_enum! {
     pub enum InstrumentType { Perpetual => "perpetual" }
 }
 
-polyoxide_venue::wire_enum! {
-    /// Instrument category.
-    pub enum InstrumentCategory { Equity => "equity", Commodity => "commodity", Index => "index", Crypto => "crypto" }
+polyoxide_venue::open_enum! {
+    /// Instrument category. The host adds categories without documenting
+    /// them (`pre_ipo` appeared by 2026-10-28; `docs/specs/perps/OBSERVED.md`),
+    /// so a spelling this version does not know is kept in `Other`.
+    pub enum InstrumentCategory {
+        Equity => "equity", Commodity => "commodity", Index => "index", Crypto => "crypto",
+        /// Undocumented: listed by the host, absent from the spec.
+        PreIpo => "pre_ipo",
+    }
 }
 
 polyoxide_venue::wire_enum! {
@@ -301,16 +307,31 @@ mod tests {
         );
         check(Side::ALL, &["long", "short"]);
         check(InstrumentType::ALL, &["perpetual"]);
-        check(
-            InstrumentCategory::ALL,
-            &["equity", "commodity", "index", "crypto"],
-        );
         check(LeaderboardWindow::ALL, &["day", "week", "month", "all"]);
         check(
             LeaderboardSort::ALL,
             &["pnl", "notional", "account_value", "roi"],
         );
         check(SortOrder::ALL, &["desc", "asc"]);
+    }
+
+    #[test]
+    fn an_instrument_category_keeps_a_spelling_it_does_not_know() {
+        let wire = ["equity", "commodity", "index", "crypto", "pre_ipo"];
+        assert_eq!(InstrumentCategory::ALL.len(), wire.len());
+        for (variant, expected) in InstrumentCategory::ALL.iter().zip(wire) {
+            assert_eq!(
+                serde_json::to_string(variant).unwrap(),
+                format!("\"{expected}\"")
+            );
+            let decoded: InstrumentCategory =
+                serde_json::from_str(&format!("\"{expected}\"")).unwrap();
+            assert_eq!(&decoded, variant);
+            assert_eq!(variant.to_string(), expected);
+        }
+        let unknown: InstrumentCategory = serde_json::from_str("\"spot_fx\"").unwrap();
+        assert_eq!(unknown, InstrumentCategory::Other("spot_fx".to_owned()));
+        assert_eq!(serde_json::to_string(&unknown).unwrap(), "\"spot_fx\"");
     }
 
     #[test]

@@ -175,6 +175,19 @@ removed, and the rest is additive.
 - The builder routes under `/v1/account/*` and the `builder` field on orders belong to the
   authenticated slice, which is not implemented; they are mirrored only.
 
+## Perps: the undocumented `pre_ipo` category (#82)
+
+**Consumer impact: breaking for perps.** One enum changes shape (DRIFT R20); nothing is removed.
+
+- `InstrumentCategory` (`perps::types`) is an open enum: it gains `PreIpo` (`"pre_ipo"`, which the
+  host lists and its spec does not) and `Other(String)` for a spelling this version does not know,
+  is `#[non_exhaustive]`, and is no longer `Copy`. A `match` on it needs a wildcard arm, and a
+  copy of it a `.clone()`. Until this change an instrument of an unknown category failed the whole
+  `/v1/info/instruments` page, and with it `perps::venue`'s `instrument`, `instruments` and
+  `funding_rate`.
+- `ListTickers::instrument_id` is now honoured by the host (DRIFT R19): `tickers()` with it
+  returns that instrument's row only. Nothing changes in the client.
+
 ## Epic 9: Kalshi published
 
 **Consumer impact: additive.** Nothing is removed or renamed, and no signature changes; code
