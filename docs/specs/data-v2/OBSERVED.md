@@ -105,7 +105,10 @@ which the host accepts too, and says any other value is a `400`: `type=BOGUS`
 answers `400` with `unknown activity type: BOGUS`, code `invalid_request`,
 parameter `type`. `type=DEPOSIT` alone, under the default
 `exclude_deposits_withdrawals=true`, returns an empty page, as the description
-says (all 2026-10-21).
+says (all 2026-10-21). Four more, `DIRECTIONAL_SPLIT`, `DIRECTIONAL_MERGE`,
+`THRESHOLD_COMPOSE` and `THRESHOLD_DECOMPOSE` (#83, range-event operations),
+are listed since 2026-11-01, and each answers `200` to `type=` alone while
+`type=BOGUS` still answers `400` (2026-11-01). None has been seen on a row yet.
 
 ## `/v2/activity`'s sort error message is stale
 
