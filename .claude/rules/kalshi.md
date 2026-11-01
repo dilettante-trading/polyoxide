@@ -112,7 +112,9 @@ mirrored in `docs/specs/kalshi/`, and `OBSERVED.md` records where its hosts part
   without the order-book channel.
 - **The exchange clock.** `OrderbookSnapshot::clock` and `OrderbookDelta::clock` carry the
   `clock` the AsyncAPI has required since #72 (2026-10-22): the same on every connection, so a
-  consumer with redundant connections can match a market's updates by it. They are optional,
+  consumer with redundant connections can match a market's updates by it. That holds in real-time
+  mode only, and the socket never sends `update_interval_ms`, so it never asks for the conflated
+  mode (#79), whose clock can go down and matches nothing across connections. They are optional,
   since no capture carries the key yet (`ABSENT_ON_THE_WIRE` in
   `wire_agreement_predictions_ws.rs`). The socket finds a gap by `seq` alone, and `Books` does
   not read the clock.
