@@ -6,8 +6,8 @@ use crate::predictions::{
     key::Ticker,
     request::{routes, Routed},
     types::{
-        BatchCandlesticksResponse, MarketResponse, MarketStatusFilter, MarketWindow, MarketsPage,
-        MveFilter, OrderbookResponse, OrderbooksResponse, PeriodInterval,
+        BatchCandlesticksResponse, Lossy, MarketResponse, MarketStatusFilter, MarketWindow,
+        MarketsPage, MveFilter, OrderbookResponse, OrderbooksResponse, PeriodInterval,
         SeriesCandlesticksResponse, TradesPage,
     },
     Inner, PredictionsError, MAX_ORDERBOOK_TICKERS,
@@ -184,6 +184,12 @@ impl ListMarkets {
     pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
         self.request.send().await
     }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a market that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<MarketsPage>, PredictionsError> {
+        self.request.send_lossy().await
+    }
 }
 
 /// Request builder for `GET /trade-api/v2/markets` in one timestamp family
@@ -218,6 +224,12 @@ impl ListMarketWindow {
     pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
         self.request.send().await
     }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a market that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<MarketsPage>, PredictionsError> {
+        self.request.send_lossy().await
+    }
 }
 
 /// Request builder for `GET /trade-api/v2/markets` updated after a time
@@ -243,6 +255,12 @@ impl ListUpdatedMarkets {
     pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
         self.request.send().await
     }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a market that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<MarketsPage>, PredictionsError> {
+        self.request.send_lossy().await
+    }
 }
 
 /// Request builder for `GET /trade-api/v2/markets/orderbooks` ([`MarketsApi::orderbooks`]).
@@ -255,6 +273,12 @@ impl GetOrderbooks {
     /// Waits for the Read budget, sends, and decodes the response.
     pub async fn send(self) -> Result<OrderbooksResponse, PredictionsError> {
         self.request.send().await
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a book that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the others are kept.
+    pub async fn send_lossy(self) -> Result<Lossy<OrderbooksResponse>, PredictionsError> {
+        self.request.send_lossy().await
     }
 }
 
@@ -312,6 +336,12 @@ impl ListTrades {
     /// Waits for the Read budget, sends, and decodes the response.
     pub async fn send(self) -> Result<TradesPage, PredictionsError> {
         self.request.send().await
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a trade that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<TradesPage>, PredictionsError> {
+        self.request.send_lossy().await
     }
 }
 
