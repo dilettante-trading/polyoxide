@@ -191,7 +191,8 @@ stage does not hold, printing each one's key to copy there.
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
   headers (R15); `enum_wire_data_v2`'s
   `enums_that_also_appear_in_responses_spell_what_the_server_sends`, whose `ActivityType` set
-  gained `MIGRATION` (R16); and sixteen perps items that adopting its drift (#56) moved, among them
+  gained `MIGRATION` (R16) and then the four range-event types (#83), so it now cites R19; and
+  sixteen perps items that adopting its drift (#56) moved, among them
   `spec_agreement_perps`'s and `wire_agreement_perps`'s tables, four `mock_perps` tests,
   `perps::types`' enum test and the `leaderboard.json` and `leaderboard_account.json` fixtures
   (R17), seven of which adopting its builder-fee drift (#76) moved again and now cite R18.
