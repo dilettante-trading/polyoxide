@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::predictions::{
     request::{routes, Routed},
-    types::{EventResponse, EventStatusFilter, EventsPage},
+    types::{EventResponse, EventStatusFilter, EventsPage, Lossy},
     Inner, PredictionsError,
 };
 
@@ -89,5 +89,11 @@ impl ListEvents {
     /// Waits for the Read budget, sends, and decodes the response.
     pub async fn send(self) -> Result<EventsPage, PredictionsError> {
         self.request.send().await
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: an event that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<EventsPage>, PredictionsError> {
+        self.request.send_lossy().await
     }
 }

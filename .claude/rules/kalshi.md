@@ -32,6 +32,14 @@ mirrored in `docs/specs/kalshi/`, and `OBSERVED.md` records where its hosts part
   answers `414` past), before anything is sent.
 - Its `From<ApiError>` turns an unsuccessful response with one of Kalshi's three body shapes into
   `Venue` (`errors.md`).
+- `send_lossy()` on the eight listings that page or batch (`markets().list()`, `window`,
+  `updated`, `trades` and `orderbooks`, `events().list()`, and `historical().markets` and
+  `trades`) sends what `send()` sends and decodes the page's envelope strictly and its rows one by
+  one (#77): `Lossy<P>` holds the page with only the rows that decoded, its `cursor` and the rest
+  of its envelope as sent, and a `SkippedRow` (index, key, serde's message, the row) for each row
+  that did not, each logged at WARN. An envelope that does not decode fails as `send()`'s does.
+  `send()` and the `predictions::venue` impls stay strict. The page types name their rows and key
+  through the crate-private `LossyRows` (`src/predictions/types/lossy.rs`).
 
 ## `predictions::venue`
 

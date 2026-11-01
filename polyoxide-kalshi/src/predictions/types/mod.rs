@@ -3,6 +3,7 @@ mod events;
 mod exchange;
 mod historical;
 mod limits;
+mod lossy;
 mod markets;
 mod series;
 
@@ -14,6 +15,8 @@ pub use historical::{
     HistoricalPrice, HistoricalSelection,
 };
 pub use limits::{AccountLimits, ApiUsageGrant, BucketLimit};
+pub(crate) use lossy::{decode_lossy, LossyRows};
+pub use lossy::{Lossy, SkippedRow};
 pub use markets::{
     BatchCandlesticksResponse, BidAskDistribution, BookSide, CreatedStatus, Market,
     MarketCandlestick, MarketCandlesticks, MarketOrderbook, MarketResponse, MarketStatus,

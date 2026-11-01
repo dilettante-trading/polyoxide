@@ -7,8 +7,8 @@ use crate::predictions::{
     key::Ticker,
     request::{routes, Routed},
     types::{
-        HistoricalCandlesticksResponse, HistoricalCutoff, HistoricalSelection, MarketResponse,
-        MarketsPage, MveFilter, PeriodInterval, TradesPage,
+        HistoricalCandlesticksResponse, HistoricalCutoff, HistoricalSelection, Lossy,
+        MarketResponse, MarketsPage, MveFilter, PeriodInterval, TradesPage,
     },
     Inner, PredictionsError,
 };
@@ -119,6 +119,12 @@ impl ListHistoricalMarkets {
     pub async fn send(self) -> Result<MarketsPage, PredictionsError> {
         self.request.send().await
     }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a market that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<MarketsPage>, PredictionsError> {
+        self.request.send_lossy().await
+    }
 }
 
 /// Request builder for `GET /trade-api/v2/historical/markets/{ticker}`.
@@ -172,5 +178,11 @@ impl ListHistoricalTrades {
     /// Waits for the Read budget, sends, and decodes the response.
     pub async fn send(self) -> Result<TradesPage, PredictionsError> {
         self.request.send().await
+    }
+
+    /// Waits for the Read budget, sends, and decodes the response row by row: a trade that does
+    /// not decode is skipped and returned in [`Lossy::skipped`], and the page keeps its cursor.
+    pub async fn send_lossy(self) -> Result<Lossy<TradesPage>, PredictionsError> {
+        self.request.send_lossy().await
     }
 }

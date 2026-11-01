@@ -7,8 +7,10 @@ use std::sync::Arc;
 
 use polyoxide_core::{ApiError, Cost, LayerId, QueryBuilder, Request};
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 use crate::predictions::tickers;
+use crate::predictions::types::{decode_lossy, Lossy, LossyRows};
 use crate::predictions::{error::PredictionsError, Inner};
 
 /// The throttle layer every request of this module is charged to: Kalshi's Read bucket.
@@ -280,16 +282,18 @@ impl<T> Routed<T> {
     }
 }
 
-impl<T: DeserializeOwned> Routed<T> {
-    /// Sends on the client's send loop, which waits for the Read bucket, and decodes the response.
+impl<T> Routed<T> {
+    /// Core's request for the route, ready to send and decoding into `U`, or the refusal.
     ///
     /// A route parameter that `new` refused is returned first, then the first query key
     /// [`Routed::refuse`] recorded, as `ApiError::Validation`, before
     /// `before_send`, any token and any request. The steps after it, in order: wait for the
     /// client's `before_send`; build core's request with the
     /// route's cost, read now, after any confirmation has replaced it; add the client's
-    /// authenticator when it has one, and the query pairs; send.
-    pub(crate) async fn send(self) -> Result<T, PredictionsError> {
+    /// authenticator when it has one, and the query pairs.
+    async fn prepare<U: DeserializeOwned>(
+        self,
+    ) -> Result<Request<U, PredictionsError>, PredictionsError> {
         if let Some(reason) = self.refused {
             return Err(ApiError::Validation(reason).into());
         }
@@ -299,14 +303,36 @@ impl<T: DeserializeOwned> Routed<T> {
         self.inner.before_send().await;
         let cost = self.inner.read_cost(&self.route);
         let mut request =
-            Request::<T, PredictionsError>::new(self.inner.http.clone(), self.path).with_cost(cost);
+            Request::<U, PredictionsError>::new(self.inner.http.clone(), self.path).with_cost(cost);
         if let Some(auth) = &self.inner.auth {
             request = request.authenticator(Arc::clone(auth));
         }
         for (key, value) in self.query {
             request = request.query(key, value);
         }
-        request.send().await
+        Ok(request)
+    }
+}
+
+impl<T: DeserializeOwned> Routed<T> {
+    /// Sends on the client's send loop, which waits for the Read bucket, and decodes the response.
+    ///
+    /// The refusals and the steps before the send are [`Routed::prepare`]'s.
+    pub(crate) async fn send(self) -> Result<T, PredictionsError> {
+        self.prepare::<T>().await?.send().await
+    }
+}
+
+impl<P: LossyRows> Routed<P> {
+    /// Sends the request [`Routed::send`] sends and decodes the response row by row: strict about
+    /// the page's envelope, skipping each row that does not decode ([`decode_lossy`]).
+    ///
+    /// A body that is not JSON fails in core's decode, as `send`'s does; an envelope that does not
+    /// decode is `ApiError::Serialization`, as `send`'s is.
+    pub(crate) async fn send_lossy(self) -> Result<Lossy<P>, PredictionsError> {
+        let path = self.path.clone();
+        let body: Value = self.prepare::<Value>().await?.send().await?;
+        decode_lossy(&path, body).map_err(|err| ApiError::from(err).into())
     }
 }
 

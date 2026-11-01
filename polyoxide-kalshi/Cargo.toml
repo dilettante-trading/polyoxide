@@ -129,6 +129,10 @@ name = "mock_predictions_signed"
 required-features = ["predictions"]
 
 [[test]]
+name = "mock_predictions_lossy"
+required-features = ["predictions"]
+
+[[test]]
 name = "signing_predictions"
 required-features = ["predictions"]
 
