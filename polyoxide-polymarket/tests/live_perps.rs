@@ -103,9 +103,10 @@ async fn live_market_data_for_a_quoting_instrument() {
     let instrument = a_quoting_instrument(&perps).await;
     let iid = instrument.instrument_id;
 
-    // The host ignores `instrument_id` on these two routes and returns every
-    // instrument (`docs/specs/perps/OBSERVED.md`). Asserting the observed
-    // behaviour makes an upstream fix show up as a nightly failure.
+    // `tickers` honours `instrument_id` (since 2026-10-27); `statistics` still
+    // ignores it and returns every instrument (`docs/specs/perps/OBSERVED.md`).
+    // Asserting the observed behaviour makes an upstream change show up as a
+    // nightly failure.
     let tickers = perps
         .market()
         .tickers()
@@ -114,10 +115,10 @@ async fn live_market_data_for_a_quoting_instrument() {
         .await
         .or_fail("tickers");
     assert!(
-        tickers.len() > 1,
-        "the tickers instrument_id filter is now honoured; update OBSERVED.md and this assertion"
+        tickers.len() == 1 && tickers[0].instrument_id == iid,
+        "the tickers instrument_id filter is no longer honoured ({} rows); update OBSERVED.md and this assertion",
+        tickers.len()
     );
-    assert!(tickers.iter().any(|t| t.instrument_id == iid));
 
     let statistics = perps
         .market()

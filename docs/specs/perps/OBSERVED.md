@@ -35,7 +35,7 @@ The four `LimitTier` extras are `u32::MAX` on all four tiers in
 `limit_tiers.json`: a sentinel (unset or unlimited), not a budget. They must
 not be used to size a client bucket; the WebSocket budget remains unpublished.
 
-## `tickers` and `statistics` ignore `instrument_id`
+## `statistics` ignores `instrument_id`; `tickers` no longer does
 
 The schema documents an `instrument_id` query parameter on `GET /v1/info/tickers`
 and `GET /v1/info/statistics`. On 2026-09-30 both routes answered every request
@@ -44,8 +44,18 @@ with all 88 instruments: `?instrument_id=1`, `?instrument_id=2`, no parameter,
 200 with 88 rows and no validation error. The fixtures `tickers.json` and
 `statistics.json`, captured with `?instrument_id=1`, hold 88 rows each.
 `/v1/info/bbo` and `/v1/info/instruments` honour the same parameter (one row
-for `?instrument_id=2`). The builders still send it, since it is documented;
-callers must filter the response themselves until the host does.
+for `?instrument_id=2`).
+
+`tickers` changed by 2026-10-27, when the nightly's `live_perps` first saw one
+row (#82). Re-probed 2026-11-01 (90 instruments listed): `tickers` answers
+`?instrument_id=1` and `?instrument_id=2` with that one row, `?instrument_id=999999`
+with `[]`, and `?instrument_id=abc` and `?instrument_id=1&instrument_id=2` with a
+400 (`invalid query parameters: invalid digit found in string`, and
+``duplicate field `instrument_id` ``). `statistics` still answers all six
+requests with 200 and all 90 rows. The builders send the parameter on both, since
+it is documented; callers must filter `statistics` themselves until the host
+does. `tickers.json` predates the change and still holds 88 rows; the next
+capture will hold one.
 
 ## Every index has empty constituents
 

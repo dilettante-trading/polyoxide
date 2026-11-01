@@ -243,3 +243,9 @@ item = "every_fixture_agrees_with_its_type"
 kind = "fn"
 row = "R18"
 sha256 = "fc7360d9f7a30526b9ea667f4450a52f73ea5bc0bcdb6687e8f39becd495006b"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_perps.rs"
+item = "live_market_data_for_a_quoting_instrument"
+row = "R19"
+sha256 = "09386f28cdcf1519771d6f533d2ddbff98bcd0c671c1165b53a09647865de5d3"
