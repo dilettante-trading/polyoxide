@@ -177,7 +177,7 @@ removed, and the rest is additive.
 
 ## Perps: the undocumented `pre_ipo` category (#82)
 
-**Consumer impact: breaking for perps.** One enum changes shape (DRIFT R20); nothing is removed.
+**Consumer impact: breaking for perps.** One enum changes shape (DRIFT R21); nothing is removed.
 
 - `InstrumentCategory` (`perps::types`) is an open enum: it gains `PreIpo` (`"pre_ipo"`, which the
   host lists and its spec does not) and `Other(String)` for a spelling this version does not know,
@@ -185,7 +185,7 @@ removed, and the rest is additive.
   copy of it a `.clone()`. Until this change an instrument of an unknown category failed the whole
   `/v1/info/instruments` page, and with it `perps::venue`'s `instrument`, `instruments` and
   `funding_rate`.
-- `ListTickers::instrument_id` is now honoured by the host (DRIFT R19): `tickers()` with it
+- `ListTickers::instrument_id` is now honoured by the host (DRIFT R20): `tickers()` with it
   returns that instrument's row only. Nothing changes in the client.
 
 ## Epic 9: Kalshi published

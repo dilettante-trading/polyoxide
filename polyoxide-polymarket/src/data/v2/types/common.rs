@@ -54,7 +54,8 @@ polyoxide_venue::open_enum! {
 
 polyoxide_venue::open_enum! {
     /// Activity row type. `TIP` is never in the default set and is only
-    /// returned when requested explicitly. The host refuses a `type` filter
+    /// returned when requested explicitly. Split, merge, redeem and conversion
+    /// on a range event keep `SPLIT`, `MERGE`, `REDEEM` and `CONVERSION`. The host refuses a `type` filter
     /// naming any value it does not list with a `400`, so an
     /// [`Other`](Self::Other) sent as a filter fails.
     pub enum ActivityType {
@@ -84,6 +85,20 @@ polyoxide_venue::open_enum! {
         ReferralReward => "REFERRAL_REWARD",
         /// `TAKER_REBATE`
         TakerRebate => "TAKER_REBATE",
+        /// `DIRECTIONAL_SPLIT`: on a range event, collateral plus the buckets
+        /// between two lines turned into ABOVE the lower line and BELOW the
+        /// higher one. A row of the whole event, so a `condition` filter never
+        /// returns it.
+        DirectionalSplit => "DIRECTIONAL_SPLIT",
+        /// `DIRECTIONAL_MERGE`: the reverse of a directional split. A row of
+        /// the whole event, so a `condition` filter never returns it.
+        DirectionalMerge => "DIRECTIONAL_MERGE",
+        /// `THRESHOLD_COMPOSE`: on a range event, buckets turned into one line
+        /// position. The row carries the line's market and side.
+        ThresholdCompose => "THRESHOLD_COMPOSE",
+        /// `THRESHOLD_DECOMPOSE`: the reverse of a threshold compose. The row
+        /// carries the line's market and side.
+        ThresholdDecompose => "THRESHOLD_DECOMPOSE",
         /// `TIP`: a user-to-user pUSD transfer. Opt-in.
         Tip => "TIP",
     }
@@ -366,7 +381,9 @@ impl From<String> for PositionAnchor {
 pub enum ResolutionKey {
     /// One UMA question id.
     Question(String),
-    /// Condition ids (at most 20).
+    /// Condition ids (at most 20): the Gamma condition id, or the structural
+    /// condition id that `/v2/activity` and `/v2/trades` serve before a
+    /// market is listed.
     Conditions(Vec<String>),
     /// Gamma event ids (at most 20).
     Events(Vec<String>),

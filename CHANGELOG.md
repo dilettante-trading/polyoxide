@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+- **Data v2 range-event activity types (#83).** Upstream's spec lists four more values
+  `/v2/activity`'s `type` accepts, the operations on range events, which
+  `data::v2::types::ActivityType` gains as `DirectionalSplit`, `DirectionalMerge`,
+  `ThresholdCompose` and `ThresholdDecompose` (DRIFT R19). The enum is `#[non_exhaustive]`, so
+  this is additive, but such a row that decoded as `Other(..)` now decodes as its variant. A
+  directional split or merge is a row of the whole event, so a `condition` filter never returns
+  it. `ResolutionKey::Conditions` also takes the structural condition id that `/v2/activity` and
+  `/v2/trades` serve before a market is listed.
+
 ## [0.44.0] - 2026-10-23
 
 Six schema-drift issues adopted (#72 to #76 and #78). Two of them change public signatures, in perps
