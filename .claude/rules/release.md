@@ -69,13 +69,35 @@ CI job withholds the release. Then `publish_order.py decide` reads the `v<versio
 3. A tag at this commit and a GitHub release: skip. The run is a re-run of a finished release.
 4. A tag at this commit and no GitHub release: release, resuming one whose last jobs failed.
    Publishing skips what crates.io has, and the tag is not pushed twice.
-5. A tag at another commit, on a push that leaves the version as its parent had it: skip, with a
+5. A tag at another commit and no GitHub release: skip with a warning naming that commit. Another
+   run claimed the version (below) and is still publishing, or failed partway; only a run on the
+   tagged commit may finish it.
+6. A tag at another commit, on a push that leaves the version as its parent had it: skip, with a
    plain log line. Every ordinary push lands here.
-6. A tag at another commit, with the version lower than the parent's: skip with a warning.
-7. A tag at another commit otherwise fails the run with `::error::`: the version was already
+7. A tag at another commit, with the version lower than the parent's: skip with a warning.
+8. A tag at another commit otherwise fails the run with `::error::`: the version was already
    released, so bump it.
 
 A lookup that fails (`git ls-remote`, `gh`) fails the run rather than reading as "not released".
+
+`decide` runs at each run's start, unserialised, so two pushes to `main` while a version is
+untagged both read row 2 (0.44.0 ran twice on 2026-11-01, from `d41e8533` and `7fab1481`). So
+nothing publishes until the `claim` job has run `publish_order.py claim`, which pushes the
+`v<version>` tag at the run's commit. Origin creates a tag once, so one run's push lands; a run
+whose push is refused reads the tag again and goes on only if it names its own commit, so the loser
+skips, green. A tag already at the run's commit is a resumed release (row 4). `publish`,
+`publish-python` and `release` all need `claim` and its `claimed` output, and no other job pushes a
+tag; the GitHub release names the run's commit as `target_commitish`, and its notes are
+git-cliff's `--current` (the tag at this commit), since a newer version's claim can land first.
+
+The claim waits for `semver` and every build, and first runs the publish loop's own refusals
+(`list --max-new-names 5`, exits 3 and 4), so a version that cannot ship stays untagged and the
+next green push releases it (row 2). After the claim, no other commit may finish the version, so
+nothing ships from two: a publish that fails after it leaves a tag with no GitHub release, which
+later pushes skip with row 5's warning. Finish it with "Re-run failed jobs" on the claimed run, or
+a manual run while `main`'s head is the tagged commit (row 4). Two runs on one commit, a manual run
+beside a push's, both pass the claim; crates.io is serialised, but their PyPI uploads and GitHub
+releases race, so don't start a manual run while one on that commit is in flight.
 
 ## The `semver` job
 
@@ -89,8 +111,10 @@ next green push releases the new version.
 
 ## Recovering a release
 
-Run Release by hand on `main` (`gh workflow run Release --ref main`): it publishes what is
-missing and finishes the tag, the GitHub release and the wheels. Running
+For a version no run has claimed, run Release by hand on `main` (`gh workflow run Release --ref
+main`): it claims the tag, publishes what is missing and finishes the GitHub release and the
+wheels. For one already claimed, re-run the claimed run's failed jobs
+(`gh run rerun <id> --failed`); a manual run on a later commit skips with row 5's warning. Running
 `scripts/finish_release.sh` by hand is a crates.io-only fallback: it refuses a dirty tree, a HEAD
 that is not on `origin/main`, or one CI has not passed on (`publish_order.py ci-passed`), and it
 takes `CARGO_REGISTRY_TOKEN` or a prior `cargo login`.

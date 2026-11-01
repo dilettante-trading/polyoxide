@@ -10,7 +10,10 @@ each case would send.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -172,7 +175,7 @@ def test_a_manual_run_releases_only_on_main(ref: str, runs: bool) -> None:
     assert evaluate(VERSION_IF, dispatch(ref)) is runs
 
 
-@pytest.mark.parametrize("job", ["publish", "publish-python", "release"])
+@pytest.mark.parametrize("job", ["claim", "publish", "publish-python", "release"])
 def test_jobs_holding_tokens_check_the_repository(job: str) -> None:
     condition = " ".join(JOBS[job]["if"].split())
     assert f"github.repository == '{THIS_REPO}'" in condition
@@ -229,3 +232,97 @@ def test_the_semver_job_checks_against_the_previous_release_tag() -> None:
 def test_the_semver_job_only_reads() -> None:
     assert SEMVER["permissions"] == {"contents": "read"}
     assert "secrets." not in yaml.safe_dump(SEMVER)
+
+
+# --- the claim ---------------------------------------------------------------
+
+CLAIM = JOBS["claim"]
+BUILDS = {"build-cli", "build-python", "build-python-sdist"}
+
+
+def releasing(claimed: str) -> dict:
+    """The context of a job after `version` decided to release and `claim` answered."""
+    return {"github": {"repository": THIS_REPO},
+            "needs": {"version": {"outputs": {"should_release": "true"}},
+                      "claim": {"outputs": {"claimed": claimed}}}}
+
+
+def test_nothing_is_claimed_before_semver_and_every_build_pass() -> None:
+    """A version that cannot ship stays untagged, so the next bump's semver
+    baseline and `decide` never take it for a release."""
+    assert set(CLAIM["needs"]) == {"version", "semver"} | BUILDS
+    assert evaluate(CLAIM["if"], releasing(""))
+
+
+@pytest.mark.parametrize("job", ["publish", "publish-python", "release"])
+def test_only_the_run_that_claimed_the_version_publishes(job: str) -> None:
+    """`decide` runs at each run's start, unserialised, so two pushes to main while a
+    version is untagged both read "release" (0.44.0, 2026-11-01). Only the run whose
+    claim pushed the tag, or found it at its own commit, goes on."""
+    assert "claim" in JOBS[job]["needs"]
+    assert evaluate(JOBS[job]["if"], releasing("true"))
+    assert not evaluate(JOBS[job]["if"], releasing("false"))
+
+
+def test_the_claim_reports_its_answer() -> None:
+    assert CLAIM["outputs"] == {"claimed": "${{ steps.claim.outputs.claimed }}"}
+    [step] = [s for s in CLAIM["steps"] if "publish_order.py claim" in s.get("run", "")]
+    assert step["id"] == "claim"
+    assert step["env"] == {"VERSION": "${{ needs.version.outputs.version }}",
+                           "SHA": "${{ needs.version.outputs.sha }}"}
+    assert CLAIM["permissions"] == {"contents": "write"}
+
+
+def test_only_the_claim_pushes_a_tag() -> None:
+    """A second tag step would race the claim it replaces."""
+    for name, job in JOBS.items():
+        if name == "claim":
+            continue
+        for step in job.get("steps", []):
+            assert "git tag" not in step.get("run", ""), (name, step.get("name"))
+            assert "git push" not in step.get("run", ""), (name, step.get("name"))
+
+
+def test_the_claim_checks_the_workspace_can_publish_before_tagging() -> None:
+    """After the tag, no other commit may finish the version, so the publish loop's
+    refusals that no retry fixes (exit 3 and 4) must come first."""
+    runs = [s.get("run", "") for s in CLAIM["steps"]]
+    preflight = runs.index("python3 scripts/publish_order.py list --max-new-names 5 > /dev/null")
+    [claiming] = [i for i, r in enumerate(runs) if "publish_order.py claim" in r]
+    assert preflight < claiming
+
+
+@pytest.mark.parametrize(("answer", "claimed"), [("release", "true"), ("skip", "false")])
+def test_the_claim_step_reports_what_claim_printed(
+        tmp_path: Path, answer: str, claimed: str) -> None:
+    """Run the step's script with `python3` and `git` stubbed: the lock is only as
+    good as the line that turns `claim`'s answer into `claimed`."""
+    [step] = [s for s in CLAIM["steps"] if s.get("id") == "claim"]
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    for name, body in [("python3", f'echo "$@" >> "{tmp_path}/args"\necho {answer}'),
+                       ("git", "exit 0")]:
+        stub = stubs / name
+        stub.write_text(f"#!/bin/sh\n{body}\n")
+        stub.chmod(0o755)
+    output = tmp_path / "output"
+    env = {"PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}", "GITHUB_OUTPUT": str(output),
+           "VERSION": "1.0.0", "SHA": "abc"}
+    subprocess.run([shutil.which("bash"), "-e", "-c", step["run"]], env=env, check=True)
+    assert output.read_text() == f"claimed={claimed}\n"
+    assert (tmp_path / "args").read_text() == "scripts/publish_order.py claim 1.0.0 --head-sha abc\n"
+
+
+RELEASE_STEPS = JOBS["release"]["steps"]
+
+
+def test_the_release_notes_are_for_the_tag_at_this_commit() -> None:
+    """The claim pushes a tag before publishing, so a newer version's tag can exist
+    by the time this release writes its notes."""
+    [notes] = [s for s in RELEASE_STEPS if s.get("id") == "changelog"]
+    assert notes["with"]["args"] == "--current --strip header"
+
+
+def test_the_github_release_targets_this_commit() -> None:
+    [step] = [s for s in RELEASE_STEPS if s.get("uses", "").startswith("softprops/")]
+    assert step["with"]["target_commitish"] == "${{ needs.version.outputs.sha }}"

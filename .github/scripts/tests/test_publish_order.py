@@ -680,9 +680,25 @@ def test_row_4_a_tag_at_this_commit_without_a_release_resumes(
     assert "resumes" in decision.log
 
 
-def test_row_5_a_push_that_keeps_a_released_version_skips_quietly() -> None:
+@pytest.mark.parametrize(("parent", "dispatch"), [
+    ("1.0.0", False),
+    # A bump that lost the claim to a later commit, or a manual run on a later one.
+    ("0.9.0", False),
+    ("1.0.0", True),
+])
+def test_row_5_a_version_claimed_elsewhere_and_unreleased_skips_with_a_warning(
+        parent: str, dispatch: bool) -> None:
+    """Another run claimed it and is publishing, or failed partway. Only a run on the
+    tagged commit may finish it, so this run says where, and publishes nothing."""
+    decision = _decide(parent=parent, tag=OTHER, released=False, dispatch=dispatch)
+    assert decision.result == "skip"
+    assert decision.log.startswith("::warning::")
+    assert OTHER in decision.log
+
+
+def test_row_6_a_push_that_keeps_a_released_version_skips_quietly() -> None:
     """Every ordinary push to main lands here, so it logs a plain line, no annotation."""
-    decision = _decide(parent="1.0.0", tag=OTHER)
+    decision = _decide(parent="1.0.0", tag=OTHER, released=True)
     assert decision.result == "skip"
     assert not decision.log.startswith("::")
 
@@ -694,9 +710,10 @@ def test_row_5_a_push_that_keeps_a_released_version_skips_quietly() -> None:
     ("0.9.0", "0.10.0", False),
     ("1.0.0", "1.0.1-rc.1", False),
 ])
-def test_row_6_a_version_that_went_backwards_skips_with_a_warning(
+def test_row_7_a_version_that_went_backwards_skips_with_a_warning(
         current: str, parent: str, dispatch: bool) -> None:
-    decision = _decide(current=current, parent=parent, tag=OTHER, dispatch=dispatch)
+    decision = _decide(current=current, parent=parent, tag=OTHER, released=True,
+                       dispatch=dispatch)
     assert decision.result == "skip"
     assert decision.log.startswith("::warning::")
 
@@ -709,10 +726,11 @@ def test_row_6_a_version_that_went_backwards_skips_with_a_warning(
     # A manual run skips the version-bump test, so an unchanged version is no excuse.
     ("1.0.0", "1.0.0", True),
 ])
-def test_row_7_a_tag_at_another_commit_fails(
+def test_row_8_a_tag_at_another_commit_fails(
         current: str, parent: str | None, dispatch: bool) -> None:
     with pytest.raises(PublishOrderError) as caught:
-        _decide(current=current, parent=parent, tag=OTHER, dispatch=dispatch)
+        _decide(current=current, parent=parent, tag=OTHER, released=True,
+                dispatch=dispatch)
     assert str(caught.value) == f"v{current} already tagged at {OTHER}; bump the version"
 
 
@@ -750,7 +768,7 @@ def test_decide_releases_an_untagged_bump(capsys: pytest.CaptureFixture[str]) ->
 ], ids=["annotated", "lightweight"])
 def test_decide_fails_on_a_bump_to_a_version_tagged_elsewhere(
         capsys: pytest.CaptureFixture[str], tag_lines: str) -> None:
-    run = _decide_runner(tag_lines=tag_lines)
+    run = _decide_runner(tag_lines=tag_lines, release=(0, "{}", ""))
     assert publish_order.main(["decide", "--head-sha", HEAD], run=run) == 1
     out, err = capsys.readouterr()
     assert out == ""
@@ -790,6 +808,108 @@ def test_decide_on_a_root_commit(capsys: pytest.CaptureFixture[str]) -> None:
     assert publish_order.main(["decide", "--head-sha", HEAD], run=run) == 0
     assert capsys.readouterr().out == "release\n"
     assert not run.ran("git", "show")
+
+
+# --- claim -------------------------------------------------------------------
+
+
+class ClaimRunner(StubRunner):
+    """`claim`'s commands. Each `ls-remote` answers with the next of `tags`, the
+    commit origin's v1.0.0 tag names at that moment, or None for no tag."""
+
+    def __init__(self, *tags: str | None, tag: tuple = (0, "", ""),
+                 push: tuple = (0, "", "")) -> None:
+        super().__init__({("git", "tag"): tag, ("git", "push"): push})
+        self.tags = list(tags)
+
+    def __call__(self, command: list[str]) -> subprocess.CompletedProcess:
+        if tuple(command[:2]) != LS_REMOTE:
+            return super().__call__(command)
+        self.calls.append(command)
+        sha = self.tags.pop(0)
+        out = f"{TAG_OBJECT}\trefs/tags/v1.0.0\n{sha}\trefs/tags/v1.0.0^{{}}\n" if sha else ""
+        return subprocess.CompletedProcess(command, 0, out, "")
+
+
+REFUSED = (1, "", " ! [rejected]        v1.0.0 -> v1.0.0 (already exists)")
+
+
+def test_claim_tags_an_untagged_version_at_this_commit() -> None:
+    run = ClaimRunner(None)
+    decision = publish_order.claim("1.0.0", HEAD, run)
+    assert decision.result == "release"
+    assert run.calls[1:] == [
+        ["git", "tag", "-a", "v1.0.0", "-m", "Release v1.0.0", HEAD],
+        ["git", "push", "origin", "refs/tags/v1.0.0"],
+    ]
+
+
+def test_claim_resumes_a_version_tagged_at_this_commit() -> None:
+    run = ClaimRunner(HEAD)
+    decision = publish_order.claim("1.0.0", HEAD, run)
+    assert decision.result == "release"
+    assert "resum" in decision.log
+    assert not run.ran("git", "tag")
+    assert not run.ran("git", "push")
+
+
+def test_claim_skips_a_version_another_run_tagged() -> None:
+    """The run that lost: `decide` read no tag, and another run's claim has landed
+    since (0.44.0 from d41e8533 and 7fab1481, 2026-11-01)."""
+    run = ClaimRunner(OTHER)
+    decision = publish_order.claim("1.0.0", HEAD, run)
+    assert decision.result == "skip"
+    assert decision.log.startswith("::notice::")
+    assert OTHER in decision.log
+    assert not run.ran("git", "push")
+
+
+def test_a_refused_push_skips_when_another_run_won_the_race() -> None:
+    """Both runs read no tag; origin creates a tag once, so this push lost."""
+    run = ClaimRunner(None, OTHER, push=REFUSED)
+    decision = publish_order.claim("1.0.0", HEAD, run)
+    assert decision.result == "skip"
+    assert OTHER in decision.log
+
+
+def test_a_refused_push_releases_when_the_winner_tagged_this_commit() -> None:
+    """Two runs on one commit, such as a manual run beside a push's."""
+    run = ClaimRunner(None, HEAD, push=REFUSED)
+    assert publish_order.claim("1.0.0", HEAD, run).result == "release"
+
+
+def test_a_failed_push_with_no_tag_on_origin_raises() -> None:
+    """The push failed for some other reason, so nothing is claimed."""
+    run = ClaimRunner(None, None, push=(128, "", "fatal: unable to access origin"))
+    with pytest.raises(PublishOrderError, match="unable to access origin"):
+        publish_order.claim("1.0.0", HEAD, run)
+
+
+def test_a_failed_local_tag_raises_before_pushing() -> None:
+    run = ClaimRunner(None, tag=(128, "", "fatal: tag 'v1.0.0' already exists"))
+    with pytest.raises(PublishOrderError, match="already exists"):
+        publish_order.claim("1.0.0", HEAD, run)
+    assert not run.ran("git", "push")
+
+
+@pytest.mark.parametrize(("tags", "out"), [((None,), "release\n"), ((OTHER,), "skip\n")])
+def test_claim_from_the_command_line(capsys: pytest.CaptureFixture[str],
+                                     tags: tuple, out: str) -> None:
+    run = ClaimRunner(*tags)
+    assert publish_order.main(["claim", "1.0.0", "--head-sha", HEAD], run=run) == 0
+    printed, err = capsys.readouterr()
+    assert printed == out
+    assert err.startswith("::notice::")
+
+
+def test_claim_fails_when_the_lookup_fails(capsys: pytest.CaptureFixture[str]) -> None:
+    """A failed lookup must never read as "no tag" and push one."""
+    run = StubRunner({LS_REMOTE: (128, "", "fatal: could not read from remote")})
+    assert publish_order.main(["claim", "1.0.0", "--head-sha", HEAD], run=run) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.startswith("::error::")
+    assert not run.ran("git", "push")
 
 
 def test_tag_sha_prints_the_commit_or_nothing(capsys: pytest.CaptureFixture[str]) -> None:

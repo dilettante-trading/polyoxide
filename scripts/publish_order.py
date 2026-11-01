@@ -20,6 +20,9 @@ crate list is kept by hand. Subcommands:
     decide   Whether a release.yml run releases the checked-out commit. Prints
              `release` or `skip` on stdout and a log line on stderr, or exits 1
              with `::error::`.
+    claim    Pushes the `vVERSION` tag at SHA, once semver and the builds pass and
+             before anything publishes. Prints `release` when this run pushed it
+             or finds it at SHA, `skip` when another run's claim landed first.
     ci-passed  Exits 0 when a CI run on SHA completed with success, else 1.
     check-manifests  Exits 1 when a publishable member lacks a description or a
              licence, which cargo only warns about and crates.io refuses, or when
@@ -44,6 +47,7 @@ Usage:
     python3 scripts/publish_order.py tag-sha VERSION
     python3 scripts/publish_order.py previous-tag SHA
     python3 scripts/publish_order.py decide --head-sha SHA [--dispatch]
+    python3 scripts/publish_order.py claim VERSION --head-sha SHA
     python3 scripts/publish_order.py ci-passed SHA
     python3 scripts/publish_order.py check-manifests
 """
@@ -526,6 +530,13 @@ def decide(current: str, parent: str | None, tag: str | None, head_sha: str,
             f"so this run resumes it. Publishing skips what crates.io already has, "
             f"and the tag is not pushed again."
         ))
+    # Claimed by another run, which is still publishing or failed partway. Only a run
+    # on the tagged commit may finish it, so nothing ships from two commits.
+    if not released:
+        return Decision("skip", (
+            f"::warning::v{current} is claimed at {tag} and has no GitHub release yet. "
+            f"If that commit's Release run failed, re-run its failed jobs to finish it."
+        ))
     if not dispatch and parent == current:
         return Decision("skip", (
             f"v{current} was released from {tag}, and this commit does not change "
@@ -537,6 +548,35 @@ def decide(current: str, parent: str | None, tag: str | None, head_sha: str,
             f"v{current} is already tagged at {tag}. Not releasing."
         ))
     raise PublishOrderError(f"v{current} already tagged at {tag}; bump the version")
+
+
+def claim(version: str, head_sha: str, run: Runner = run_command) -> Decision:
+    """Whether this run publishes `version`, claiming it by pushing `v<version>` at `head_sha`.
+
+    `decide` runs at each run's start, unserialised, so two pushes to main while a
+    version is untagged both read "release". Origin creates a tag once, so of the
+    runs that try, one push lands; a run whose push is refused reads the tag again
+    and publishes only if it names this commit. A tag already at this commit is a
+    resumed release. The local tag needs a git identity, which the caller sets.
+    """
+    tag = tag_sha(version, run)
+    if tag is None:
+        create = ["git", "tag", "-a", f"v{version}", "-m", f"Release v{version}", head_sha]
+        result = run(create)
+        if result.returncode != 0:
+            raise _failed(create, result)
+        push = ["git", "push", "origin", f"refs/tags/v{version}"]
+        pushed = run(push)
+        if pushed.returncode == 0:
+            return Decision("release", f"::notice::Claimed v{version} at {head_sha}.")
+        tag = tag_sha(version, run)
+        if tag is None:
+            raise _failed(push, pushed)
+    if tag == head_sha:
+        return Decision("release", f"::notice::v{version} is tagged at this commit; resuming.")
+    return Decision("skip", (
+        f"::notice::Another run claimed v{version} at {tag}, so this run publishes nothing."
+    ))
 
 
 def gather(head_sha: str, dispatch: bool, run: Runner = run_command) -> dict:
@@ -576,6 +616,10 @@ def _parser() -> argparse.ArgumentParser:
     deciding.add_argument("--head-sha", required=True, help="the checked-out commit")
     deciding.add_argument("--dispatch", action="store_true",
                           help="a manual run: requires CI to have passed on the commit")
+    claiming = commands.add_parser(
+        "claim", help="push vVERSION at SHA before anything publishes; release or skip")
+    claiming.add_argument("version", metavar="VERSION", help="the version, without the v")
+    claiming.add_argument("--head-sha", required=True, help="the commit to tag")
     checking = commands.add_parser("ci-passed", help="exit 0 if CI passed on SHA, else 1")
     checking.add_argument("sha", metavar="SHA")
     commands.add_parser(
@@ -631,7 +675,10 @@ def main(argv: list[str] | None = None, get: Getter = http_status,
                 print(f"::error::CI has not passed on {args.sha}", file=sys.stderr)
                 return 1
         else:
-            decision = decide(**gather(args.head_sha, args.dispatch, run))
+            if args.command == "claim":
+                decision = claim(args.version, args.head_sha, run)
+            else:
+                decision = decide(**gather(args.head_sha, args.dispatch, run))
             print(decision.log, file=sys.stderr)
             print(decision.result)
     except PublishOrderError as err:

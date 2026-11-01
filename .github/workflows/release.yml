@@ -120,12 +120,57 @@ jobs:
           BASELINE=$(python3 scripts/publish_order.py previous-tag "$SHA")
           python3 scripts/api_removals.py release --baseline "$BASELINE"
 
-  publish:
-    name: Publish to crates.io
+  # `decide` ran at this run's start, unserialised, so two pushes to main while a
+  # version is untagged both read "release". The tag is the lock: origin creates it
+  # once, so exactly one run's push lands, and only that run (or a re-run on its
+  # commit) publishes. It waits for semver and every build, so a version that
+  # cannot ship stays untagged; a publish that fails after it resumes (row 4).
+  claim:
+    name: Claim the version
+    needs: [version, semver, build-cli, build-python, build-python-sdist]
     if: |
       needs.version.outputs.should_release == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
-    needs: [version, semver, build-cli, build-python, build-python-sdist]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      claimed: ${{ steps.claim.outputs.claimed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The publish loop's own refusals (exit 3, too many new names; exit 4, a
+      # workspace that cannot publish), asked before the tag exists: after it, no
+      # other commit may finish the version, so either would burn it.
+      - name: Check the workspace can publish
+        run: python3 scripts/publish_order.py list --max-new-names 5 > /dev/null
+
+      - name: Push the version's tag
+        id: claim
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          DECISION=$(python3 scripts/publish_order.py claim "$VERSION" --head-sha "$SHA")
+          if [ "$DECISION" = "release" ]; then
+            echo "claimed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "claimed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Publish to crates.io
+    if: |
+      needs.claim.outputs.claimed == 'true' &&
+      github.repository == 'dilettante-trading/polyoxide'
+    needs: [version, semver, claim, build-cli, build-python, build-python-sdist]
     runs-on: ubuntu-latest
     environment: cargo
     # Job-level, so a run that never releases cannot queue in the group and cancel a pending real one.
@@ -273,9 +318,9 @@ jobs:
 
   publish-python:
     name: Publish to PyPI
-    needs: [version, semver, build-python, build-python-sdist]
+    needs: [version, semver, claim, build-python, build-python-sdist]
     if: |
-      needs.version.outputs.should_release == 'true' &&
+      needs.claim.outputs.claimed == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
     runs-on: ubuntu-latest
     environment: pypi
@@ -295,40 +340,26 @@ jobs:
 
   release:
     name: Create Release
-    needs: [version, publish, build-cli, publish-python]
+    needs: [version, claim, publish, build-cli, publish-python]
     if: |
-      needs.version.outputs.should_release == 'true' &&
+      needs.claim.outputs.claimed == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
     runs-on: ubuntu-latest
     steps:
+      # The full history and every tag, the claim's among them, for git-cliff.
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.sha }}
           fetch-depth: 0
-
-      # Asked again here rather than taken from the version job, because re-running
-      # only this job reuses that job's outputs from before the tag was pushed.
-      - name: Create git tag
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-          SHA: ${{ needs.version.outputs.sha }}
-        run: |
-          TAG_SHA=$(python3 scripts/publish_order.py tag-sha "$VERSION")
-          if [ "$TAG_SHA" = "$SHA" ]; then
-            echo "v$VERSION already points at $SHA, so this run is resuming; not tagging again"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
 
       - name: Generate release notes
         uses: orhun/git-cliff-action@v4
         id: changelog
         with:
           config: cliff.toml
-          args: --latest --strip header
+          # The tag at this commit: `--latest` would take a newer version's tag
+          # that its own claim pushed while this release was still finishing.
+          args: --current --strip header
 
       - uses: actions/download-artifact@v7
         with:
@@ -339,6 +370,8 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
+          # Where GitHub would create the tag were it missing, never main's head.
+          target_commitish: ${{ needs.version.outputs.sha }}
           name: v${{ needs.version.outputs.version }}
           files: artifacts/*
           body: ${{ steps.changelog.outputs.content }}
