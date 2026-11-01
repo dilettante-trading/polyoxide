@@ -6,19 +6,13 @@
   #72's guarantees. The `batch_communications` channel is folded into `communications`, which
   the client does not implement, so the mirror lists 15 channels.
 
-- **Data v2 range-event activity types (#83).** Upstream's spec lists four more values
-  `/v2/activity`'s `type` accepts, the operations on range events, which
-  `data::v2::types::ActivityType` gains as `DirectionalSplit`, `DirectionalMerge`,
-  `ThresholdCompose` and `ThresholdDecompose` (DRIFT R19). The enum is `#[non_exhaustive]`, so
-  this is additive, but such a row that decoded as `Other(..)` now decodes as its variant. A
-  directional split or merge is a row of the whole event, so a `condition` filter never returns
-  it. `ResolutionKey::Conditions` also takes the structural condition id that `/v2/activity` and
-  `/v2/trades` serve before a market is listed.
-
 ## [0.44.0] - 2026-10-23
 
-Six schema-drift issues adopted (#72 to #76 and #78). Two of them change public signatures, in perps
-(#76) and the CLOB (#73), so the 0.x minor rises. Nothing is removed, so
+Seven schema-drift issues adopted (#72 to #76, #78 and #83), the perps host's `pre_ipo` category
+and tickers filter (#82), and Kalshi list pages decoded row by row (#77). The release was
+published on 2026-11-01 from `d41e8533`, after its version-bump commit, so #77, #82 and #83 ship
+in it; their entries were added here afterwards. Three change public API, in perps (#76 and #82)
+and the CLOB (#73), so the 0.x minor rises. Nothing is removed, so
 [`docs/s3-removals.md`](docs/s3-removals.md) still lists nothing, and no build gains a crate. The
 perps AsyncAPI (#74) and Kalshi OpenAPI (#75) mirrors are adopted with no code change: every route
 or channel they add or change is one the client does not implement.
@@ -75,15 +69,47 @@ or channel they add or change is one the client does not implement.
     already decoded. `GET /rewards/user/total` rows may carry `native_earnings` and
     `sponsored_earnings`, which `RewardTotalEarnings`' raw `data` already keeps.
 
+- **Data v2 range-event activity types (#83).** Upstream's spec lists four more values
+  `/v2/activity`'s `type` accepts, the operations on range events, which
+  `data::v2::types::ActivityType` gains as `DirectionalSplit`, `DirectionalMerge`,
+  `ThresholdCompose` and `ThresholdDecompose` (DRIFT R19). The enum is `#[non_exhaustive]`, so
+  this is additive, but such a row that decoded as `Other(..)` now decodes as its variant. A
+  directional split or merge is a row of the whole event, so a `condition` filter never returns
+  it. `ResolutionKey::Conditions` also takes the structural condition id that `/v2/activity` and
+  `/v2/trades` serve before a market is listed.
+
+- **Perps: the undocumented `pre_ipo` category (#82).** Breaking for perps (DRIFT R21); nothing
+  is removed.
+  - `InstrumentCategory` (`perps::types`) is an open enum: it gains `PreIpo` (`"pre_ipo"`, which
+    the host lists and its spec does not) and `Other(String)` for a spelling this version does
+    not know, is `#[non_exhaustive]`, and is no longer `Copy`. A `match` on it needs a wildcard
+    arm, and a copy of it a `.clone()`. Until this change an instrument of an unknown category
+    failed the whole `/v1/info/instruments` page, and with it `perps::venue`'s `instrument`,
+    `instruments` and `funding_rate`.
+  - `ListTickers::instrument_id` is now honoured by the host (DRIFT R20): `tickers()` with it
+    returns that instrument's row only. Nothing changes in the client.
+
+- **Kalshi list pages decoded row by row (#77).** The eight Kalshi listings that page or batch
+  (markets list, window, updated, trades and orderbooks; events list; historical markets and
+  trades) gain `send_lossy()`. It sends what `send()` sends, decodes the page's envelope strictly
+  and each row on its own, and returns `Lossy<P>`: the page with the rows that decoded and its
+  cursor, and a `SkippedRow` (index, key, serde's message, the row) for each row that did not,
+  logged at `WARN`. A walk or a watermarked feed no longer stalls on a page with one row the
+  types cannot read. `send()` and the venue impls stay strict.
+
 ### 🚀 Features
 
 - *(perps)* Adopt the perps builder-fee spec drift ([#76](https://github.com/dilettante-trading/polyoxide/issues/76))
 - *(data)* TokenModule::Directional, adopting drift issue [#78](https://github.com/dilettante-trading/polyoxide/issues/78)
 - *(kalshi)* Adopt Kalshi's AsyncAPI drift, the order book's exchange clock ([#72](https://github.com/dilettante-trading/polyoxide/issues/72))
+- *(data)* Range-event ActivityType variants, adopting drift issue [#83](https://github.com/dilettante-trading/polyoxide/issues/83)
+- *(kalshi)* Send_lossy() decodes list pages row by row ([#77](https://github.com/dilettante-trading/polyoxide/issues/77))
 
 ### 🐛 Bug Fixes
 
 - *(clob)* Adopt schema drift [#73](https://github.com/dilettante-trading/polyoxide/issues/73): null rebates, heartbeat_v1's body
+- *(perps)* The host now honours instrument_id on tickers ([#82](https://github.com/dilettante-trading/polyoxide/issues/82))
+- *(perps)* [**breaking**] InstrumentCategory is an open enum with pre_ipo ([#82](https://github.com/dilettante-trading/polyoxide/issues/82))
 
 ### 📚 Documentation
 
@@ -91,6 +117,7 @@ or channel they add or change is one the client does not implement.
 - *(mutants)* Re-cite and re-prove rows (e) after ClobError::HeartbeatIdMismatch
 - *(spec)* Adopt the perps AsyncAPI drift ([#74](https://github.com/dilettante-trading/polyoxide/issues/74))
 - *(specs)* Adopt Kalshi's OpenAPI drift ([#75](https://github.com/dilettante-trading/polyoxide/issues/75))
+- *(spec)* Kalshi lossy pages design ([#77](https://github.com/dilettante-trading/polyoxide/issues/77))
 
 ## [0.43.0] - 2026-10-22
 
