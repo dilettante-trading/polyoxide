@@ -129,9 +129,9 @@ impl ListTickers {
     polyoxide_core::query_setters! {
         /// Restrict to one instrument.
         ///
-        /// Verified live 2026-09-30: the host ignores this filter and returns
-        /// every instrument; `bbo` and `instruments` honour theirs. Filter
-        /// client-side until `docs/specs/perps/OBSERVED.md` says otherwise.
+        /// Honoured since 2026-10-27: the host answers one row, none for an
+        /// unlisted id (until then it returned every instrument; see
+        /// `docs/specs/perps/OBSERVED.md`).
         instrument_id: InstrumentId => "instrument_id",
     }
 
@@ -150,9 +150,10 @@ impl ListStatistics {
     polyoxide_core::query_setters! {
         /// Restrict to one instrument.
         ///
-        /// Verified live 2026-09-30: the host ignores this filter and returns
-        /// every instrument; `bbo` and `instruments` honour theirs. Filter
-        /// client-side until `docs/specs/perps/OBSERVED.md` says otherwise.
+        /// Verified live 2026-09-30 and 2026-11-01: the host ignores this
+        /// filter and returns every instrument; `tickers`, `bbo` and
+        /// `instruments` honour theirs. Filter client-side until
+        /// `docs/specs/perps/OBSERVED.md` says otherwise.
         instrument_id: InstrumentId => "instrument_id",
     }
 

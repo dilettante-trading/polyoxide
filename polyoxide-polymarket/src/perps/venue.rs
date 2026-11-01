@@ -201,7 +201,7 @@ fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {
     });
     instrument.extensions = Extensions::of(InstrumentExt {
         instrument_type: Some(row.instrument_type),
-        category: Some(row.category),
+        category: Some(row.category.clone()),
         display_symbol: row.display_symbol.clone(),
         close_only: Some(row.close_only),
         settlement: row.settlement.clone(),
@@ -386,7 +386,8 @@ impl Perps {
 impl Funding for Perps {
     async fn funding_rate(&self, key: &MarketKey) -> Result<FundingRate, ClassifiedError> {
         let id = keys::instrument_id(key)?;
-        // The host ignores the filter and sends every instrument.
+        // Select by id: until 2026-10-27 the host ignored the filter and sent
+        // every instrument.
         let rows = self.market().tickers().instrument_id(id).send().await?;
         let Some(row) = rows.iter().find(|row| row.instrument_id == id) else {
             return Err(NotListed::new(key.clone()).into());

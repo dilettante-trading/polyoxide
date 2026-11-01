@@ -21,10 +21,12 @@ its own `POLYMARKET-PROXY`/`POLYMARKET-SECRET` header auth, not the L1/L2 scheme
 
 - Klines, mark points and book levels are positional arrays, decoded through tuples of exact arity
   over `polyoxide_venue::positional::DecimalStr`.
-- The host ignores `instrument_id` on `/v1/info/tickers` and `/v1/info/statistics` and returns
-  every instrument, so a caller filters client-side.
+- The host ignores `instrument_id` on `/v1/info/statistics` and returns every instrument, so a
+  caller filters client-side; `/v1/info/tickers` has honoured it since 2026-10-27.
 - The four WebSocket fields on `LimitTier` are a `u32::MAX` sentinel, not a budget, and must not
   size a bucket.
+- The host lists a `pre_ipo` category the spec does not; `InstrumentCategory` is an `open_enum!`
+  for that reason, with `PreIpo`.
 - Every index has empty constituents today.
 - The host is fronted by CloudFront; its measured rate rows are in `rate-limits.md`.
 - Three test files hold it in place, on the pattern of Data v2: `tests/spec_agreement_perps.rs`
@@ -45,10 +47,10 @@ its own `POLYMARKET-PROXY`/`POLYMARKET-SECRET` header auth, not the L1/L2 scheme
   `InstrumentExt`.
 - A quote is the `bbo` row: a side of zero quantity is none, and an instrument with no row an
   empty quote.
-- The funding rate is the instrument's row of `tickers`, which the host sends for every
-  instrument. Its `interval` is the instrument's `funding_interval` (`1h`, read as a whole number
-  of minutes, hours or days; an unreadable one is a `Decode`), one more `/v1/info/instruments`
-  request, which a `funding_history` with no rows skips.
+- The funding rate is the instrument's row of `tickers`, asked for by `instrument_id` and still
+  selected by id; no row is `NotListed`. Its `interval` is the instrument's `funding_interval`
+  (`1h`, read as a whole number of minutes, hours or days; an unreadable one is a `Decode`), one
+  more `/v1/info/instruments` request, which a `funding_history` with no rows skips.
 - `trades` and `funding_history` reverse the host's newest-first pages. `funding_history` asks for
   the hourly settlements from `start`, at most 100 (`end_timestamp` is `start` + 100 h less a
   minute), since the host answers a start alone with the newest 100 rows since it.

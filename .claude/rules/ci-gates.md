@@ -185,17 +185,20 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 25 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 27 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
   headers (R15); `enum_wire_data_v2`'s
   `enums_that_also_appear_in_responses_spell_what_the_server_sends`, whose `ActivityType` set
-  gained `MIGRATION` (R16) and then the four range-event types (#83), so it now cites R19; and
+  gained `MIGRATION` (R16) and then the four range-event types (#83), so it now cites R19;
   sixteen perps items that adopting its drift (#56) moved, among them
   `spec_agreement_perps`'s and `wire_agreement_perps`'s tables, four `mock_perps` tests,
   `perps::types`' enum test and the `leaderboard.json` and `leaderboard_account.json` fixtures
-  (R17), seven of which adopting its builder-fee drift (#76) moved again and now cite R18.
+  (R17), seven of which adopting its builder-fee drift (#76) moved again and now cite R18;
+  `live_perps`' `live_market_data_for_a_quoting_instrument`, which asserts `tickers` honours
+  `instrument_id` (R20); and `perps::types`' enum test, moved again, and `spec_agreement_perps`'s
+  `every_enum_matches_the_spec`, for `InstrumentCategory`'s undocumented `pre_ipo` (R21).
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`
