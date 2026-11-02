@@ -134,20 +134,27 @@ mod tests {
 
     /// `polyoxide_core::http` names the types reqwest sends with: each value
     /// below is assigned to the reqwest-typed binding with no conversion, so a
-    /// re-export of any other version of the crate would not compile.
+    /// re-export of any other version of the crate would not compile. Every
+    /// path starts at the crate root, which the extern prelude does not serve,
+    /// so deleting either `pub use` fails to compile here.
     #[test]
     fn the_http_vocabulary_is_the_type_reqwest_sends() {
-        let method: reqwest::Method = http::Method::POST;
-        let status: reqwest::StatusCode = http::StatusCode::TOO_MANY_REQUESTS;
-        let mut headers: reqwest::header::HeaderMap = http::HeaderMap::new();
+        let method: crate::reqwest::Method = crate::http::Method::POST;
+        let status: crate::reqwest::StatusCode = crate::http::StatusCode::TOO_MANY_REQUESTS;
+        let mut headers: crate::reqwest::header::HeaderMap = crate::http::HeaderMap::new();
         headers.insert(
-            http::header::RETRY_AFTER,
-            http::HeaderValue::from_static("3"),
+            crate::http::header::RETRY_AFTER,
+            crate::http::HeaderValue::from_static("3"),
         );
 
-        assert_eq!(method, reqwest::Method::POST);
+        assert_eq!(method, crate::reqwest::Method::POST);
         assert_eq!(status.as_u16(), 429);
-        assert_eq!(headers[reqwest::header::RETRY_AFTER].to_str().unwrap(), "3");
+        assert_eq!(
+            headers[crate::reqwest::header::RETRY_AFTER]
+                .to_str()
+                .unwrap(),
+            "3"
+        );
     }
 
     #[test]

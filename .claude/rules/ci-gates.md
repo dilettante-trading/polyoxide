@@ -202,7 +202,7 @@ stage does not hold, printing each one's key to copy there.
   test bodies the wasm32 seams' stories changed cite R22: story 2's is `polymarket_limits`'
   `an_expired_cooldown_stops_delaying`, which advances virtual time past the quota's refill before
   its second acquire, since a window quota now keeps the runtime's clock and its pacing shows;
-  story 3's, which name `Method` and `StatusCode` through `polyoxide_core::http`, are core's
+  story 3's, which name the request vocabulary (`Method`, `StatusCode`, `HeaderMap`, `header::*`) through `polyoxide_core::http`, are core's
   `mock_request` items `a_post_sends_its_body_serialised_once`,
   `a_request_s_costs_reach_the_throttle`, `a_request_parts_timeout_bounds_its_attempt` and
   `a_request_parts_timeout_outlasts_the_client_s`; binance's `usdm::error` `tests::response`,
