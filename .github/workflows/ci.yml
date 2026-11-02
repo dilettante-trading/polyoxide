@@ -129,6 +129,7 @@ jobs:
           cargo test -p polyoxide-polymarket --no-default-features --features relay --test headers_relay
           cargo test -p polyoxide-polymarket --no-default-features --features perps --test headers_perps
           cargo test -p polyoxide-binance --no-default-features --features usdm --test headers_usdm
+          cargo test -p polyoxide-binance --no-default-features --features spot --test headers_spot
           cargo test -p polyoxide-kalshi --no-default-features --features predictions --test headers_predictions
       # The same pins with the umbrella's `full` beside each venue crate, so
       # every feature any venue's module turns on is unified into the pinned
@@ -145,6 +146,7 @@ jobs:
           cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_relay
           cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_perps
           cargo test -p polyoxide -p polyoxide-binance --features polyoxide/full --test headers_usdm
+          cargo test -p polyoxide -p polyoxide-binance --features polyoxide/full --test headers_spot
           cargo test -p polyoxide -p polyoxide-kalshi --features polyoxide/full --test headers_predictions
       # Each module of a venue crate with `specta`, whose extras for that module
       # (`specta?/chrono`, `specta?/rust_decimal`) are weak features: neither

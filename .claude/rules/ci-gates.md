@@ -30,7 +30,8 @@ on the PR that introduces it rather than halfway through a release.
    compiles only alongside another fails.
 2. Each HTTP module's header pin in its minimal build, one `-p` per command so their features
    never unify: `cargo test -p polyoxide-polymarket --no-default-features --features <m> --test headers_<m>`
-   for clob, gamma, data, relay and perps; `cargo test -p polyoxide-binance --no-default-features --features usdm --test headers_usdm`;
+   for clob, gamma, data, relay and perps; `cargo test -p polyoxide-binance --no-default-features --features usdm --test headers_usdm`
+   and `cargo test -p polyoxide-binance --no-default-features --features spot --test headers_spot`;
    `cargo test -p polyoxide-kalshi --no-default-features --features predictions --test headers_predictions`.
    The pin test derives the HTTP modules from cargo metadata: a venue crate's products whose
    feature builds `polyoxide-core`, so `rtds` and `sports` pin none.
@@ -85,8 +86,9 @@ on the PR that introduces it rather than halfway through a release.
     `tokio-tungstenite` and `tungstenite` only with `predictions-ws` (files `@predictions` and
     `@predictions-ws`; the latter must hold `polyoxide-ws`).
   - `polyoxide`, per feature on its own names: the HTTP stack only with an HTTP module of any
-    venue (`polymarket-clob`, `-gamma`, `-data`, `-relay`, `-perps`, `binance-usdm` or
-    `kalshi-predictions`); `alloy*` and `hmac` only with `polymarket-clob` or `polymarket-relay`;
+    venue (`polymarket-clob`, `-gamma`, `-data`, `-relay`, `-perps`, `binance-usdm`,
+    `binance-spot` or `kalshi-predictions`); `alloy*` and `hmac` only with `polymarket-clob` or
+    `polymarket-relay`;
     `keyring` only with `keychain`. `@polymarket-rtds` and `@polymarket-sports` are the
     socket-only tree, `@polymarket-perps` and `@kalshi-predictions` must hold `reqwest`, and
     `@kalshi-predictions-ws` holds the socket kit.

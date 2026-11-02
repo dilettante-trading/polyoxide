@@ -131,7 +131,7 @@ PER_FEATURE = {
         Rule(frozenset({"reqwest", "polyoxide-core", "governor", "sha2"}), (),
              frozenset({"polymarket-clob", "polymarket-gamma", "polymarket-data",
                         "polymarket-relay", "polymarket-perps", "binance-usdm",
-                        "kalshi-predictions"}),
+                        "binance-spot", "kalshi-predictions"}),
              "reqwest, polyoxide-core, governor and sha2 only with an HTTP module"),
         Rule(frozenset({"hmac"}), ("alloy",), frozenset({"polymarket-clob", "polymarket-relay"}),
              "alloy* and hmac only with polymarket-clob or polymarket-relay"),
@@ -153,6 +153,7 @@ MUST_BUILD = {
     "polyoxide-kalshi@predictions.txt": "reqwest",
     "polyoxide@kalshi-predictions.txt": "reqwest",
     "polyoxide@kalshi-predictions-ws.txt": "polyoxide-ws",
+    "polyoxide@binance-spot.txt": "reqwest",
 }
 
 HEADER = """\
@@ -282,7 +283,7 @@ def test_the_allowlists_exist() -> None:
     assert {f"polyoxide-binance@{m}.txt" for m in ("usdm", "usdm-ws")} <= set(names), names
     assert "polyoxide-kalshi@predictions.txt" in names, names
     umbrella = ("polymarket-rtds", "polymarket-sports", "polymarket-perps", "polymarket-clob",
-                "polymarket-clob,keychain")
+                "polymarket-clob,keychain", "binance-spot")
     assert {f"polyoxide@{m}.txt" for m in umbrella} <= set(names), names
 
 
@@ -525,7 +526,7 @@ def test_the_umbrellas_socket_passthroughs_may_not_build_the_http_stack() -> Non
     # Polymarket's clob and relay the signing stack.
     for features in (("polymarket-gamma",), ("polymarket-data",), ("polymarket-perps",),
                      ("polymarket-perps-ws",), ("binance-usdm",), ("binance-usdm-ws",),
-                     ("binance",), ("polymarket-rtds", "binance-usdm")):
+                     ("binance-spot",), ("binance",), ("polymarket-rtds", "binance-usdm")):
         assert denied(UMBRELLA, HTTP_STACK, features, table) == [], features
         assert denied(UMBRELLA, ["alloy", "hmac"], features, table) == [
             f"alloy ({UMBRELLA_SIGNING})", f"hmac ({UMBRELLA_SIGNING})"], features
@@ -582,6 +583,22 @@ def test_only_the_umbrellas_kalshi_stream_feature_builds_the_socket_kit() -> Non
     assert [n for n in SOCKET_STACK if n in rest] == [], rest
     stream = read_allowlist(ALLOWLISTS / "polyoxide@kalshi-predictions-ws.txt")
     assert [n for n in SOCKET_STACK if n not in stream] == [], stream
+
+
+def test_the_umbrellas_binance_spot_feature_is_http_only_and_part_of_binance_and_full() -> None:
+    table = feature_table(UMBRELLA)
+    # The HTTP stack is admitted, the signing stack never, and no socket stack
+    # comes with spot's REST module.
+    assert denied(UMBRELLA, HTTP_STACK, ("binance-spot",), table) == []
+    assert denied(UMBRELLA, ["alloy", "hmac"], ("binance-spot",), table) == [
+        f"alloy ({UMBRELLA_SIGNING})", f"hmac ({UMBRELLA_SIGNING})"]
+    listed = read_allowlist(ALLOWLISTS / "polyoxide@binance-spot.txt")
+    assert "polyoxide-binance" in listed, listed
+    assert [n for n in SOCKET_STACK if n in listed] == [], listed
+    # The real table: `binance` and `full` turn spot on, and spot turns on no stream.
+    assert "binance-spot" in enabled(("binance",), table)
+    assert "binance-spot" in enabled(("full",), table)
+    assert "binance-usdm-ws" not in enabled(("binance-spot",), table)
 
 
 def test_binances_spot_allowlist_is_the_rest_tree_and_builds_no_socket_stack() -> None:

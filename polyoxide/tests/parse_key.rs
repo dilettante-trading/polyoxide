@@ -123,3 +123,41 @@ fn each_key_carries_the_class_its_product_declares() {
         assert_eq!(key.class(), class, "{text}");
     }
 }
+
+#[test]
+fn binance_spots_keys_come_from_its_own_constructors() {
+    use polyoxide::binance::spot::{self, types::Symbol};
+
+    let btc = parse("binance.spot:btcusdt").unwrap();
+    assert_eq!(btc, spot::key(&Symbol::new("BTCUSDT").unwrap()));
+    assert_eq!(btc.to_string(), "binance.spot:BTCUSDT");
+    // The same symbol on USDⓈ-M is another product's key.
+    assert_ne!(btc, parse("binance.usdm:btcusdt").unwrap());
+}
+
+#[test]
+fn binance_spot_refuses_an_id_it_cannot_read_and_leaves_its_neighbours_unknown() {
+    assert!(matches!(
+        parse("binance.spot:BTC/USDT"),
+        Err(KeyError::InvalidId { .. })
+    ));
+    let parsed = parse("binance.margin:BTCUSDT");
+    assert!(
+        matches!(parsed, Err(KeyError::UnknownProduct { .. })),
+        "{parsed:?}"
+    );
+}
+
+#[test]
+fn a_spot_key_carries_the_spot_class_and_a_usdm_key_does_not() {
+    use polyoxide::binance::spot::key::SpotKeys;
+    use polyoxide::binance::usdm::key::UsdmKeys;
+    use polyoxide::venue::{KeySpace, ProductClass};
+
+    let spot = parse("binance.spot:btcusdt").unwrap();
+    assert_eq!(spot.class(), SpotKeys::CLASS);
+    assert_eq!(spot.class(), ProductClass::Spot);
+    let usdm = parse("binance.usdm:BTCUSDT").unwrap();
+    assert_eq!(usdm.class(), UsdmKeys::CLASS);
+    assert_ne!(spot.class(), usdm.class());
+}
