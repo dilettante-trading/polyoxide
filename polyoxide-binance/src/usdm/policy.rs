@@ -5,10 +5,8 @@ use std::time::Duration;
 use polyoxide_core::reqwest::StatusCode;
 use polyoxide_core::{AttemptInfo, Decision, Outcome, ResponseMeta, RetryConfig, RetryPolicy};
 
-use crate::usdm::{
-    error::retry_after_secs,
-    weight::{WeightBudget, DEFAULT_BAN},
-};
+use crate::shared::error::retry_after_secs;
+use crate::usdm::weight::{WeightBudget, DEFAULT_BAN};
 
 /// Binance's retry policy, over the [`WeightBudget`] whose minute it reads.
 ///

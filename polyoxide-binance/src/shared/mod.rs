@@ -6,5 +6,6 @@
 //! request names. Each product keeps its own weight table, error enum, retry
 //! policy handle and response types, and builds them on these.
 
+pub(crate) mod error;
 pub(crate) mod symbol;
 pub(crate) mod weight;
