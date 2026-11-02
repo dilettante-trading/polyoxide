@@ -1,4 +1,4 @@
-//! Timeouts, on an injected `Runtime`.
+//! Timeouts and intervals, on an injected `Runtime`.
 
 use std::future::{poll_fn, Future};
 use std::pin::pin;
@@ -19,8 +19,9 @@ const FAR: Duration = Duration::from_secs(86_400 * 365 * 30);
 /// Await `future` for at most `duration` on `runtime`'s clock: its output, or
 /// `None` when `duration` passed first.
 ///
-/// `future` is polled before the timer, so a ready future wins even at
-/// `Duration::ZERO`. Any duration, `Duration::MAX` included, is valid.
+/// The duration counts from the first poll, not from the call. `future` is
+/// polled before the timer, so a ready future wins even at `Duration::ZERO`. Any
+/// duration, `Duration::MAX` included, is valid.
 pub async fn timeout<F: Future>(
     runtime: &dyn Runtime,
     duration: Duration,

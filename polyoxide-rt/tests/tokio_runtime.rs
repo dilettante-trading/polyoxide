@@ -142,10 +142,14 @@ async fn abort_stops_a_task_before_its_side_effect() {
         TokioRuntime.sleep(Duration::from_secs(10)).await;
         flag.store(true, Ordering::SeqCst);
     });
+    assert!(!task.is_finished(), "a task just spawned is not finished");
     tokio::task::yield_now().await;
     assert!(!task.is_finished(), "the task is still sleeping");
 
     task.abort();
+    // Checked before the task is awaited, since awaiting it would finish it.
+    TokioRuntime.sleep(Duration::from_millis(1)).await;
+    assert!(task.is_finished(), "an aborted task is not finished");
     assert_eq!((&mut task).await, None);
     TokioRuntime.sleep(Duration::from_secs(60)).await;
 
@@ -153,7 +157,19 @@ async fn abort_stops_a_task_before_its_side_effect() {
         !ran.load(Ordering::SeqCst),
         "an aborted task still ran to its end"
     );
-    assert!(task.is_finished(), "an aborted task is not finished");
+}
+
+fn assert_send<T: Send>(_: &T) {}
+
+#[tokio::test]
+async fn the_seams_types_and_futures_are_send() {
+    // Compile-only: a supervised task holds each of these across an await.
+    let task: polyoxide_rt::Task<u8> = spawn(&TokioRuntime, async { 1u8 });
+    assert_send(&task);
+    let mut ticker: polyoxide_rt::Interval = interval(Arc::new(TokioRuntime), TICK);
+    assert_send(&ticker);
+    assert_send(&ticker.tick());
+    assert_send(&timeout(&TokioRuntime, TICK, async { 1u8 }));
 }
 
 #[tokio::test(start_paused = true)]
