@@ -20,6 +20,10 @@ struct ReadmeDoctests;
 #[doc = include_str!("usdm/README.md")]
 struct UsdmReadmeDoctests;
 
+#[cfg(all(doctest, feature = "spot"))]
+#[doc = include_str!("spot/README.md")]
+struct SpotReadmeDoctests;
+
 #[cfg(any(feature = "usdm", feature = "spot"))]
 mod shared;
 
