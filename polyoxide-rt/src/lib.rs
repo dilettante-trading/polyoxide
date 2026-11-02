@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 
 mod runtime;
+mod task;
 #[cfg(not(target_arch = "wasm32"))]
 mod tokio;
 
@@ -15,6 +16,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub use runtime::Runtime;
+pub use task::{spawn, Task};
 pub use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(not(target_arch = "wasm32"))]

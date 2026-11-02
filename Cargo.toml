@@ -46,6 +46,8 @@ hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 futures-util = "0.3"
+# The oneshot of `polyoxide-rt`'s `Task`.
+futures-channel = "0.3"
 # `Stream`, for the trading trait's event stream (`polyoxide-venue`'s `trading`).
 futures-core = "0.3"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }

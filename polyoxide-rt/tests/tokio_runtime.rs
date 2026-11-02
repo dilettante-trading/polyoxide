@@ -1,11 +1,11 @@
 //! The runtime seam, driven through `TokioRuntime` on tokio's paused clock.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use polyoxide_rt::{
-    default_runtime, BoxFuture, Instant, Runtime, SystemTime, TokioRuntime, UNIX_EPOCH,
+    default_runtime, spawn, BoxFuture, Instant, Runtime, SystemTime, TokioRuntime, UNIX_EPOCH,
 };
 
 /// The paused clock wakes a timer on its millisecond, so a measured wait is its
@@ -114,4 +114,83 @@ fn the_default_sleep_until_a_passed_deadline_sleeps_zero() {
     let rt = Scripted::new();
     drop(rt.sleep_until(rt.base + Duration::from_secs(3)));
     assert_eq!(*rt.slept.lock().unwrap(), vec![Duration::ZERO]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn spawn_goes_through_the_runtime_it_is_given() {
+    let rt = Scripted::new();
+    let task = spawn(&rt, async { 5 });
+    assert_eq!(rt.spawned.load(Ordering::SeqCst), 1);
+    assert_eq!(task.await, Some(5));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_task_yields_its_output() {
+    let task = spawn(&TokioRuntime, async {
+        TokioRuntime.sleep(Duration::from_secs(2)).await;
+        "done"
+    });
+    assert_eq!(task.await, Some("done"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn abort_stops_a_task_before_its_side_effect() {
+    let ran = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&ran);
+    let mut task = spawn(&TokioRuntime, async move {
+        TokioRuntime.sleep(Duration::from_secs(10)).await;
+        flag.store(true, Ordering::SeqCst);
+    });
+    tokio::task::yield_now().await;
+    assert!(!task.is_finished(), "the task is still sleeping");
+
+    task.abort();
+    assert_eq!((&mut task).await, None);
+    TokioRuntime.sleep(Duration::from_secs(60)).await;
+
+    assert!(
+        !ran.load(Ordering::SeqCst),
+        "an aborted task still ran to its end"
+    );
+    assert!(task.is_finished(), "an aborted task is not finished");
+}
+
+#[tokio::test(start_paused = true)]
+async fn is_finished_turns_true_when_the_task_ends() {
+    let task = spawn(&TokioRuntime, async {
+        TokioRuntime.sleep(Duration::from_secs(5)).await;
+    });
+    tokio::task::yield_now().await;
+    assert!(!task.is_finished(), "the task is still sleeping");
+
+    // The task is not polled here, so only the task's own end can have set it.
+    TokioRuntime.sleep(Duration::from_secs(6)).await;
+    assert!(task.is_finished(), "a task that ended is not finished");
+    assert_eq!(task.await, Some(()));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_dropped_task_keeps_running() {
+    let ran = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&ran);
+    let task = spawn(&TokioRuntime, async move {
+        TokioRuntime.sleep(Duration::from_secs(5)).await;
+        flag.store(true, Ordering::SeqCst);
+    });
+    drop(task);
+
+    TokioRuntime.sleep(Duration::from_secs(10)).await;
+    assert!(ran.load(Ordering::SeqCst), "dropping the task stopped it");
+}
+
+async fn fail_on_purpose() -> u32 {
+    panic!("the task fails on purpose")
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_panicking_task_ends_with_no_output() {
+    let task = spawn(&TokioRuntime, fail_on_purpose());
+    TokioRuntime.sleep(Duration::from_secs(1)).await;
+    assert!(task.is_finished(), "a task that panicked is not finished");
+    assert_eq!(task.await, None);
 }

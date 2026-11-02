@@ -13,6 +13,9 @@ categories = ["asynchronous"]
 # Nothing in the workspace, so it publishes first and every crate can use it
 # (AD-2). Each task below adds the dependencies it first needs.
 [dependencies]
+# `Task`: an abortable future, and a oneshot for its output.
+futures-channel = { workspace = true }
+futures-util = { workspace = true }
 web-time = { workspace = true }
 
 # Native only (spec D10): `rt` and `time` are `TokioRuntime`'s spawn and clock.

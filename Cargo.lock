@@ -4158,6 +4158,8 @@ dependencies = [
 name = "polyoxide-rt"
 version = "0.44.0"
 dependencies = [
+ "futures-channel",
+ "futures-util",
  "tokio",
  "web-time",
 ]
