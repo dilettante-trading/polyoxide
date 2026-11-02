@@ -43,6 +43,14 @@ const _: fn() = || {
     is::<usdm::ws::InvalidStreamName>();
 };
 
+// The spot module's error types, in the same assertion `usdm`'s are in.
+#[cfg(feature = "spot")]
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<spot::SpotError>();
+    is::<spot::types::InvalidSymbol>();
+};
+
 // Every product implements its class's bundle; one that drops a defining
 // capability fails the build here.
 #[cfg(feature = "usdm")]
