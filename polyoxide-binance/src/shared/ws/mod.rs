@@ -145,7 +145,8 @@ mod tests {
     };
 
     /// A stream set that is nothing like USDⓈ-M's: one path, three names a
-    /// request, a request every 60 ms.
+    /// request, a request every 250 ms, slower than USDⓈ-M's 200 ms so a test can
+    /// tell the two apart.
     struct Probe;
 
     #[derive(Debug, thiserror::Error)]
@@ -228,7 +229,7 @@ mod tests {
 
         const PATHS: &'static [&'static str] = &["probe"];
         const MAX_NAMES_PER_REQUEST: usize = 3;
-        const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(60);
+        const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(250);
 
         fn path(_name: &String) -> &'static str {
             "probe"
@@ -283,7 +284,8 @@ mod tests {
         let start = Instant::now();
         ws.subscribe(&wanted).await.unwrap();
         // Three names a request, not USDⓈ-M's 200, and each request at least
-        // the set's interval after the last, not USDⓈ-M's 200 ms.
+        // the set's interval after the last, not USDⓈ-M's 200 ms (three requests
+        // at 200 ms would finish in 400 ms, under the 500 ms asserted here).
         assert_eq!(sizes(&server), [3, 3, 1]);
         assert!(
             start.elapsed() >= Probe::MIN_REQUEST_INTERVAL * 2,
