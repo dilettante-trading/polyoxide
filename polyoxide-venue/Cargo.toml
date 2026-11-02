@@ -23,6 +23,12 @@ futures-core = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
+# `std` has no wall clock on wasm32-unknown-unknown; `web-time` reads the
+# browser's. Declared for that target alone (a feature never turns on a
+# target-specific dependency), so no native tree changes.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = { workspace = true }
+
 [features]
 # `positional`: the decimal-string helpers for rows sent as bare arrays.
 decimal = ["dep:rust_decimal", "dep:serde"]

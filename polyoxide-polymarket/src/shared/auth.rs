@@ -8,8 +8,8 @@ use base64::{
     Engine,
 };
 use hmac::{Hmac, Mac};
+use polyoxide_rt::{SystemTime, UNIX_EPOCH};
 use sha2::Sha256;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Get current Unix timestamp in seconds.
 ///
@@ -17,8 +17,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// Panics if the system clock is set before the Unix epoch (1970-01-01).
 pub fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    let now = SystemTime::now(); // runtime-gate: the wall clock is never injected
+    now.duration_since(UNIX_EPOCH)
         .expect("system time must not be before Unix epoch")
         .as_secs()
 }
@@ -114,6 +114,19 @@ mod tests {
         let ts = current_timestamp();
         // Should be a reasonable Unix timestamp (after 2020)
         assert!(ts > 1_600_000_000);
+    }
+
+    #[test]
+    fn current_timestamp_sits_between_two_reads_of_the_runtime_crates_clock() {
+        let read = || {
+            polyoxide_rt::SystemTime::now()
+                .duration_since(polyoxide_rt::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs())
+        };
+        let before = read();
+        let ts = current_timestamp();
+        let after = read();
+        assert!(before <= ts && ts <= after, "{before} <= {ts} <= {after}");
     }
 
     #[test]
