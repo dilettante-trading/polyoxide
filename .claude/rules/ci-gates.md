@@ -8,11 +8,13 @@ paths:
   - "docs/{s1-removals,s3-removals,s3-migration,rename-manifest,MUTANTS}.md"
   - "docs/rename-map.tsv"
   - "flake.nix"
+  - "polyoxide-wasm-smoke/**"
+  - "scripts/wasm_*.sh"
 ---
 
 # CI gates in detail
 
-CLAUDE.md lists the nine jobs and the command each runs; this file says what each checks.
+CLAUDE.md lists the ten jobs and the command each runs; this file says what each checks.
 
 ## package
 
@@ -152,6 +154,42 @@ declares (inside an inline `mod y { .. }`, `y/x.rs`), `polyoxide-ws/src/test_ser
 `// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is: the two in tree are the
 wall-clock reads, `UnixMillis::now` and `shared::auth::current_timestamp`, which are never
 injected. The scripts job runs it through `test_runtime_gate.py`.
+
+## wasm
+
+`scripts/wasm_check.sh` runs `cargo check` and `cargo clippy -- -D warnings` for
+`wasm32-unknown-unknown` over the supported set, crate by crate with its features named. It sets
+`RUSTFLAGS='--cfg getrandom_backend="wasm_js"'` itself, replacing any inherited value, since an
+inherited `RUSTFLAGS` (a host `target-cpu`) would override a config file's and break the target;
+with `--target` cargo passes no `RUSTFLAGS` to build scripts, so the host cache is untouched. A
+change to the supported set edits that script.
+
+`scripts/wasm_smoke.sh` then runs `polyoxide-wasm-smoke`'s `tests/browser_smoke.rs` in headless
+Chrome, inside a dedicated Worker, through `wasm-bindgen-test-runner`. It builds and starts the
+native `wasm-smoke-server`, which binds `127.0.0.1:0` for mockito routes (every one answering CORS
+headers: a 200 and two 429s, one exposing `Retry-After` and one not, on one server, and a slow
+route on a server of its own, since mockito answers it by sleeping its server's one thread and
+wasm-bindgen-test may run async tests concurrently) and for one scripted socket on
+`polyoxide-ws`'s test server, and writes `POLYOXIDE_SMOKE_HTTP`, `POLYOXIDE_SMOKE_WS` and
+`POLYOXIDE_SMOKE_SLOW` to the file its one argument names. The script exports them, and the tests
+read them with `env!`, so a build without them does not compile and the suite cannot pass empty.
+The runner starts Chrome with the arguments in `polyoxide-wasm-smoke/webdriver.json`
+(`--headless`, `--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`): without `--no-sandbox`
+Chrome cannot start where unprivileged user namespaces are restricted, as on a hosted runner, and
+the script refuses to run without the file.
+It refuses a `wasm-bindgen-cli` whose version is not the `wasm-bindgen` one `Cargo.lock` pins,
+since the runner rejects a module built by another. The suite covers `BrowserRuntime` (sleep,
+`sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, a sleep past
+`i32::MAX` ms), `FetchTransport` (a 200, a timeout, both 429s read through `ErrorResponse`) and
+`WebSocketTransport` (a text echo, a close with its code, a refused handshake header and ping
+frame). Each test's failure was shown by breaking the one thing it pins, so a new test comes with
+the same proof.
+
+CI's job installs the wasm32 target and `wasm-bindgen-cli` at the locked version, and uses the
+runner's Chrome and chromedriver. Locally, the flake provides chromium, chromedriver (Linux) and
+the CLI; if the flake's CLI is not the locked version, move the lockfile to it with
+`cargo update -p wasm-bindgen --precise <version>`. `scripts/runtime_gate.py` is not part of this
+job: it runs in the scripts job.
 
 ## removals
 

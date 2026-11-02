@@ -49,7 +49,7 @@ This file holds the commands, the CI gates and the rules that cut across crates.
 
 **MSRV:** 1.91 (set in the workspace `Cargo.toml`).
 
-**Dev shell:** `nix develop` (`flake.nix`) puts Rust 1.99.0 with clippy, rustfmt and the `wasm32-unknown-unknown` target on `PATH`, with the MSRV toolchain as `msrv-cargo` (cargo 1.91.0, building into `target/msrv`), cargo-hack 0.6.45, cargo-semver-checks 0.51.0, cargo-nextest, uv and python3, so `nix develop --command <step>` runs a CI step on CI's tools. CI itself does not use the flake: its removals job pins Rust 1.99.0 and its msrv job 1.91, and every other job floats on `stable`, so a newer stable's lints can fail only in CI.
+**Dev shell:** `nix develop` (`flake.nix`) puts Rust 1.99.0 with clippy, rustfmt and the `wasm32-unknown-unknown` target on `PATH`, with the MSRV toolchain as `msrv-cargo` (cargo 1.91.0, building into `target/msrv`), cargo-hack 0.6.45, cargo-semver-checks 0.51.0, cargo-nextest, uv, python3, chromium, chromedriver (Linux) and the wasm-bindgen CLI whose version `Cargo.lock` pins, so `nix develop --command <step>` runs a CI step on CI's tools. CI itself does not use the flake: its removals job pins Rust 1.99.0 and its msrv job 1.91, and every other job floats on `stable`, so a newer stable's lints can fail only in CI.
 
 ```bash
 cargo build --all-features --workspace                          # everything
@@ -62,7 +62,7 @@ cargo fmt --all                                                 # CI checks with
 cargo test -p polyoxide-polymarket --test live_clob -- --ignored    # live tests hit real APIs
 ```
 
-### The nine CI jobs
+### The ten CI jobs
 
 Run the jobs a change touches before pushing (inside `nix develop`); `-D warnings` makes every warning an error.
 
@@ -76,7 +76,8 @@ Run the jobs a change touches before pushing (inside `nix develop`); `-D warning
 | removals | `python3 scripts/api_removals.py check --baseline v0.40.0` | a removed public item that `docs/s3-removals.md` does not list |
 | test bodies | `python3 scripts/test_body_diff.py --baseline v0.40.0` | a changed or lost test-context item with no `[[drift]]` or `[[retired]]` entry |
 | python bindings | `cd polyoxide-py && uv sync --reinstall-package polyoxide && uv run pytest tests/` | a binding regression (runs once format passes) |
-| CI scripts | `cd .github/scripts && uv sync && uv run pytest tests/` | dependency fences, `Classify` coverage, dep allowlists, module READMEs, the venue gate, generated regions, the rules files |
+| CI scripts | `cd .github/scripts && uv sync && uv run pytest tests/`, then `python3 scripts/runtime_gate.py` | dependency fences, a timer, clock read or spawn outside the injected runtime, `Classify` coverage, dep allowlists, module READMEs, the venue gate, generated regions, the rules files |
+| wasm | `bash scripts/wasm_check.sh && bash scripts/wasm_smoke.sh` (`ci-gates.md`) | a supported crate that does not build or lint for `wasm32-unknown-unknown`, or a browser smoke test that fails in headless Chrome |
 
 ### Rules the gates hold
 
@@ -106,7 +107,7 @@ Twelve crates, in publish order, each with the workspace crates its build needs.
 - `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`, without default features), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features), `polyoxide-venue` (under `keychain`); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
 - `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-polymarket` (with `clob`, `gamma`, `data`, without default features), `polyoxide-venue`
 - `polyoxide-test-support` — Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`); needs: `polyoxide-core` (with `keychain`), `polyoxide-venue`; a path-only dev-dependency of the crates whose tests use it; it names no venue
-- `polyoxide-wasm-smoke` — The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push (`publish = false`); needs: `polyoxide-ws` (with `test-server`); published after `polyoxide-core`, a versioned dev-dependency; native server, wasm32 tests; nothing depends on it
+- `polyoxide-wasm-smoke` — The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push (`publish = false`); needs: `polyoxide-ws` (with `test-server`); published after `polyoxide-core`, `polyoxide-rt`, a versioned dev-dependency; native server, wasm32 tests; nothing depends on it
 <!-- generated:end claude-graph -->
 <!-- generated:begin claude-cli-deps -->
 Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depends directly on the component crates — `polyoxide-binance` (with `usdm-ws`, without default features) and `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features) — plus `polyoxide-core` (with `keychain`) and `polyoxide-venue` only under the optional `keychain` feature.
