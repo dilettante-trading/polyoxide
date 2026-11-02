@@ -110,3 +110,14 @@ Payloads:
   kline event. COIN-M rows arrive on this USDⓈ-M host: 30 of 745 mark-price rows, and
   `AAVEUSD_PERP` in `!ticker@arr`.
 - The kline's `B` is documented as "Ignore" and is not modelled.
+
+## Browser transport (2026-11)
+
+A browser's WebSocket cannot send a protocol ping, so a client there keeps a
+connection alive with a request the server answers instead.
+
+- `LIST_SUBSCRIPTIONS` as a keepalive: on `/market/stream` subscribed to
+  `btcusdt@markPrice@1s`, six requests 20 s apart on 2026-11-02 were all
+  answered, in 0.301 s, 0.319 s, 0.322 s, 0.318 s, 0.319 s and 0.319 s. An
+  answer is the request's id with `result` the subscribed names, so it is a
+  frame like any other and counts as liveness.
