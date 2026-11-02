@@ -95,13 +95,13 @@ SNIPPETS = {
         "async fn a_retry_after_past_the_ceiling_waits_the_ceiling_drift_r11(",
     ("polyoxide-ws/src/supervisor/tests.rs", 795):
         "async fn a_start_in_an_outage_waits_out_the_first_refusals_retry_after_drift_r11(",
-    ("polyoxide-polymarket/src/perps/ws/builder.rs", 710):
+    ("polyoxide-polymarket/src/perps/ws/builder.rs", 730):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-binance/tests/supervision_usdm_kit.rs", 437):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-polymarket/tests/supervision_rtds.rs", 327):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
-    ("polyoxide-polymarket/src/sports/supervised.rs", 419):
+    ("polyoxide-polymarket/src/sports/supervised.rs", 450):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
 }
 

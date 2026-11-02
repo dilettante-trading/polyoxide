@@ -788,16 +788,16 @@ impl WebSocketWithPing {
         Fut: std::future::Future<Output = Result<(), ClobWsError>>,
     {
         // Not `interval`: it panics on a zero period, and on `Duration::MAX`
-        // once a tick is late. `sleep` falls back to a far-future deadline.
+        // once a tick is late. A runtime's `sleep` takes any duration.
+        let runtime = Arc::clone(self.inner.runtime());
         let period = self.ping_interval.max(Duration::from_millis(1));
         // The first ping goes out at once.
-        let ping = tokio::time::sleep(Duration::ZERO);
-        tokio::pin!(ping);
+        let mut ping = runtime.sleep(Duration::ZERO);
 
         loop {
             tokio::select! {
                 () = &mut ping => {
-                    ping.set(tokio::time::sleep(period));
+                    ping = runtime.sleep(period);
                     self.inner.send(Message::Text("PING".into())).await?;
                 }
                 // `self` holds a sender, so this arm never sees `None`.

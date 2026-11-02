@@ -2,16 +2,18 @@
 
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::{Stream, StreamExt};
+use polyoxide_rt::{default_runtime, Runtime};
 pub(crate) use polyoxide_ws::DEFAULT_CONNECT_TIMEOUT;
 use polyoxide_ws::{
-    connect,
-    tungstenite::{protocol::CloseFrame, Message},
-    Connection, Mode,
+    default_socket_transport,
+    tungstenite::{client::IntoClientRequest, protocol::CloseFrame, Message},
+    Connection, Mode, SocketTransport, WsError,
 };
 
 use crate::sports::{error::SportsError, update::MatchUpdate};
@@ -19,8 +21,8 @@ use crate::sports::{error::SportsError, update::MatchUpdate};
 /// The production endpoint.
 pub const SPORTS_WS_URL: &str = "wss://sports-api.polymarket.com/ws";
 
-/// Open one connection through the kit's connect, bounded by
-/// `connect_timeout`, and read it through the kit's [`Connection`].
+/// Open one connection through the target's default transport and runtime,
+/// bounded by `connect_timeout`, and read it through the kit's [`Connection`].
 ///
 /// Every frame is read, pings included, since they are the feed's liveness
 /// signal (D5), and the server's close is answered with the RFC 6455 reply
@@ -30,10 +32,31 @@ pub(crate) async fn open(
     url: String,
     connect_timeout: Duration,
 ) -> Result<Connection, SportsError> {
-    let socket = connect(url.as_str(), connect_timeout)
+    open_with(
+        url,
+        connect_timeout,
+        default_socket_transport(),
+        default_runtime(),
+    )
+    .await
+}
+
+/// As [`open`], through `transport` and on `runtime`.
+pub(crate) async fn open_with(
+    url: String,
+    connect_timeout: Duration,
+    transport: Arc<dyn SocketTransport>,
+    runtime: Arc<dyn Runtime>,
+) -> Result<Connection, SportsError> {
+    let request = url
+        .as_str()
+        .into_client_request()
+        .map_err(|err| SportsError::connect(WsError::from(err)))?;
+    let socket = transport
+        .connect(request, connect_timeout, Arc::clone(&runtime))
         .await
         .map_err(SportsError::connect)?;
-    Ok(Connection::new(socket, Mode::All))
+    Ok(Connection::with_runtime(socket, Mode::All, runtime))
 }
 
 /// What one inbound message means. Both tiers classify through this, so they

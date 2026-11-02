@@ -1,7 +1,10 @@
 //! The supervised tier's builder: perps' timings and endpoint, handed to the
 //! kit's `Supervisor` with [`PerpsProtocol`].
 
-use polyoxide_ws::{Supervisor, Timing};
+use std::sync::Arc;
+
+use polyoxide_rt::{default_runtime, Runtime};
+use polyoxide_ws::{default_socket_transport, SocketTransport, Supervisor, Timing};
 
 use crate::perps::ws::{
     channel::Channel, error::PerpsWsError, protocol::PerpsProtocol, SupervisedPerpsWs, WS_URL,
@@ -12,6 +15,8 @@ use crate::perps::ws::{
 pub struct PerpsWsBuilder {
     url: String,
     timing: Timing,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for PerpsWsBuilder {
@@ -28,6 +33,8 @@ impl PerpsWsBuilder {
         Self {
             url: WS_URL.to_owned(),
             timing: Timing::default(),
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -70,6 +77,14 @@ impl PerpsWsBuilder {
         connect_timeout;
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the supervision task, its pings and the retries of a
+        /// rate-limited subscribe run on. By default the target's.
+        runtime;
+        /// How each attempt dials. By default the target's.
+        socket_transport;
+    }
+
     /// Open the connection, subscribe, and start supervising.
     ///
     /// Fails with [`PerpsWsError::EmptySubscription`] for no channels, before
@@ -85,6 +100,11 @@ impl PerpsWsBuilder {
             return Err(PerpsWsError::EmptySubscription);
         }
         Supervisor::new(PerpsProtocol::new(self.url, self.timing), self.timing)
+            .runtime(self.runtime.unwrap_or_else(default_runtime))
+            .socket_transport(
+                self.socket_transport
+                    .unwrap_or_else(default_socket_transport),
+            )
             .connect(channels)
             .await
     }
