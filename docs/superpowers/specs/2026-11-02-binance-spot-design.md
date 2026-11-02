@@ -283,7 +283,8 @@ envelope's `stream`.
 
 The client enforces spot's rules first: at most 1024 streams per connection, requests paced at
 one per 500 ms (2 a second). The WebSocket probe's request every 250 ms was closed after 16 s
-with 1008 "Too many requests" (`OBSERVED.md`, `## Spot`); at 500 ms a second holds at most three
+with 1008 "Too many requests", and one every 500 ms held for 45 s with pings and pongs
+(`OBSERVED.md`, `## Spot`); at 500 ms a second holds at most three
 requests when one slips, with the automatic pong and the wall-clock ping five in all, and since
 one request can carry all 1024 names a replay costs little at that pace. A request carries at
 most 1024 names, the connection's cap (`usdm`'s is 200): the probe's one `SUBSCRIBE` of 1024

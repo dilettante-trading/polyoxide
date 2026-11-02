@@ -218,7 +218,7 @@ Measured 2026-11-02 on `stream.binance.com:9443/stream` with `docs/specs/binance
 | Streams per connection | 1024 | 1024 held; a 1025th was not sent |
 | Acknowledgement | | Every `SUBSCRIBE` is acknowledged `{"result":null,"id":…}`: an unknown symbol, an unknown stream type, an uppercase symbol. `LIST_SUBSCRIPTIONS` echoes each name as sent. An `UNSUBSCRIBE` of a name never subscribed is acknowledged |
 | Case | Symbols in stream names are lowercase | `BTCUSDT@trade` is acknowledged and delivers nothing; `btcusdt@aggTrade` delivers |
-| Incoming messages | 5 a second, pings, pongs and requests counted; more disconnects | A request every 250 ms, with one client ping and one pong, was closed 16.2 s in with 1008 "Too many requests": 65 requests sent, 64 answered, at most 6 messages in any one second |
+| Incoming messages | 5 a second, pings, pongs and requests counted; more disconnects | A request every 250 ms, with one client ping and one pong, was closed 16.2 s in with 1008 "Too many requests": 65 requests sent, 64 answered, at most 6 messages in any one second. A request every 500 ms for 45 s, with two client pings and two pongs, was not closed: 90 of 90 answered, at most 4 messages in any one second |
 | Server ping | Every 20 s; no pong within a minute disconnects | Every 20.0 s, the first 7.9 s after the connection opened, so not timed from the open; the payload is a millisecond timestamp. The missed-pong cutoff was not measured: it costs a disconnect |
 | Client ping | | Answered in about 0.3 s, its payload echoed |
 | `!ticker@arr` | No longer on the streams page | Acknowledged; nothing in 20 s |
@@ -226,7 +226,7 @@ Measured 2026-11-02 on `stream.binance.com:9443/stream` with `docs/specs/binance
 | Envelope | `{"stream": …, "data": …}` | `stream` then `data`, on every frame |
 | Connection lifetime | 24 hours | Not measured |
 
-So, as on USDⓈ-M, an acknowledgement proves nothing about a stream's validity, and a name that will never deliver looks like a quiet one. A request every 250 ms does not stay under the limit once pongs and pings are counted; the probe did not record which second crossed it (`pace` now prints the messages sent in the 1.5 s before a close).
+So, as on USDⓈ-M, an acknowledgement proves nothing about a stream's validity, and a name that will never deliver looks like a quiet one. A request every 250 ms does not stay under the limit once pongs and pings are counted, and the probe did not record which second crossed it (`pace` now prints the messages sent in the 1.5 s before a close); a request every 500 ms does.
 
 ### Stream answers
 
@@ -287,12 +287,20 @@ Measured 2026-11-02 on `stream.binance.com:9443/stream`: one `SUBSCRIBE` of the 
 | `btcusdt@avgPrice` | 20 | 1000 ms | object: `e`:str `E`:int `s`:str `i`:str `w`:str `T`:int |
 | `!ticker@arr` | 0 | - | nothing |
 
-### Pace
+### Pace at 250 ms
 
-Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, alternating `SUBSCRIBE` and `UNSUBSCRIBE` of `btcusdt@avgPrice` every 250 ms for 45 s, a client ping every 20 s from 10 s in, every server ping ponged. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section pace` re-runs it and is disconnected at this pace: run it only with `--pace-ms` to confirm a slower one.
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, alternating `SUBSCRIBE` and `UNSUBSCRIBE` of `btcusdt@avgPrice` every 250 ms for 45 s, a client ping every 20 s from 10 s in, every server ping ponged. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section pace --pace-ms 250` re-runs it and is disconnected: never run it again.
 
 - Sent: 65 requests, 1 client ping, 1 pong; at most 6 messages in any one second.
 - Answered: 64 of 65 requests; 1 of 1 client ping.
 - The server closed it at 18.23 s with 1008 'Too many requests'.
+
+### Pace at 500 ms
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, alternating `SUBSCRIBE` and `UNSUBSCRIBE` of `btcusdt@avgPrice` every 500 ms for 45 s, a client ping every 20 s from 10 s in, every server ping ponged. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section pace --pace-ms 500` re-runs it.
+
+- Sent: 90 requests, 2 client pings, 2 pongs; at most 4 messages in any one second.
+- Answered: 90 of 90 requests; 2 of 2 client pings.
+- The server did not close it.
 
 <!-- spot findings go above this line -->

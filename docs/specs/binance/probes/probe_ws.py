@@ -627,12 +627,12 @@ def pace_section(out):
     ending = "The server did not close it." if c.closed is None else \
         (f"The server closed it at {c.closed[0]:.2f} s with {c.closed[1]} {c.closed[2]!r}.")
     out += [
-        "### Pace",
+        f"### Pace at {PACE * 1000:.0f} ms",
         "",
         f"Measured {utc_date()} on `stream.binance.com:9443/stream`: one connection, alternating "
         f"`SUBSCRIBE` and `UNSUBSCRIBE` of `btcusdt@avgPrice` every {PACE * 1000:.0f} ms for 45 s, "
         f"a client ping every {CLIENT_PING_EVERY:.0f} s from 10 s in, every server ping ponged. "
-        f"{RERUN.format('pace')} re-runs it.",
+        f"{RERUN.format('pace')[:-1]} --pace-ms {PACE * 1000:.0f}` re-runs it.",
         "",
         f"- Sent: {len(ids)} requests, {kinds['PING']} client ping(s), {kinds['PONG']} pong(s); "
         f"at most {most_in_a_second(sends)} messages in any one second.",
