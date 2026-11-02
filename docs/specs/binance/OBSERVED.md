@@ -110,3 +110,102 @@ Payloads:
   kline event. COIN-M rows arrive on this USDⓈ-M host: 30 of 745 mark-price rows, and
   `AAVEUSD_PERP` in `!ticker@arr`.
 - The kline's `B` is documented as "Ignore" and is not modelled.
+
+## Spot
+
+Measured against `api.binance.com`, and `data-api.binance.vision` where a section says so, with `docs/specs/binance/probes/probe_rest.py --product spot`; the design is `docs/superpowers/specs/2026-11-02-binance-spot-design.md`. Each section names the day it was measured. A later finding goes directly above the last line of this file, under a heading of its own.
+
+### REST weights
+
+Measured 2026-11-02 on `api.binance.com`: the rise in `X-MBX-USED-WEIGHT-1M` across back-to-back requests inside one UTC minute, after a `time` call for the baseline. Each row is measured over distinct URLs (symbols and limits vary within a row), so a cached answer cannot stand in for a repeat. `Result` compares every URL with the design spec's section 3.1. `docs/specs/binance/probes/probe_rest.py --product spot --section weights` re-runs it.
+
+| Row | Requests | Status | Measured | Spec §3.1 | Result |
+|---|---|---|---|---|---|
+| ping | `/api/v3/ping`; `/api/v3/ping` | 200, 200 | 1, 1 | 1 | agrees |
+| time | `/api/v3/time`; `/api/v3/time` | 200, 200 | 1, 1 | 1 | agrees |
+| exchangeInfo, with symbol | `/api/v3/exchangeInfo?symbol=BTCUSDT`; `/api/v3/exchangeInfo?symbol=ETHUSDT` | 200, 200 | 20, 20 | 20 | agrees |
+| exchangeInfo, without symbol | `/api/v3/exchangeInfo`; `/api/v3/exchangeInfo?showPermissionSets=false` | 200, 200 | 20, 20 | 20 | agrees |
+| depth, no limit | `/api/v3/depth?symbol=BTCUSDT`; `/api/v3/depth?symbol=ETHUSDT`; `/api/v3/depth?symbol=BNBUSDT` | 200, 200, 200 | 5, 5, 5 | 5 | agrees |
+| depth, limit 1 to 100 | `/api/v3/depth?symbol=BTCUSDT&limit=1`; `/api/v3/depth?symbol=ETHUSDT&limit=7`; `/api/v3/depth?symbol=BNBUSDT&limit=100` | 200, 200, 200 | 5, 5, 5 | 5 | agrees |
+| depth, limit 101 to 500 | `/api/v3/depth?symbol=BTCUSDT&limit=101`; `/api/v3/depth?symbol=ETHUSDT&limit=300`; `/api/v3/depth?symbol=BNBUSDT&limit=500` | 200, 200, 200 | 25, 25, 25 | 25 | agrees |
+| depth, limit 501 to 1000 | `/api/v3/depth?symbol=BTCUSDT&limit=501`; `/api/v3/depth?symbol=ETHUSDT&limit=750`; `/api/v3/depth?symbol=BNBUSDT&limit=1000` | 200, 200, 200 | 50, 50, 50 | 50 | agrees |
+| depth, limit above 1000 | `/api/v3/depth?symbol=BTCUSDT&limit=1001`; `/api/v3/depth?symbol=ETHUSDT&limit=5000`; `/api/v3/depth?symbol=BNBUSDT&limit=5001` | 200, 200, 200 | 250, 250, 250 | 250 | agrees |
+| trades, no limit | `/api/v3/trades?symbol=BTCUSDT`; `/api/v3/trades?symbol=ETHUSDT`; `/api/v3/trades?symbol=BNBUSDT` | 200, 200, 200 | 25, 25, 25 | 25 | agrees |
+| trades, with limit | `/api/v3/trades?symbol=BTCUSDT&limit=1`; `/api/v3/trades?symbol=ETHUSDT&limit=3`; `/api/v3/trades?symbol=BNBUSDT&limit=500` | 200, 200, 200 | 25, 25, 25 | 25 | agrees |
+| aggTrades, no limit | `/api/v3/aggTrades?symbol=BTCUSDT`; `/api/v3/aggTrades?symbol=ETHUSDT`; `/api/v3/aggTrades?symbol=BNBUSDT` | 200, 200, 200 | 4, 4, 4 | 4 | agrees |
+| aggTrades, with limit | `/api/v3/aggTrades?symbol=BTCUSDT&limit=1`; `/api/v3/aggTrades?symbol=ETHUSDT&limit=3`; `/api/v3/aggTrades?symbol=BNBUSDT&limit=500` | 200, 200, 200 | 4, 4, 4 | 4 | agrees |
+| klines, no limit | `/api/v3/klines?symbol=BTCUSDT&interval=1m`; `/api/v3/klines?symbol=ETHUSDT&interval=1m`; `/api/v3/klines?symbol=BNBUSDT&interval=1m` | 200, 200, 200 | 2, 2, 2 | 2 | agrees |
+| klines, with limit | `/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1`; `/api/v3/klines?symbol=ETHUSDT&interval=1m&limit=2`; `/api/v3/klines?symbol=BNBUSDT&interval=1m&limit=1000` | 200, 200, 200 | 2, 2, 2 | 2 | agrees |
+| avgPrice | `/api/v3/avgPrice?symbol=BTCUSDT`; `/api/v3/avgPrice?symbol=ETHUSDT`; `/api/v3/avgPrice?symbol=BNBUSDT` | 200, 200, 200 | 2, 2, 2 | 2 | agrees |
+| ticker/24hr, one symbol | `/api/v3/ticker/24hr?symbol=BTCUSDT`; `/api/v3/ticker/24hr?symbol=ETHUSDT`; `/api/v3/ticker/24hr?symbol=BNBUSDT` | 200, 200, 200 | 2, 2, 2 | 2 | agrees |
+| ticker/24hr, all | `/api/v3/ticker/24hr`; `/api/v3/ticker/24hr?type=MINI` | 200, 200 | 80, 80 | 80 | agrees |
+| ticker/price, one symbol | `/api/v3/ticker/price?symbol=BTCUSDT`; `/api/v3/ticker/price?symbol=ETHUSDT`; `/api/v3/ticker/price?symbol=BNBUSDT` | 200, 200, 200 | 2, 2, 2 | 2 | agrees |
+| ticker/price, all | `/api/v3/ticker/price`; `/api/v3/ticker/price?symbolStatus=TRADING` | 200, 200 | 4, 4 | 4 | agrees |
+| ticker/bookTicker, one symbol | `/api/v3/ticker/bookTicker?symbol=BTCUSDT`; `/api/v3/ticker/bookTicker?symbol=ETHUSDT`; `/api/v3/ticker/bookTicker?symbol=BNBUSDT` | 200, 200, 200 | 2, 2, 2 | 2 | agrees |
+| ticker/bookTicker, all | `/api/v3/ticker/bookTicker`; `/api/v3/ticker/bookTicker?symbolStatus=TRADING` | 200, 200 | 4, 4 | 4 | agrees |
+
+`exchangeInfo`'s `rateLimits`: REQUEST_WEIGHT 6000 per 1 minute; ORDERS 100 per 10 second; ORDERS 200000 per 1 day; RAW_REQUESTS 300000 per 5 minute.
+
+### Limits past a route's maximum
+
+Measured 2026-11-02 on `api.binance.com`. `Weight` is the rise in `X-MBX-USED-WEIGHT-1M` over a `time` call before it; a refused request still shows what it cost. `docs/specs/binance/probes/probe_rest.py --product spot --section limits` re-runs it.
+
+| Request | Status | Returned | Weight | Spec §3.1 says | Result |
+|---|---|---|---|---|---|
+| `/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1001` | 200 | 1000 rows | 2 | 200, 1000 rows | agrees |
+| `/api/v3/trades?symbol=BTCUSDT&limit=1001` | 200 | 1000 rows | 25 | 200, 1000 rows | agrees |
+| `/api/v3/aggTrades?symbol=BTCUSDT&limit=1001` | 200 | 1000 rows | 4 | 200, 1000 rows | agrees |
+| `/api/v3/depth?symbol=BTCUSDT&limit=5001` | 200 | 5000 bids, 5000 asks | 250 | 200, 5000 bids, 5000 asks | agrees |
+| `/api/v3/depth?symbol=ETHUSDT&limit=7` | 200 | 7 bids, 7 asks | 5 | 200, 7 bids, 7 asks | agrees |
+| `/api/v3/aggTrades?symbol=BTCUSDT&startTime=1793595517393&endTime=1793602717393` | 200 | 500 rows | 4 | 200, 500 rows | agrees |
+| `/api/v3/depth?symbol=NOPEUSDT` | 400 | code -1121 | 5 | 400, code -1121 | agrees |
+
+### The weight window
+
+Measured 2026-11-02 on `api.binance.com`: a `ping` every 3 s from 12 s before a UTC minute boundary, 22 readings of `X-MBX-USED-WEIGHT-1M`. A sliding 60-second window would not fall to the weight of the last few calls at the boundary. `docs/specs/binance/probes/probe_rest.py --product spot --section window` re-runs it.
+
+```text
+07:58:48.0 used=1800
+07:58:51.0 used=1801
+07:58:54.0 used=1802
+07:58:57.0 used=1803
+07:59:00.0 used=1
+07:59:03.0 used=2
+07:59:06.0 used=3
+07:59:09.0 used=4
+07:59:12.0 used=5
+07:59:15.0 used=6
+07:59:18.0 used=7
+07:59:21.0 used=8
+07:59:24.0 used=9
+07:59:27.0 used=10
+07:59:30.0 used=11
+07:59:33.0 used=12
+07:59:36.0 used=13
+07:59:39.0 used=14
+07:59:42.0 used=15
+07:59:45.0 used=16
+07:59:48.0 used=17
+07:59:51.0 used=18
+```
+
+The window is the UTC clock minute: the reading fell from 1803 at 07:58:57.0 to 1 at 07:59:00.0, across a minute boundary.
+
+### One counter across hosts
+
+Measured 2026-11-02: alternating calls on `api.binance.com` (`exchangeInfo?symbol=`, weight 20) and `data-api.binance.vision` (`ticker/price?symbol=`, weight 2), each read against the other host's last value, one symbol per pair so no URL repeats. If the counter is shared, a reading is the other host's last reading plus its own call's weight (`If shared`); if not, it is the same host's last reading plus its own (`If separate`). `docs/specs/binance/probes/probe_rest.py --product spot --section counter` re-runs it.
+
+| # | Host | Request | Weight | Reading | If shared | If separate |
+|---|---|---|---|---|---|---|
+| 1 | `api.binance.com` | `/api/v3/exchangeInfo?symbol=BTCUSDT` | 20 | 20 | - | - |
+| 2 | `data-api.binance.vision` | `/api/v3/ticker/price?symbol=BTCUSDT` | 2 | 22 | 22 | - |
+| 3 | `api.binance.com` | `/api/v3/exchangeInfo?symbol=ETHUSDT` | 20 | 42 | 42 | 40 |
+| 4 | `data-api.binance.vision` | `/api/v3/ticker/price?symbol=ETHUSDT` | 2 | 44 | 44 | 24 |
+| 5 | `api.binance.com` | `/api/v3/exchangeInfo?symbol=BNBUSDT` | 20 | 64 | 64 | 62 |
+| 6 | `data-api.binance.vision` | `/api/v3/ticker/price?symbol=BNBUSDT` | 2 | 66 | 66 | 46 |
+| 7 | `api.binance.com` | `/api/v3/exchangeInfo?symbol=SOLUSDT` | 20 | 86 | 86 | 84 |
+| 8 | `data-api.binance.vision` | `/api/v3/ticker/price?symbol=SOLUSDT` | 2 | 88 | 88 | 68 |
+
+One counter: each host's reading is the other host's last reading plus its own call's weight.
+
+<!-- spot findings go above this line -->
