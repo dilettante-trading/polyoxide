@@ -208,6 +208,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## WebAssembly
+
+The crates and features below build for `wasm32-unknown-unknown` and run in a browser: on the main thread, in a dedicated Worker or in a SharedWorker, without atomics. `polyoxide-rt`; `polyoxide-venue` with `market` and `trading`; `polyoxide-core` without `keychain`; `polyoxide-ws`; `polyoxide-binance` with `usdm` and `usdm-ws`; `polyoxide-polymarket` with `clob`, `gamma`, `data`, `perps`, `perps-ws`, `sports` and `clob-ws`. Everything else is native only: `polyoxide-kalshi`, Polymarket's `relay` and `rtds` modules, the `polyoxide` umbrella, `polyoxide-cli`, `polyoxide-py` and every `keychain` feature.
+
+Run the client in a Worker. A hidden tab throttles the timers of its main thread (in Chrome to once a second, and to once a minute after five minutes), which breaks ping cadences. A threaded build (with atomics) is unsupported, because the browser implementations keep their JavaScript handles in `SendWrapper`, which panics off the thread that made it.
+
+The final binary must be built with `RUSTFLAGS` set to `--cfg getrandom_backend="wasm_js"`. polyoxide turns on getrandom 0.3's `wasm_js` feature, which compiles only with that flag.
+
+Every timer, clock read and spawn goes through an injected `Runtime` (`polyoxide_rt`), every HTTP exchange through an injected `HttpTransport` (`polyoxide_core`) and every socket dial through an injected `SocketTransport` (`polyoxide_ws`). Each is injected on a builder, never process-wide: HTTP builders take `runtime(..)` and `http_transport(..)`, and socket builders take `runtime(..)` and `socket_transport(..)`. A builder with nothing injected uses its target's default. Natively that is `TokioRuntime`, `ReqwestTransport` and `TungsteniteTransport` (the CLOB's builders default to `TungsteniteTransport::per_address()`). On `wasm32-unknown-unknown` it is `BrowserRuntime`, `FetchTransport` and `WebSocketTransport`, so a consumer injects nothing unless it wants its own.
+
+What a browser cannot do, and what polyoxide does about it:
+
+- `Retry-After` is unreadable on the CLOB, Gamma and Data hosts, which do not expose it, so the send loop's floor applies in its place. Perps exposes it.
+- Binance's used weight is unreadable, so `WeightBudget` runs on local charges and tabs that share an IP cannot see each other. Run one SharedWorker for them, or set a lower `weight_budget`.
+- Redirects are followed, as fetch does; the native transport follows none.
+- A fetch that fails is a `Connect` transport error whether the network failed or CORS refused it, since a browser does not tell them apart.
+- There are no handshake headers and no control frames. A handshake header beyond those tungstenite generates, and a ping, pong or raw frame, fail with the socket error kind `Unsupported`, which is never retried.
+- A refused WebSocket upgrade shows no status code, so it is seen as a lost connection and not as a refusal.
+- Each new authenticated path costs one CORS preflight.
+- Binance's supervised streams keep alive with a `LIST_SUBSCRIPTIONS` request, which the host answers, since a browser cannot send ping frames; the bare client's `ping()` fails with `Unsupported`.
+- The sports feed has no staleness check on this transport, so a lost connection ends through the socket's close event. A browser socket left half-open goes undetected.
+
 ## License
 
 Licensed under either of [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE) at your option.
