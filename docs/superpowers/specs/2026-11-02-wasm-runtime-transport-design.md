@@ -250,8 +250,9 @@ first, so it needs a spine amendment (D15).
     An injected transport replaces the dial, D20 included. The CLOB keeps mapping a
     `Kind::ConnectTimeout` to its own `ConnectTimeout { url, timeout }`.
 
-- **D8. The browser implementations** (wasm32 only), each containing its `!Send` JS handles in
-  `send_wrapper::SendWrapper`:
+- **D8. The browser implementations** (wasm32 only), each containing its `!Send` JS handles and
+  futures in `send_wrapper::SendWrapper` (owner, 2026-11-02: alloy's `?Send` `sign_hash` future,
+  which the CLOB's signing awaits, is wrapped the same way on wasm32):
   - `BrowserRuntime` (`polyoxide-rt`): `spawn` is `wasm_bindgen_futures::spawn_local`; `sleep` is
     gloo-timers' `TimeoutFuture`, chained in steps of at most `i32::MAX` ms, because
     `setTimeout` fires at once for a larger delay; `now` is `web_time::Instant::now`
@@ -355,7 +356,11 @@ first, so it needs a spine amendment (D15).
       `sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, and
       a sleep past `i32::MAX` ms that has not fired after a second), `FetchTransport` (a 200, a
       timeout, both 429s read through `ErrorResponse`) and `WebSocketTransport` (a text echo, a
-      close with its code, and a refused handshake header and ping frame).
+      close with its code, and a refused handshake header and ping frame). Story 7's review
+      added three browser-only paths no host test reaches (owner, 2026-11-02): a CLOB signature
+      (`sign_clob_auth` or `sign_order`, through the `SendWrapper`ed `sign_hash`), a body read
+      that outlives `FetchTransport`'s deadline (`Timeout`), and a window-quota wait that paces
+      on the runtime's clock (so nothing reaches quanta's clock, which panics on wasm32).
   - CI's job installs the wasm32 target and `wasm-bindgen-cli` at the version `Cargo.lock` pins
     for `wasm-bindgen`, and uses the runner's Chrome and chromedriver. Locally, the flake gains
     the wasm32 target (in the story that first builds for it) and chromium, chromedriver and
