@@ -53,3 +53,13 @@ wasm-bindgen-test = "0.3"
 [package.metadata.polyoxide]
 readme = "The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push (`publish = false`)"
 notes = ["native server, wasm32 tests; nothing depends on it"]
+
+# The nightly's browser job, `live-wasm-browser`. Its target is a wasm32 test the runner's script
+# runs, not a nextest `live_*` binary, so it names its `runner`.
+[package.metadata.polyoxide.live.browser_live]
+suite = "browser"
+timeout = 15
+features = ["live"]
+secrets = []
+runner = "wasm-bindgen"
+note = "wasm-bindgen-test in headless Chrome through scripts/wasm_live.sh, no secrets; 15-minute budget"

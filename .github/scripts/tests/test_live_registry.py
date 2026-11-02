@@ -61,7 +61,13 @@ def live_targets(metadata: dict) -> dict[tuple[str, str], dict]:
 
 
 def registered(registry) -> dict[tuple[str, str], object]:
-    return {(crate.name, live.target): live for crate in registry.crates for live in crate.live}
+    """The nextest live entries: a `runner` entry is a wasm test the live-suite action cannot run."""
+    return {(crate.name, live.target): live for crate in registry.crates for live in crate.live
+            if live.runner is None}
+
+
+def native_jobs(registry) -> list:
+    return [job for job in registry.jobs() if job.runner is None]
 
 
 def workflow_jobs(workflow: dict) -> dict[str, dict]:
@@ -137,9 +143,9 @@ def test_an_unregistered_live_target_is_caught() -> None:
 
 def test_the_generated_jobs_equal_the_registered_entries() -> None:
     jobs = workflow_jobs(WORKFLOW)
-    assert list(jobs) == [job.id for job in REGISTRY.jobs()]
+    assert list(jobs) == [job.id for job in native_jobs(REGISTRY)]
     selected = set()
-    for job in REGISTRY.jobs():
+    for job in native_jobs(REGISTRY):
         written = jobs[job.id]
         inputs = _with(written)
         assert written["name"] == f"Live tests ({job.crate}, {job.suite})"
@@ -155,7 +161,7 @@ def test_the_generated_jobs_equal_the_registered_entries() -> None:
 
 def test_each_job_carries_only_its_declared_secrets() -> None:
     jobs = workflow_jobs(WORKFLOW)
-    for job in REGISTRY.jobs():
+    for job in native_jobs(REGISTRY):
         env = jobs[job.id].get("env", {})
         assert env == {name: f"${{{{ secrets.{name} }}}}" for name in job.secrets}, job.id
 
@@ -169,6 +175,25 @@ def test_the_aggregate_needs_every_live_job() -> None:
     assert needs == [job.id for job in REGISTRY.jobs()]
     others = [job_id for job_id in WORKFLOW["jobs"] if job_id != "aggregate"]
     assert needs == others
+
+
+def test_each_runner_job_runs_its_script_and_is_needed_by_the_aggregate() -> None:
+    runner_jobs = [job for job in REGISTRY.jobs() if job.runner is not None]
+    assert [job.id for job in runner_jobs] == ["live-wasm-browser"]
+    needs = WORKFLOW["jobs"]["aggregate"]["needs"]
+    assert (REPO / "scripts" / "wasm_live.sh").is_file()
+    for job in runner_jobs:
+        written = WORKFLOW["jobs"][job.id]
+        assert written["timeout-minutes"] == job.timeout
+        assert "env" not in written
+        runs = [step["run"] for step in written["steps"] if "run" in step]
+        assert "bash scripts/wasm_live.sh" in runs
+        assert job.id in needs
+        package = next(p for p in gen_registry.publish_order.members(METADATA)
+                       if p["name"] == job.crate)
+        targets = {t["name"]: t for t in package["targets"] if t["kind"] == ["test"]}
+        for live in job.targets:
+            assert targets[live.target].get("required-features") == list(live.features)
 
 
 def test_the_close_guard_reads_every_needed_job() -> None:
