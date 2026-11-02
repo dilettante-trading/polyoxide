@@ -134,7 +134,11 @@ first, so it needs a spine amendment (D15).
     `polyoxide-polymarket`, `polyoxide-binance` and `polyoxide-kalshi` goes through the injected
     runtime: the throttle, holds, capacity buckets, the send loop's retry sleep, `health`'s
     stopwatch, the supervisor and its pings, request correlation, the bare tier, Binance's router
-    and forwarders, sports, rtds and the CLOB's bare tier. governor keeps its own quanta clock.
+    and forwarders, sports, rtds and the CLOB's bare tier. A window quota's governor limiter runs on a governor `Clock` built
+    on the runtime's `now()`, so its check and its `runtime.sleep` read one clock (owner,
+    2026-11-02): on a paused tokio clock, quanta's real clock barely moves while the sleep
+    advances virtual time, so a quanta-clocked check spins and jumps virtual time by minutes. On
+    wasm32 the runtime's `now()` reads `performance.now()`, as quanta did.
   - Wall-clock reads are not injected: `UnixMillis::now` (`polyoxide-venue/src/time.rs`) and
     `shared::auth::current_timestamp` read `web_time::SystemTime`.
   - `scripts/runtime_gate.py`, beside `venue_gate.py`, holds the line, not clippy: a
@@ -318,7 +322,14 @@ first, so it needs a spine amendment (D15).
   2026-11-02: core's `every_variant_classifies` loses its reqwest decode, 503 and 404 rows; the
   decode case is re-pinned on `Response::json`, and status stays covered by the
   `ApiError::Response` rows). The story that
-  first changes a test body adds the row; later stories cite it. Divergence row D20's text
+  first changes a test body adds the row; later stories cite it. Story 2 is that story (owner,
+  2026-11-02): with the quota on the runtime's clock (D3), the quota's pacing shows in virtual
+  time, so `polymarket_limits`' `an_expired_cooldown_stops_delaying` advances virtual time past
+  the quota's refill before its second acquire and keeps its `< 1 ms` assertion; R22's text
+  covers a paused-clock test whose setup advances past a wait the runtime now sees. Story 4
+  fixes core's `mock_request.rs` `retries_on_429_then_succeeds`, which mockito answers from the
+  success mock first so it never retries: it reorders the mocks, proves the test red without
+  the retry, and takes a `[[drift]]` entry citing R22. Divergence row D20's text
   moves the CLOB's dial into `TungsteniteTransport::per_address()`. Each moved or re-proved line
   in `docs/MUTANTS.md` moves with it.
 
