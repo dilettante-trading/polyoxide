@@ -7,9 +7,11 @@ use std::{
 
 use futures_util::{Stream, StreamExt};
 use polyoxide_rt::{default_runtime, Runtime};
+#[cfg(not(target_arch = "wasm32"))]
+use polyoxide_ws::TungsteniteTransport;
 use polyoxide_ws::{
     tungstenite::{client::IntoClientRequest, Message},
-    BoxSocket, Connection, Kind, Mode, SocketTransport, TungsteniteTransport, WsError,
+    BoxSocket, Connection, Kind, Mode, SocketTransport, WsError,
 };
 
 use super::{
@@ -38,10 +40,20 @@ pub(super) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The transport a CLOB socket dials with unless one was injected: the kit's
 /// per-address dial (divergence row D20).
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) fn clob_transport(
     injected: Option<Arc<dyn SocketTransport>>,
 ) -> Arc<dyn SocketTransport> {
     injected.unwrap_or_else(|| Arc::new(TungsteniteTransport::per_address()))
+}
+
+/// The transport a CLOB socket dials with unless one was injected: on `wasm32`
+/// the kit's default, the browser's `WebSocket`, which has no addresses to try.
+#[cfg(target_arch = "wasm32")]
+pub(super) fn clob_transport(
+    injected: Option<Arc<dyn SocketTransport>>,
+) -> Arc<dyn SocketTransport> {
+    injected.unwrap_or_else(polyoxide_ws::default_socket_transport)
 }
 
 /// Open `url` through `transport`, each step bounded by `connect_timeout`.

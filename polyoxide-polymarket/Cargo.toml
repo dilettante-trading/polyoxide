@@ -197,6 +197,14 @@ hex = { workspace = true, optional = true }
 rand = { version = "0.9.2", features = ["std"], optional = true }
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = true }
 
+# Beyond spec D10: alloy's signer needs getrandom 0.2, which refuses wasm32 without its `js` feature.
+# (`polyoxide-rt` selects 0.3's backend by a cfg flag; the package rename keeps this entry apart from 0.3.)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom02 = { package = "getrandom", version = "0.2", features = ["js"] }
+# Beyond the plan: alloy declares its `Signer` futures `!Send` on wasm32, so clob's signing
+# futures sit in a `SendWrapper` there (`clob/core/eip712.rs`).
+send_wrapper = { workspace = true, features = ["futures"] }
+
 [dev-dependencies]
 # The live suites' failure tags and credential loaders, and the agreement and
 # soak helpers (`query` fires a builder at a mock server; `soak` is the

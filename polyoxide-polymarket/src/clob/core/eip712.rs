@@ -12,6 +12,28 @@ use crate::clob::{
     types::{Order as ClobOrder, SignatureType},
 };
 
+/// Sign a digest with the signer.
+///
+/// On `wasm32` alloy declares its `Signer` futures `!Send`, which would make
+/// every future that signs `!Send` and break the `Send` bound on the
+/// authenticator and `Trading` traits. The future sits in a `SendWrapper`
+/// there, as the browser implementations' JavaScript handles do: it is only
+/// ever polled on the one thread a browser build has (a build with atomics is
+/// unsupported).
+async fn sign_digest<S: AlloySigner + ?Sized>(
+    signer: &S,
+    digest: &B256,
+) -> alloy::signers::Result<alloy::primitives::Signature> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        send_wrapper::SendWrapper::new(signer.sign_hash(digest)).await
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        signer.sign_hash(digest).await
+    }
+}
+
 mod protocol {
     use super::*;
     sol! {
@@ -232,7 +254,7 @@ pub async fn sign_order<S: AlloySigner + ?Sized>(
     chain_id: u64,
 ) -> Result<String, ClobError> {
     let digest = compute_order_digest(order, chain_id)?;
-    let signature = signer.sign_hash(&digest).await?;
+    let signature = sign_digest(signer, &digest).await?;
     Ok(format!("0x{}", hex::encode(signature.as_bytes())))
 }
 
@@ -389,7 +411,7 @@ pub async fn sign_order_as<S: AlloySigner + ?Sized>(
     let app_domain_separator = exchange_domain(chain_id, exchange).eip712_hash_struct();
     let digest =
         deposit_wallet::envelope_digest_from(contents, chain_id, app_domain_separator, wallet);
-    let inner = signer.sign_hash(&digest).await?;
+    let inner = sign_digest(signer, &digest).await?;
     let wrapped =
         deposit_wallet::wrap_erc7739(&inner.as_bytes(), app_domain_separator, contents_hash);
     let bytes = match role {
@@ -437,7 +459,7 @@ pub async fn sign_clob_auth<S: AlloySigner + ?Sized>(
     let digest = clob_auth_digest(signer.address(), chain_id, timestamp, nonce);
 
     // Sign the digest
-    let signature = signer.sign_hash(&digest).await?;
+    let signature = sign_digest(signer, &digest).await?;
 
     Ok(format!("0x{}", hex::encode(signature.as_bytes())))
 }
