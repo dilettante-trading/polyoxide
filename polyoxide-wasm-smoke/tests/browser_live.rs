@@ -10,6 +10,13 @@
 //! opened and then dropped, which is `transient`, and a host the runner cannot reach for a reason
 //! of its own (a region block), which is `environmental`. A GET is bounded by 10 s, a socket held
 //! until its first data frame or 20 s.
+//!
+//! A browser cannot tell a region block from any other failed fetch or upgrade, and nobody has
+//! measured whether Binance's 451 carries the CORS headers a page needs to read it. So
+//! `scripts/wasm_live.sh` reads `https://fapi.binance.com/fapi/v1/ping` natively before the run,
+//! and on a 451 builds this file with `POLYOXIDE_LIVE_BINANCE_STATUS=451`: the three Binance checks
+//! then fail `environmental` at once, without calling Binance from the browser. Built without it, a
+//! Binance failure is judged like any other host's.
 
 #![cfg(all(target_arch = "wasm32", feature = "live"))]
 
@@ -19,7 +26,7 @@ use futures_util::{SinkExt, StreamExt};
 use polyoxide_core::{ApiError, FetchTransport, HttpClientBuilder, Request, Response, RetryConfig};
 use polyoxide_rt::{timeout, BrowserRuntime, Runtime};
 use polyoxide_test_support::{environmental, tag_for, transient, Tag};
-use polyoxide_venue::Classify;
+use polyoxide_venue::{class_for_close_code, Classify};
 use polyoxide_ws::{BoxSocket, SocketTransport, WebSocketTransport};
 use serde_json::Value;
 use tungstenite::{http::Request as Upgrade, Message};
@@ -34,6 +41,10 @@ const ANSWER_LIMIT: Duration = Duration::from_secs(5);
 const RETRY_AFTER: Duration = Duration::from_secs(5);
 /// Binance's pacing of requests on one socket is 200 ms.
 const REQUEST_GAP: Duration = Duration::from_millis(250);
+
+/// The status `scripts/wasm_live.sh` read natively from Binance's REST host, when it was a 451
+/// (the only value the script passes): the runner's region is refused.
+const BINANCE_PREFLIGHT: Option<&str> = option_env!("POLYOXIDE_LIVE_BINANCE_STATUS");
 
 /// What a check found.
 enum Failure {
@@ -72,6 +83,19 @@ where
         Failure::Environmental(reason) => environmental(&format!("{what}: {reason}")),
         Failure::Transient(reason) => transient(&format!("{what}: {reason}")),
         Failure::Real(reason) => real(&format!("{what}: {reason}")),
+    }
+}
+
+/// Fails a Binance check as environmental when the script's native read of the REST host was a
+/// 451, before any call from the browser.
+fn binance_region() -> Result<(), Failure> {
+    match BINANCE_PREFLIGHT {
+        Some("451") => Err(Failure::Environmental(
+            "scripts/wasm_live.sh read a 451 from https://fapi.binance.com/fapi/v1/ping natively: \
+             the host refuses this runner's region, so it was not called from the browser"
+                .into(),
+        )),
+        _ => Ok(()),
     }
 }
 
@@ -166,6 +190,7 @@ async fn get_perps() {
 #[wasm_bindgen_test]
 async fn get_fapi() {
     checked("fapi GET /fapi/v1/ping", || async {
+        binance_region()?;
         let response = get(&FAPI).await?;
         if response.headers().get("x-mbx-used-weight-1m").is_some() {
             return Err(Failure::Real(
@@ -185,8 +210,8 @@ struct SocketHost {
 
 const CLOB_MARKET: SocketHost = SocketHost {
     url: "wss://ws-subscriptions-clob.polymarket.com/ws/market",
-    // The market channel closes 1008 on anything but a subscription, `PING` included. An empty
-    // one is the shape the supervised socket replays and the host keeps open.
+    // The market channel closes 1008 on a first frame that is not a subscription, `PING`
+    // included. An empty one is the shape the supervised socket replays and the host keeps open.
     hello: Some(r#"{"assets_ids":[],"type":"market"}"#),
 };
 const SPORTS: SocketHost = SocketHost {
@@ -215,6 +240,17 @@ async fn open(url: &str) -> Result<BoxSocket, Failure> {
         .map_err(|err| Failure::Real(format!("{url}: the upgrade failed: {err}")))
 }
 
+/// A close frame, judged as the socket table judges a server close: the host refusing what it was
+/// sent (1002, 1003, 1007-1010, 4000-4999) is `real`, any other code, or none, is a drop.
+fn closed(frame: Option<tungstenite::protocol::CloseFrame>) -> Failure {
+    let code = frame.as_ref().map(|frame| u16::from(frame.code));
+    let detail = format!("the socket closed with {frame:?}");
+    match tag_for(&class_for_close_code(code), false) {
+        Tag::Transient => Failure::Transient(detail),
+        _ => Failure::Real(detail),
+    }
+}
+
 /// Open `host`, speak first if it needs it, and hold the socket until its first data frame or the
 /// window ends. A socket that closes or errors first opened and then dropped.
 async fn hold(host: &SocketHost) -> Result<(), Failure> {
@@ -223,11 +259,12 @@ async fn hold(host: &SocketHost) -> Result<(), Failure> {
         socket
             .send(Message::Text(hello.into()))
             .await
-            .map_err(|err| Failure::Real(format!("sending the first frame: {err}")))?;
+            .map_err(|err| Failure::Transient(format!("sending the first frame: {err}")))?;
     }
     let outcome = match timeout(&BrowserRuntime, SOCKET_LIMIT, socket.next()).await {
         None => Ok(()),
         Some(Some(Ok(Message::Text(_) | Message::Binary(_)))) => Ok(()),
+        Some(Some(Ok(Message::Close(frame)))) => Err(closed(frame)),
         Some(Some(Ok(other))) => Err(Failure::Transient(format!(
             "the first frame was {other:?}, not data"
         ))),
@@ -253,28 +290,22 @@ async fn socket_perps() {
     checked("perps socket", || hold(&PERPS_WS)).await;
 }
 
-/// A browser cannot read the status of a refused upgrade, so a Binance region block (a 451 on the
-/// REST host as well) shows as a failed connect: look at the REST host before calling it real.
-async fn fstream() -> Result<(), Failure> {
-    match hold(&FSTREAM).await {
-        Err(Failure::Real(reason)) => match get(&FAPI).await {
-            Err(Failure::Environmental(region)) => Err(Failure::Environmental(format!(
-                "{reason}; and the REST host: {region}"
-            ))),
-            _ => Err(Failure::Real(reason)),
-        },
-        other => other,
-    }
-}
-
+/// A browser cannot read the status of a refused upgrade, so a Binance region block shows as a
+/// failed connect: the script's native read of the REST host is what tells them apart, and a
+/// failed upgrade with no 451 there is `real`.
 #[wasm_bindgen_test]
 async fn socket_fstream() {
-    checked("fstream socket", fstream).await;
+    checked("fstream socket", || async {
+        binance_region()?;
+        hold(&FSTREAM).await
+    })
+    .await;
 }
 
 /// Binance's `LIST_SUBSCRIPTIONS`, the request the supervised protocol's keepalive is, since a
 /// browser cannot send a protocol ping: it must be answered, naming the stream subscribed.
 async fn list_subscriptions() -> Result<(), Failure> {
+    binance_region()?;
     let mut socket = open(FSTREAM.url).await?;
     for (id, request) in [
         (
@@ -289,7 +320,7 @@ async fn list_subscriptions() -> Result<(), Failure> {
         socket
             .send(Message::Text(request.into()))
             .await
-            .map_err(|err| Failure::Real(format!("sending request {id}: {err}")))?;
+            .map_err(|err| Failure::Transient(format!("sending request {id}: {err}")))?;
     }
     let answered = timeout(&BrowserRuntime, ANSWER_LIMIT, async {
         loop {
@@ -302,6 +333,7 @@ async fn list_subscriptions() -> Result<(), Failure> {
                         return Ok(value);
                     }
                 }
+                Some(Ok(Message::Close(frame))) => return Err(closed(frame)),
                 Some(Ok(_)) => {}
                 Some(Err(err)) => {
                     return Err(Failure::Transient(format!("the socket dropped: {err}")))

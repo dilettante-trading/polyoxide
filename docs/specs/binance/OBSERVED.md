@@ -133,3 +133,10 @@ Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly 
   the supervised protocol's keepalive is the `LIST_SUBSCRIPTIONS` request: the nightly job
   subscribes to `btcusdt@markPrice@1s`, sends it 250 ms later and expects an answer with its id
   within 5 s whose `result` names the stream.
+- Whether a browser can read Binance's 451 is unmeasured: the 451 was "not provoked from a test IP"
+  (see the REST section), and nobody has checked that it carries `Access-Control-Allow-Origin`. A
+  page that cannot read it sees a failed fetch or a failed upgrade, like any other. So the nightly's
+  `scripts/wasm_live.sh` reads `https://fapi.binance.com/fapi/v1/ping` natively with curl (10 s, no
+  retry) before the browser run, and on a 451 builds `browser_live` with
+  `POLYOXIDE_LIVE_BINANCE_STATUS=451`, which fails the three Binance checks `environmental` without
+  calling Binance from the browser. With any other status, a failed upgrade is `real`.

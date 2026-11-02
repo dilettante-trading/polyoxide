@@ -46,6 +46,27 @@ if [ -z "${CHROMEDRIVER:-}" ]; then
   export CHROMEDRIVER
 fi
 
+# A browser cannot tell Binance's region block (a 451, which the nightly's US runners get) from any
+# other failed fetch or upgrade, and nobody has measured whether that 451 carries the CORS headers
+# a page needs to read it. So read the REST host's status here, natively, once and without a retry:
+# on a 451 the suite is built with POLYOXIDE_LIVE_BINANCE_STATUS=451, which fails the three
+# Binance checks `environmental` at once, without calling Binance from the browser. Any other
+# status, or a curl failure, leaves the run unchanged. WASM_LIVE_BINANCE_STATUS=<status> stands in
+# for the read (to prove the 451 path from an address Binance accepts).
+binance_status=${WASM_LIVE_BINANCE_STATUS:-}
+if [ -z "$binance_status" ]; then
+  binance_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+    https://fapi.binance.com/fapi/v1/ping || true)
+fi
+case "$binance_status" in
+  '' | 000) echo "wasm_live: Binance's REST host could not be read natively (no curl, or no answer)" >&2 ;;
+  *) echo "wasm_live: Binance's REST host answered $binance_status natively" >&2 ;;
+esac
+if [ "$binance_status" = 451 ]; then
+  export POLYOXIDE_LIVE_BINANCE_STATUS=451
+  echo "wasm_live: a 451, so the Binance checks fail environmental without a browser call" >&2
+fi
+
 # run <log> [filter]: the live tests, whose output goes to <log> and to stderr. A failing test
 # is the classifier's business, so a failing run is not this script's.
 run() {

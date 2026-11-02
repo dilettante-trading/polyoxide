@@ -97,8 +97,14 @@ own rule is the same: a failure goes through the tags or is untagged on purpose.
 
 - The checks are spec D17's: per host, one GET bounded by 10 s and one socket held until its first
   data frame or 20 s, each retried once after 5 s. A second failure is `real`, except a socket that
-  opened and then dropped, which is `transient`, and a host the runner cannot test (a 451 from
-  Binance's REST host, which a failed upgrade also shows as) is `environmental`.
+  opened and then dropped, which is `transient`, and a host the runner cannot test is
+  `environmental`. That is only Binance's region block, which a page may not be able to read
+  (unmeasured): `scripts/wasm_live.sh` reads
+  `fapi.binance.com/fapi/v1/ping` natively with curl (10 s, no retry) first, and on a 451 builds the
+  suite with `POLYOXIDE_LIVE_BINANCE_STATUS=451` (`option_env!`, as `POLYOXIDE_LIVE_PROBE` is), so
+  the three Binance checks fail `environmental` at once without a browser call. With any other
+  status a failed Binance upgrade is `real`. A close frame is judged by its code on the socket
+  table (`class_for_close_code`), and a send that fails after the socket opened is `transient`.
 - The tags build on wasm32 and print their line through `console.error`, which wasm-bindgen-test
   captures into the failing test's output. The script turns that output into libtest-json (the
   block dedented, its `panicked at` line given the `thread '...'` shape the classifier looks for),
