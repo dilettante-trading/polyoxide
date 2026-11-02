@@ -15,6 +15,14 @@ categories = ["asynchronous"]
 [dependencies]
 web-time = { workspace = true }
 
+# Native only (spec D10): `rt` and `time` are `TokioRuntime`'s spawn and clock.
+# The browser has its own runtime and builds no tokio.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
+
 # Registration, read by scripts/gen_registry.py: the README line and the notes
 # CLAUDE.md's crate list carries. Run `python3 scripts/gen_registry.py --write`
 # after an edit.
