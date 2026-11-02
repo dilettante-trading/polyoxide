@@ -116,6 +116,10 @@ name = "live_usdm_ws"
 required-features = ["usdm-ws"]
 
 [[test]]
+name = "mock_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "mock_usdm"
 required-features = ["usdm"]
 
