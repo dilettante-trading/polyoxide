@@ -37,7 +37,7 @@ This file holds the commands, the CI gates and the rules that cut across crates.
 | `polymarket-perps.md` | perps REST, its market-data impl and its sockets |
 | `polymarket-rtds.md` | the RTDS price streams |
 | `polymarket-sports.md` | the sports feed |
-| `binance.md` | Binance USDⓈ-M: the weight budget, its policy, market-data impl and streams |
+| `binance.md` | Binance: the `shared` plumbing, USDⓈ-M and spot, their weight budgets, policy and market-data impls, and USDⓈ-M's streams |
 | `kalshi.md` | Kalshi: credentials, its market-data impl, the archive and its socket |
 
 - A rule stands until the commit that supersedes it lands, and that commit edits the rule's text, here or in its rules file (AD-21). `.github/scripts/tests/test_claude_rules.py` fails when a rules file names no `paths:` globs (it would load into every session), when a glob matches no file, or when this table and the directory disagree.

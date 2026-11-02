@@ -9,13 +9,14 @@ paths:
   (`polyoxide-polymarket`, under any `polymarket*` feature), `binance` (`polyoxide-binance`, under
   any `binance*` feature), `kalshi` (`polyoxide-kalshi`, under any `kalshi*` feature), `parse_key`
   (under the features that build a product's keys) and `prelude`, and nothing else.
-- The features `polymarket` and `binance` turn on their venue crate's defaults; each
+- The features `polymarket` and `binance` turn on their venue crate's defaults (`binance` is
+  `binance-usdm` and `binance-spot`); each
   `<venue>-<module>` passes its module's feature through, a `-ws` one turning its module's on,
   relay's included; `kalshi` turns on `kalshi-predictions`; `keychain` stays a cross-venue extra,
   each venue adding its own `?/keychain`; there is no umbrella `specta`. The generated feature list
   is in CLAUDE.md.
 - A module that implements the market-data traits (`polymarket-clob`, `polymarket-perps`,
-  `binance-usdm`, `kalshi-predictions`) also turns on `polyoxide-venue/market`, and one that only
+  `binance-usdm`, `binance-spot`, `kalshi-predictions`) also turns on `polyoxide-venue/market`, and one that only
   names keys (`polymarket-gamma`, `polymarket-data`) `polyoxide-venue/keys`, so `polyoxide::venue`
   carries the traits with every module that implements them, which a `const _` pins.
   `polymarket-clob-ws` turns on `polyoxide-venue/trading`, and its `const _` pins `DynTrading` and
@@ -33,6 +34,10 @@ paths:
   `SupervisedPredictionsWs`, `PredictionsWsError`, `PredictionsMembership`, `Channel` as
   `PredictionsChannel` and `Books` as `PredictionsBooks`. `parse_key` also names
   `kalshi.predictions` under `kalshi-predictions`.
+- Binance spot's prelude names, under `binance-spot`, are `Spot`, `SpotBuilder`, `SpotError` and
+  `WeightBudget` as `SpotWeightBudget` (`USDⓈ-M`'s keeps the bare `WeightBudget`). `parse_key` also
+  names `binance.spot` under `binance-spot`, and its passthrough `const _` names
+  `crate::binance::spot::Spot`. `SpotMarket` is at `polyoxide::venue` beside the other bundles.
 - `examples/venue_neutral.rs` reads the best bid and ask of the CLOB, perps, USDⓈ-M and Kalshi with
   one `best_bid_ask(&DynMarketData, &MarketKey)`, and their errors with one classifier generic
   over `Classify` (CAP-5 and CAP-4). `tests/venue_neutral.rs` includes it by `#[path]` and runs

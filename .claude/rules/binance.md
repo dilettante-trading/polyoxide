@@ -4,16 +4,20 @@ paths:
   - "polyoxide-cli/src/commands/binance/**"
   - "polyoxide-cli/tests/ws_binance.rs"
   - "scripts/capture_binance_usdm.py"
+  - "scripts/capture_binance_spot.py"
   - "docs/specs/binance/**"
 ---
 
-# Binance USDⓈ-M
+# Binance: USDⓈ-M and spot
 
 `polyoxide-binance`'s `usdm` module (feature `usdm`, on by default) reads public USDⓈ-M futures
 market data on `fapi.binance.com` (`usdm::Usdm::new()`; namespaces `usdm.health()`, `exchange()`,
 `market()`) for consumers that trade both venues. Binance is not a Polymarket host. The umbrella
 re-exports the crate as `polyoxide::binance` under its `binance`, `binance-usdm`,
-`binance-usdm-ws` and `full` features, none of which its default, `polymarket`, turns on.
+`binance-usdm-ws`, `binance-spot` and `full` features, none of which its default, `polymarket`,
+turns on. Its `spot` module (feature `spot`, on by default) reads public spot market data on
+`api.binance.com`; the `shared` and `spot` sections below hold the rules both modules share and
+spot's own.
 
 - **No spec to mirror.** Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M, so
   `docs/specs/binance/` is not a mirror: `OBSERVED.md` records what the host does,
@@ -28,6 +32,36 @@ re-exports the crate as `polyoxide::binance` under its `binance`, `binance-usdm`
   visitors that tolerate extra elements. Its `Interval` is separate from perps' (D16).
 - A 451 (Binance refusing a US runner's location) is `Restricted` and not a fault, so the nightly
   files it as environmental.
+
+## `shared`
+
+`src/shared/` is crate-private and built under `any(feature = "usdm", feature = "spot")`. It holds
+what the two products do the same way, so one fix serves both, and `cargo hack --each-feature`
+builds each product without the other, so every item in it compiles under either.
+
+- `shared::weight`: the minute `Engine` (the UTC clock minute at the published count less a tenth,
+  raised by `X-MBX-USED-WEIGHT-1M` only for the minute its request was charged in; the client-wide
+  `Hold` for a `429` or `418`, only ever extended, with the 3-day ceiling; an optional paced layer,
+  which only `usdm`'s funding routes use), its `Clock` and the `USED_WEIGHT_HEADER`, `DEFAULT_BAN`
+  and `MAX_COOLDOWN` constants. A product's `WeightBudget` is a handle to one `Engine` with its own
+  layers and its own `Throttle` impl.
+- `shared::policy::decide`: the retry decision as a function of the response, the attempt, the
+  schedule and the time to the next minute. "The retry policy" below is its rules.
+- `shared::error`: `decode` by status first into `Decoded`, `retry_after_secs`, `clip` and
+  `venue_class`. A product's one `From<ApiError>` maps `Decoded` one to one onto its error enum and
+  logs the `418` body at WARN itself, so the WARN's target is `polyoxide_binance::<module>::error`.
+- `shared::request`: `Routed<T, R, E>`, the `Priced` trait a route table implements, and the
+  `route_builder!` macro every route builder is written with.
+- `shared::symbol`: `Symbol` and `InvalidSymbol`. Nothing else is shared: response types,
+  `Interval` and `Filter` stay per product, so one product's wire change never reaches the other.
+- **A product keeps** its `WeightBudget`, its `<Module>RetryPolicy`, its `<Module>Error`, its
+  route table and `Route::cost`, its types, its key space, its venue impls and its
+  `DEFAULT_BASE_URL`.
+- **`usdm`'s public paths do not change.** `usdm::types::Symbol`, `usdm::weight::DEFAULT_BAN` and
+  the rest are `pub use` of the shared items. `usdm`'s unit tests stay in `usdm`'s files, where
+  they reach the shared code through `usdm`'s wrappers, because the test-bodies gate keys a test by
+  its file and module path: a moved test is a lost one.
+- `docs/MUTANTS.md`'s rows (a) and (k) name `src/shared/policy.rs`.
 
 ## The weight budget
 
@@ -80,6 +114,58 @@ retriable.
   `fundingRate`'s bucket, not a weight) for the `interval`: `fundingIntervalHours`, or 8 h for a
   symbol it does not list.
 - `tests/venue_usdm.rs` holds each method to the native client's values on the captured fixtures.
+
+## `spot`
+
+`polyoxide-binance`'s `spot` module (feature `spot`, on by default) reads public spot market data
+on `api.binance.com` (`spot::Spot::new()`; namespaces `spot.health()`, `exchange()`, `market()`),
+fourteen methods over eleven routes, with no credentials. It is the first product of
+`ProductClass::Spot`.
+
+- **No spec to diff.** Binance's `spot_api.yaml` was last released on 2024-10-08, lacks fields the
+  wire sends today (`amendAllowed`, `opoAllowed`, `pegInstructionsAllowed`) and is mostly `/sapi`
+  paths, so `nightly-schema.yml` does not watch it.
+  `tests/live_spot.rs::live_responses_carry_no_unmodelled_keys` is the drift detector, and a
+  measured fact goes in `docs/specs/binance/OBSERVED.md`'s `## Spot` section.
+- **The weight budget.** `spot::WeightBudget` is the shared `Engine` at 5400 of
+  `PUBLISHED_WEIGHT_PER_MINUTE = 6000`, on `WEIGHT_LAYER`, `binance-spot-weight`, with no paced
+  layer. The `RAW_REQUESTS` limit (300,000 per 5 minutes) is not modelled: every request weighs at
+  least 1, so the budget caps a client at 27,000 requests per 5 minutes, and the module docs say
+  so. Pass a budget with `SpotBuilder::weight_budget`; every `Spot` built with one shares its hold.
+- **The weight table**, `spot::weight::Route::cost`, is measured over distinct URLs, not copied,
+  and pinned by its `documented_weights` test: `ping` and `time` 1, `exchangeInfo` 20, `depth` 5
+  without `limit` and for 1 to 100, 25 for 101 to 500, 50 for 501 to 1000 and 250 above (the last
+  band documented, not measured), `trades` 25, `aggTrades` 4, `klines`, `avgPrice` and the
+  one-symbol tickers 2, `ticker/24hr` without a symbol 80, `ticker/price` and `ticker/bookTicker`
+  without one 4. `weight_probe_spot` re-measures it (`cargo run -p polyoxide-binance --example weight_probe_spot`, no
+  `--product` argument; `weight_probe` is unchanged and measures USDⓈ-M).
+  `GetDepth::limit` is a hand-written setter because it also re-prices the route (`clients.md`).
+- **A `limit` past a route's maximum is truncated by the venue, not refused**, and is sent as the
+  caller gave it; the cost does not change but for `depth`'s bands. Only `Symbol` is validated by
+  the client.
+- **In flight.** One `Spot` at the default 4 concurrent requests has at most 320 weight in flight
+  on a route at its default (4 × `tickers_24h`'s 80), under the reserve of 600; four `depth`
+  calls above 1000 levels (1000) pass it. The builder's docs say so.
+- **The retry policy** is `UsdmRetryPolicy`'s, below: the private `SpotRetryPolicy`
+  (`src/spot/policy.rs`) decides through `shared::policy::decide`, and `SpotError` has
+  `UsdmError`'s variants, `code()` and `Classify`. A `418` logs its body at WARN under
+  `polyoxide_binance::spot::error`.
+- `Interval` is exhaustive (`1s` through `1M`) and separate from `usdm`'s. `Symbol` is `usdm`'s
+  (`shared`), so it accepts `_` though spot lists no such symbol; the venue answers an unknown
+  symbol `400` with `-1121`. `Filter` is an open enum. Klines and book levels decode through
+  `polyoxide_venue::positional` in visitors that tolerate extra elements. Response rows carry
+  symbols as `String`.
+- **`spot::venue`:** `MarketData`, `Instruments`, `Trades` and `Candles` on `Spot`, with
+  `InstrumentExt`, `BookExt`, `TradeExt` and `CandleExt`; a quote has no extension. Its `quote` is
+  `ticker/bookTicker` (weight 2, `time` `None`), its `book` the default `depth` (100 levels,
+  weight 5), its `instrument` and `instruments` `exchangeInfo` (weight 20), its `trades` `aggTrades`
+  with `limit=1000` (weight 4) and its `candles` `klines` with `limit=1000` (weight 2). Its
+  `instruments` skips a row that does not convert (a WARN naming the symbol and the error), and
+  the live suite fails when it skips one. `lib.rs` pins `Spot` to `SpotMarket`. `spot::key`
+  makes `binance.spot:<SYMBOL>` keys with `CLASS = ProductClass::Spot`.
+- A 451, a `418` and the firewall `403` are `Restricted`, classified by status as on `usdm`.
+- `tests/venue_spot.rs` holds each method to the native client's values on the captured fixtures;
+  the fixtures are captured, never written by hand, by `scripts/capture_binance_spot.py rest`.
 
 ## Streams (`usdm-ws`)
 
