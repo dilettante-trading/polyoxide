@@ -63,7 +63,8 @@ rules: `sockets.md`.
   `socket_transport` of the market and user builders and of the bare tier's, so every address of a
   blackholed route is tried within `connect_timeout` per step under supervision too. Their
   `Protocol::connect` only maps a timed-out step to `ClobWsError::ConnectTimeout`. A
-  `socket_transport` set on the builder replaces the dial.
+  `socket_transport` set on the builder replaces the dial. On `wasm32` the per-address dial does
+  not exist, and the default is the kit's `default_socket_transport` (the browser's `WebSocket`).
 - The URL is `wss://`, or `ws://` to a loopback host, which `MarketWsBuilder::url` enforces.
 - A change through `MarketMembership` (on the kit's `MembershipHandle<ClobMarketProtocol>`) is
   recorded before its frame is sent and sends the ids that change, once each. One whose connection

@@ -145,3 +145,7 @@ loop decides on the head, releases the permit, then reads an error body.
   `accept-encoding: gzip` and `host`. CI runs it in the module's minimal build, in the workspace
   build and beside `polyoxide/full`, so a feature another member or another venue switches on
   fails one of the three.
+
+## The browser's fetch (`polyoxide-core/src/fetch.rs`)
+
+`FetchTransport` is the `wasm32` default of the config's `http_transport`; a host's is `ReqwestTransport`. It sends through reqwest's wasm client (the page's `fetch`) with the request's timeout set per request, which bounds the whole exchange, body included. A `fetch` that fails is `Connect` (a network failure and a CORS refusal look alike to a page), a failed body read is `Body`, a timeout is `Timeout` wherever it struck, and a request the browser would not build is `Request`; `kind_of` holds the rule and the host's tests pin it. The pool size and the gzip setting feed only the host default: the browser negotiates compression itself, follows redirects, and shows a page only the response headers the server exposes, so a `Retry-After` is unreadable unless it is. The header pins of the `headers_<module>` suites hold the host default only. The exchange sits in a `SendWrapper`, as in `rt.md`.

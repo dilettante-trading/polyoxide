@@ -11,9 +11,11 @@ paths:
 
 # Sockets and the kit
 
-`polyoxide-ws` is the socket kit. It depends on neither `polyoxide-core` nor `polyoxide-venue`,
-builds only `polyoxide-rt`, tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls,
-and re-exports `tungstenite`. `polyoxide_venue::impl_ws_classification!` classifies its `WsError`
+`polyoxide-ws` is the socket kit. It depends on neither `polyoxide-core` nor `polyoxide-venue`.
+On a host it builds tokio, tokio-tungstenite and rustls; on `wasm32` it builds the browser's `WebSocket` through web-sys
+instead (the dependencies are per target, in `Cargo.toml`'s target tables). On both it builds
+`polyoxide-rt` and `tungstenite`, which it declares directly and re-exports, futures-util,
+thiserror and tracing. `polyoxide_venue::impl_ws_classification!` classifies its `WsError`
 in each venue crate (`errors.md`).
 
 ## Blocks
@@ -137,3 +139,9 @@ it; each venue keeps only its protocol's answer and its fixtures.
   replies, pongs, pings received, accept times and end counts. `wait_for` polls for 5 s.
 - Helpers: `fast()` (a `Timing` of 50 ms pings, 300 ms staleness and 10 to 20 ms backoff),
   `next_item`, `next_event` and `drain`.
+
+## The browser transport (`src/browser.rs`)
+
+`WebSocketTransport` is the `wasm32` default of `default_socket_transport`; a host's is `TungsteniteTransport`. Its capabilities are all `false`. It opens `web_sys::WebSocket` with `binaryType` `arraybuffer` and reads its events from an unbounded channel (a browser socket cannot apply backpressure); the `WebSocket` and its callbacks sit in `SendWrapper`s, as in `rt.md`. A close event yields `Message::Close` with its code and reason, then ends the stream; an error event yields an I/O error. `Close` goes out with its code when it is 1000 or in 3000-4999 and 1000 otherwise, its reason cut to 123 bytes, since a browser throws on anything else. A handshake request with a header beyond those tungstenite generates (a `Sec-WebSocket-Protocol` becomes the subprotocol list) is refused before dialling, and sending a ping, pong or raw frame is refused, each as `Kind::Unsupported` with the message `a handshake header`, `a ping frame`, `a pong frame` or `a raw frame` followed by `is not supported by the browser transport`. A refused upgrade shows no status to a page, so it arrives as a lost connection, never `Kind::Refused`.
+
+What the transport decides (`dial_plan`, `close_code`, `close_reason`, `outgoing`) is plain Rust built on every target, so the host's tests pin it; only the `web_sys` code is `wasm32`'s. `connect_over`, `TungsteniteTransport`, `ensure_crypto_provider` and the scripted test server are host-only, and the `test-server` feature turns on nothing on `wasm32`.
