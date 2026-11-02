@@ -1,10 +1,49 @@
 //! # polyoxide-rt
 //!
-//! The runtime seam of the polyoxide crates: the `Runtime` trait, which a
-//! crate takes instead of calling a runtime's own functions, and `TokioRuntime`,
-//! its native implementation.
+//! The runtime seam of the polyoxide crates. A crate that sleeps, reads the
+//! clock or spawns takes a [`Runtime`] instead of calling a runtime's own
+//! functions, so a runtime can be injected rather than assumed.
+//!
+//! - [`Runtime`] is a detached `spawn`, a `sleep`, a monotonic `now` and a
+//!   defaulted `sleep_until`. An implementor writes only those.
+//! - [`spawn`] turns any future into a [`Task`], which resolves to `Some`
+//!   output, or to `None` when it was aborted or panicked, and keeps running
+//!   when it is dropped.
+//! - [`timeout`] bounds a future by a duration on a runtime's clock, polling
+//!   the future first, so a ready future wins at `Duration::ZERO`.
+//! - [`interval`] ticks at once and then every period, and an [`Interval`]
+//!   takes a [`MissedTick`] to say what to do about ticks it was late for.
+//! - `TokioRuntime` is the native runtime, on tokio's own clock so a paused
+//!   clock drives it, and [`default_runtime`] returns it off wasm32.
+//! - [`Instant`], [`SystemTime`] and [`UNIX_EPOCH`] are `web-time`'s: std's own
+//!   types on native.
+//!
+//! ```
+//! use std::time::Duration;
+//!
+//! use polyoxide_rt::{default_runtime, spawn, timeout};
+//!
+//! #[tokio::main(flavor = "current_thread")]
+//! async fn main() {
+//!     let runtime = default_runtime();
+//!
+//!     let task = spawn(&*runtime, async { 6 * 7 });
+//!     assert_eq!(task.await, Some(42));
+//!
+//!     let slow = runtime.sleep(Duration::from_secs(60));
+//!     let waited = timeout(&*runtime, Duration::from_millis(10), slow).await;
+//!     assert_eq!(waited, None);
+//! }
+//! ```
+//!
+//! The crate depends on nothing in the workspace and names no venue, so it
+//! publishes first and every other crate can use it.
 
 #![warn(missing_docs)]
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 
 mod runtime;
 mod task;

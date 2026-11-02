@@ -102,7 +102,7 @@ on the PR that introduces it rather than halfway through a release.
 
 ## The venue gate
 
-`scripts/venue_gate.py` reads every file under `polyoxide-venue`, `-core`, `-ws` and
+`scripts/venue_gate.py` reads every file under `polyoxide-venue`, `-core`, `-ws`, `-rt` and
 `-test-support`, case-insensitively, for:
 
 - each venue id, as a substring;

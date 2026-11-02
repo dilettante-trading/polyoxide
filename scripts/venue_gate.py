@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """The venue gate (CAP-7): the foundation crates name no venue.
 
-`polyoxide-venue`, `polyoxide-core`, `polyoxide-ws` and `polyoxide-test-support` are
-what every venue builds on, so none of them may carry a venue's code, rules or
-defaults. This script reads every file under them, case-insensitively, for
+`polyoxide-venue`, `polyoxide-core`, `polyoxide-ws`, `polyoxide-rt` and
+`polyoxide-test-support` are what every venue builds on, so none of them may carry a
+venue's code, rules or defaults. This script reads every file under them,
+case-insensitively, for
 
   - each venue id, as a substring: `polymarket` in `polymarket_limits`;
   - each product id, as identifier segments: the text is split at `_`, `-`, `.`, `::`

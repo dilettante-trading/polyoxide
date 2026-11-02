@@ -31,4 +31,4 @@ tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
 # after an edit.
 [package.metadata.polyoxide]
 readme = "The runtime seam: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them"
-notes = ["names no venue, which `scripts/venue_gate.py` holds"]
+notes = ["names no venue, which `scripts/venue_gate.py` holds, and builds only futures-channel, futures-util and web-time, with tokio (`rt` and `time`) off wasm32"]
