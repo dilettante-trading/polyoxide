@@ -57,6 +57,9 @@ cargo add polyoxide --no-default-features --features binance-usdm-ws
 # Binance spot market data
 cargo add polyoxide --no-default-features --features binance-spot
 
+# Binance spot market data and its streams
+cargo add polyoxide --no-default-features --features binance-spot-ws
+
 # Kalshi event-contract market data and its streams
 cargo add polyoxide --no-default-features --features kalshi-predictions-ws
 ```
@@ -81,6 +84,7 @@ Commands are `polyoxide <venue> <module> <command>`:
 polyoxide polymarket gamma markets list --preset trending
 polyoxide polymarket clob stream market <ASSET_ID> --format json
 polyoxide binance usdm stream --all-mark-prices -n 10
+polyoxide binance spot stream --all-mini-tickers -n 10
 ```
 
 See more information [here](./polyoxide-cli/README.md).

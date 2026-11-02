@@ -1,6 +1,6 @@
 # polyoxide-cli
 
-CLI tool for Polymarket's APIs and streams, and Binance USDⓈ-M market data. Provides read-only access to market data (Gamma), user and trade data (Data), the CLOB's price history, real-time WebSocket streams, and credentials in the OS keychain.
+CLI tool for Polymarket's APIs and streams, and Binance USDⓈ-M and spot market data. Provides read-only access to market data (Gamma), user and trade data (Data), the CLOB's price history, real-time WebSocket streams, and credentials in the OS keychain.
 
 ## Installation
 
@@ -39,6 +39,7 @@ Commands are grouped by venue, then by module:
 | `polymarket sports`               | Stream live match scores                                          |
 | `polymarket credentials`          | Manage OS keychain credentials (requires `keychain` feature)      |
 | `binance usdm`                    | Stream Binance USDⓈ-M futures market data                         |
+| `binance spot`                    | Stream Binance spot market data                                   |
 | `completions`                     | Generate shell completions                                        |
 
 Every socket streams with the verb `stream`. Commands that print API responses print
@@ -384,6 +385,27 @@ polyoxide binance usdm stream --symbol BTCUSDT --kind depth20 --format json -n 1
 
 Kinds: `agg-trade`, `book-ticker`, `depth5`, `depth10`, `depth20`, `kline-<interval>`
 (`1m` to `1M`), `mark-price`, `ticker`.
+
+#### `binance spot stream`
+
+Binance spot market data, from `stream.binance.com`. No credentials needed. It takes `usdm`'s
+flags: each `--kind` is streamed for each `--symbol`; connection notices go to stderr, and
+`--format json` prints each frame's `{"stream", "data"}` envelope. `--all-mini-tickers` streams
+every symbol's mini ticker (`!miniTicker@arr`) in the place of `usdm`'s two array flags.
+
+```bash
+# Every symbol's mini ticker, each second
+polyoxide binance spot stream --all-mini-tickers
+
+# Trades and hourly klines for two symbols
+polyoxide binance spot stream --symbol BTCUSDT,ETHUSDT --kind trade,kline-1h
+
+# Top 20 book levels every 100 ms, as JSON envelopes, stop after 10 updates
+polyoxide binance spot stream --symbol BTCUSDT --kind depth20 --format json -n 10
+```
+
+Kinds: `agg-trade`, `trade`, `kline-<interval>` (`1m` to `1M`), `mini-ticker`, `ticker`,
+`book-ticker`, `avg-price`, `depth5`, `depth10`, `depth20` (each depth every 100 ms).
 
 ---
 
