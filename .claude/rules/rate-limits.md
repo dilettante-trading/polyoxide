@@ -133,6 +133,11 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
   composes the two layers over one `Hold`: each attempt is charged one request against
   `clob_limits()` by method and path, then the signer bucket its `shared::signer_cost` names.
   Every trading route names its bucket with `shared::signer_cost`.
+- Each table and the throttle has an `_on` twin that keeps time on a given runtime (`clob_limits_on`,
+  `gamma_limits_on`, `data_limits_on`, `relay_limits_on`, `perps_limits_on`, `clob_throttle_on`,
+  `SignerLimiter::new_on`). Every builder resolves its runtime once with
+  `ClientConfig::runtime_or_default` and builds its table or throttle with the twin, so a client
+  and its throttle share one runtime; the plain constructors take the target's default.
 
 ## Other measured throttles
 

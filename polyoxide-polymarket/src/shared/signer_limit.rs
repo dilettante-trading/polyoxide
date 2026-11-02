@@ -336,10 +336,16 @@ impl SignerLimiter {
     /// Create a limiter at the default (tightest) tier, with a hold of its
     /// own.
     pub fn new() -> Self {
+        Self::new_on(polyoxide_rt::default_runtime())
+    }
+
+    /// As [`new`](Self::new), with a hold of its own that keeps time on
+    /// `runtime`, as both buckets do.
+    pub fn new_on(runtime: std::sync::Arc<dyn polyoxide_rt::Runtime>) -> Self {
         Self::build(
             Tier::default(),
             RateLimitStatus::default(),
-            Hold::unbounded(),
+            Hold::unbounded_on(runtime),
         )
     }
 

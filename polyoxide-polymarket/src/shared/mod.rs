@@ -5,7 +5,8 @@
 //!   installs on [`HttpClient::send`](polyoxide_core::HttpClient::send).
 //! - The five window-quota tables, one per API surface: [`clob_limits`],
 //!   [`gamma_limits`], [`data_limits`], [`relay_limits`] and [`perps_limits`],
-//!   each behind its module's feature.
+//!   each behind its module's feature, and each with an `_on` twin
+//!   ([`clob_limits_on`] and so on) that keeps time on a given runtime.
 //! - [`ClobThrottle`] (`clob`), which composes the CLOB's IP table and the
 //!   per-signer layer ([`signer_limit`]) over one hold, with [`signer_cost`]
 //!   and the [`LayerId`](polyoxide_core::LayerId)s [`CLOUDFLARE`],
@@ -37,19 +38,20 @@ pub mod session_signer;
 pub mod signer_limit;
 
 #[cfg(feature = "clob")]
-pub use limits::clob_limits;
+pub use limits::{clob_limits, clob_limits_on};
 #[cfg(feature = "data")]
-pub use limits::data_limits;
+pub use limits::{data_limits, data_limits_on};
 #[cfg(feature = "gamma")]
-pub use limits::gamma_limits;
+pub use limits::{gamma_limits, gamma_limits_on};
 #[cfg(feature = "perps")]
-pub use limits::perps_limits;
+pub use limits::{perps_limits, perps_limits_on};
 #[cfg(feature = "relay")]
-pub use limits::relay_limits;
+pub use limits::{relay_limits, relay_limits_on};
 pub use policy::PolymarketRetryPolicy;
 #[cfg(feature = "clob")]
 pub use throttle::{
-    clob_throttle, signer_cost, ClobThrottle, CLOUDFLARE, SIGNER_CANCEL, SIGNER_ORDER,
+    clob_throttle, clob_throttle_on, signer_cost, ClobThrottle, CLOUDFLARE, SIGNER_CANCEL,
+    SIGNER_ORDER,
 };
 
 #[cfg(any(feature = "clob", feature = "relay"))]

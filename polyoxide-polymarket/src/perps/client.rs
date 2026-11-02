@@ -55,6 +55,8 @@ impl Perps {
 /// requests unless told otherwise.
 pub struct PerpsBuilder {
     config: ClientConfig,
+    /// `None` builds the default table, `shared::perps_limits_on`, on the
+    /// client's runtime.
     rate_limiter: Option<RateLimiter>,
 }
 
@@ -62,13 +64,15 @@ impl PerpsBuilder {
     fn new() -> Self {
         Self {
             config: ClientConfig::new(DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT),
-            rate_limiter: Some(shared::perps_limits()),
+            rate_limiter: None,
         }
     }
 
     polyoxide_core::client_config_setters!(config);
 
-    /// Replace the rate limiter.
+    /// Replace the rate limiter. It keeps time on the runtime it was built
+    /// on, so build it with [`shared::perps_limits_on`] when the client has a
+    /// runtime of its own.
     pub fn with_rate_limiter(mut self, limiter: RateLimiter) -> Self {
         self.rate_limiter = Some(limiter);
         self
@@ -76,15 +80,18 @@ impl PerpsBuilder {
 
     /// Build the client.
     pub fn build(self) -> Result<Perps, PerpsError> {
-        let mut builder = self
-            .config
-            .http_builder()
-            .with_retry_policy(PolymarketRetryPolicy);
-        if let Some(limiter) = self.rate_limiter {
-            builder = builder.with_rate_limiter(limiter);
-        }
+        let runtime = self.config.runtime_or_default();
+        let limiter = self
+            .rate_limiter
+            .unwrap_or_else(|| shared::perps_limits_on(runtime.clone()));
         Ok(Perps {
-            http_client: builder.build()?,
+            http_client: self
+                .config
+                .http_builder()
+                .runtime(runtime)
+                .with_retry_policy(PolymarketRetryPolicy)
+                .with_rate_limiter(limiter)
+                .build()?,
         })
     }
 }
@@ -92,6 +99,17 @@ impl PerpsBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_builders_runtime_is_the_clients() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let perps = Perps::builder().runtime(runtime.clone()).build().unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            perps.http_client.runtime(),
+            &runtime
+        ));
+    }
 
     #[test]
     fn default_builder_targets_the_production_host() {

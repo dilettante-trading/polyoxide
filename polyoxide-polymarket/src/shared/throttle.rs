@@ -1,5 +1,6 @@
 //! [`ClobThrottle`]: the CLOB's two rate limit layers over one hold.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use polyoxide_core::hold::Hold;
@@ -7,9 +8,10 @@ use polyoxide_core::hooks::{
     AttemptInfo, Charge, Cost, LayerCharge, LayerId, Refused, RequestMeta, ResponseMeta, Throttle,
 };
 use polyoxide_core::rate_limit::RateLimiter;
+use polyoxide_rt::Runtime;
 
-use super::clob_limits;
 use super::signer_limit::{SignerLimiter, TradingBucket, TradingRequest};
+use super::{clob_limits, clob_limits_on};
 
 /// Cloudflare's IP layer, which counts requests.
 pub const CLOUDFLARE: LayerId = LayerId("cloudflare");
@@ -122,4 +124,13 @@ impl Throttle for ClobThrottle {
 /// tightest tier, over one hold.
 pub fn clob_throttle() -> ClobThrottle {
     ClobThrottle::new(clob_limits(), SignerLimiter::new())
+}
+
+/// [`clob_throttle`], keeping time on `runtime`: the IP table, both signer
+/// buckets and the hold between them.
+pub fn clob_throttle_on(runtime: Arc<dyn Runtime>) -> ClobThrottle {
+    ClobThrottle::new(
+        clob_limits_on(Arc::clone(&runtime)),
+        SignerLimiter::new_on(runtime),
+    )
 }

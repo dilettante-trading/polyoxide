@@ -942,14 +942,17 @@ impl ClobBuilder {
 
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
+        // The client and its throttle keep time on one runtime.
+        let runtime = self.config.runtime_or_default();
         // The IP table and the per-signer buckets over one hold, so a 429
         // stops both; the client keeps a handle on the signer layer for the
         // tier and telemetry it adopts.
-        let throttle = shared::clob_throttle();
+        let throttle = shared::clob_throttle_on(runtime.clone());
         let signer_limiter = throttle.signer().clone();
         let http_client = self
             .config
             .http_builder()
+            .runtime(runtime.clone())
             .with_throttle(throttle)
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
@@ -968,6 +971,7 @@ impl ClobBuilder {
             crate::gamma::Gamma::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
+                .runtime(runtime.clone())
                 .build()
                 .map_err(ClobError::Gamma)?
         };
@@ -979,6 +983,7 @@ impl ClobBuilder {
             crate::data::DataApi::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
+                .runtime(runtime)
                 .build()
                 .map_err(ClobError::Data)?
         };
@@ -1012,6 +1017,28 @@ impl Default for ClobBuilder {
 mod tests {
     use super::*;
     use polyoxide_core::RetryConfig;
+
+    #[test]
+    fn the_builders_runtime_reaches_the_client_its_signer_buckets_and_its_fallbacks() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let clob = ClobBuilder::new().runtime(runtime.clone()).build().unwrap();
+        assert!(std::sync::Arc::ptr_eq(clob.http_client.runtime(), &runtime));
+        assert!(std::sync::Arc::ptr_eq(
+            clob.signer_limiter.hold().runtime(),
+            &runtime
+        ));
+        #[cfg(feature = "gamma")]
+        assert!(std::sync::Arc::ptr_eq(
+            clob.gamma.http_client.runtime(),
+            &runtime
+        ));
+        #[cfg(feature = "data")]
+        assert!(std::sync::Arc::ptr_eq(
+            clob.data.http_client.runtime(),
+            &runtime
+        ));
+    }
 
     #[test]
     fn build_order_v2_sets_builder_and_timestamp() {

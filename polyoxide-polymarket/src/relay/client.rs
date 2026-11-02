@@ -2027,10 +2027,12 @@ impl RelayClientBuilder {
             RelayError::validation(format!("Unsupported chain ID: {}", self.chain_id))
         })?;
 
+        let runtime = self.config.runtime_or_default();
         let http_client = self
             .config
             .http_builder()
-            .with_rate_limiter(shared::relay_limits())
+            .runtime(runtime.clone())
+            .with_rate_limiter(shared::relay_limits_on(runtime))
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 
@@ -2058,6 +2060,21 @@ mod tests {
     use super::*;
     use alloy::primitives::address;
     use polyoxide_core::RetryConfig;
+
+    #[test]
+    fn the_builders_runtime_is_the_clients() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let client = RelayClient::builder()
+            .unwrap()
+            .runtime(runtime.clone())
+            .build()
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            client.http_client.runtime(),
+            &runtime
+        ));
+    }
 
     #[tokio::test]
     async fn test_ping() {
