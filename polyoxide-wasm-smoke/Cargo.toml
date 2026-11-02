@@ -12,7 +12,7 @@ publish = false
 
 # The message vocabulary, in the server (native) and the browser tests (wasm32).
 [dependencies]
-tungstenite = { version = "0.26", default-features = false }
+tungstenite = { workspace = true }
 
 [features]
 # The nightly's live checks (tests/browser_live.rs). They call real hosts, so they are off by
