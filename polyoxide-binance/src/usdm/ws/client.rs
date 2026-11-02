@@ -57,6 +57,9 @@ pub struct UsdmWs {
     connection: Connection,
     path: StreamPath,
     streams: Vec<StreamName>,
+    /// Whether the transport this connection runs on can send protocol pings
+    /// (`Capabilities::client_pings`); a browser's cannot (D9).
+    client_pings: bool,
 }
 
 impl std::fmt::Debug for UsdmWs {
@@ -212,6 +215,9 @@ impl UsdmWs {
             connection,
             path,
             streams: Vec::new(),
+            client_pings: polyoxide_ws::default_socket_transport()
+                .capabilities()
+                .client_pings,
         })
     }
 
@@ -273,7 +279,22 @@ impl UsdmWs {
     }
 
     /// Send a protocol ping and wait for the pong, returning the round trip.
+    /// On a transport that sends no protocol pings (`client_pings` false, a
+    /// browser's) it fails with [`Kind::Unsupported`] and sends nothing;
+    /// [`list_subscriptions`](Self::list_subscriptions) is the keepalive
+    /// there.
     pub async fn ping(&mut self) -> Result<Duration, UsdmWsError> {
+        // A transport with no protocol pings, a browser's, is refused before
+        // anything is sent: the failed send would end the connection, and a
+        // caller that wants a keepalive asks `list_subscriptions` (D9).
+        if !self.client_pings {
+            return Err(UsdmWsError::from(WsError::from(
+                polyoxide_ws::tungstenite::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "a ping frame is not supported by this transport",
+                )),
+            )));
+        }
         let runtime = std::sync::Arc::clone(self.connection.runtime());
         let start = runtime.now();
         self.send_ping().await?;
@@ -484,6 +505,25 @@ mod tests {
         assert_eq!(ws.list_subscriptions().await.unwrap(), ["ethusdt@aggTrade"]);
         // The supervised tier replays from this list after a reconnect.
         assert_eq!(ws.streams(), &[agg("ETHUSDT")]);
+    }
+
+    #[tokio::test]
+    async fn a_ping_is_refused_where_the_transport_sends_none_and_nothing_is_sent_d9() {
+        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let mut ws = UsdmWs::connect_to(&server.url, StreamPath::Market, [agg("BTCUSDT")])
+            .await
+            .unwrap();
+        // What `open` reads from a transport whose capabilities say
+        // `client_pings: false`, as a browser's does.
+        ws.client_pings = false;
+        let err = ws.ping().await.unwrap_err();
+        assert!(
+            matches!(&err, UsdmWsError::Connect(source) if matches!(source.kind(), Kind::Unsupported)),
+            "{err:?}"
+        );
+        assert_eq!(server.ping_count(), 0, "a ping reached the server");
+        // The refusal sends nothing and leaves the connection usable.
+        assert_eq!(ws.list_subscriptions().await.unwrap(), ["btcusdt@aggTrade"]);
     }
 
     #[tokio::test]
