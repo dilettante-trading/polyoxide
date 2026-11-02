@@ -285,8 +285,9 @@ The client enforces spot's rules first: at most 1024 streams per connection, req
 one per 500 ms (2 a second). The WebSocket probe's request every 250 ms was closed after 16 s
 with 1008 "Too many requests" (`OBSERVED.md`, `## Spot`); at 500 ms a second holds at most three
 requests when one slips, with the automatic pong and the wall-clock ping five in all, and since
-one request can carry all 1024 names a replay costs little at that pace. The cap on names per
-request is set from the probe (`usdm`'s is 200). Every `Event::Disconnected { path }` is followed by
+one request can carry all 1024 names a replay costs little at that pace. A request carries at
+most 1024 names, the connection's cap (`usdm`'s is 200): the probe's one `SUBSCRIBE` of 1024
+names, 23,598 bytes, was acknowledged and held. Every `Event::Disconnected { path }` is followed by
 `Event::Reconnected { path }` while the client runs, from the shared code. A path that stops on
 an error ends the stream, and `close()` and later membership calls answer
 `SpotWsError::Stopped { cause }`, as `usdm`'s do.
