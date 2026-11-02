@@ -44,14 +44,17 @@ spot = [
 ]
 # The USDⓈ-M market streams, `usdm::ws`, on the socket kit.
 usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
-# Exposes the captured frames, `usdm::ws::fixtures`, for downstream tests, with
-# `usdm-ws`; it turns no module on. Not for consumers.
+# The spot market streams, `spot::ws`, on the same kit.
+spot-ws = ["spot", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+# Exposes the captured frames, `usdm::ws::fixtures` with `usdm-ws` and
+# `spot::ws::fixtures` with `spot-ws`, for downstream tests; it turns no module
+# on. Not for consumers.
 test-server = []
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
 polyoxide-venue = { workspace = true }
-# The socket kit (`usdm-ws`): connect, the bare tier, the socket error and the
+# The socket kit (`usdm-ws`, `spot-ws`): connect, the bare tier, the socket error and the
 # supervisor. It owns the transport, tokio-tungstenite and rustls.
 polyoxide-ws = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }

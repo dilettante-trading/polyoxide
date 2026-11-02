@@ -54,6 +54,8 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<spot::SpotError>();
     is::<spot::types::InvalidSymbol>();
+    #[cfg(feature = "spot-ws")]
+    is::<spot::ws::SpotWsError>();
 };
 
 // Every product implements its class's bundle; one that drops a defining

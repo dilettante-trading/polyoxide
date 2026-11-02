@@ -6,6 +6,7 @@ paths:
   - "polyoxide-polymarket/src/relay/session_signers.rs"
   - "polyoxide-polymarket/src/clob/api/rewards.rs"
   - "polyoxide-binance/src/usdm/ws/mod.rs"
+  - "polyoxide-binance/src/spot/ws/mod.rs"
   - "**/tests/enum_wire_*.rs"
 ---
 
@@ -38,6 +39,7 @@ Rules for using them:
 
 Still written by hand, one spelling per variant: clob's `OrderSide` (`src/clob/types.rs`) and
 `SortPosition`, `MultiMarketOrderBy` and `UserRewardMarketOrderBy` (`src/clob/api/rewards.rs`);
-relay's `WalletType`; Binance's `StreamPath` (`usdm/ws/mod.rs`); gamma's `ParentEntityType`; and
-data's v1 enums in `data/types.rs`, among them the `#[serde(other)] Unknown` ones (`TradeSide`,
-`ActivityType`, `ApprovalFeature`, `ApprovalStandard`, `ComboStatus`, `ComboLegStatus`).
+relay's `WalletType`; Binance's `StreamPath` (`usdm/ws/mod.rs`, `spot/ws/mod.rs`); gamma's
+`ParentEntityType`; and data's v1 enums in `data/types.rs`, among them the `#[serde(other)] Unknown`
+ones (`TradeSide`, `ActivityType`, `ApprovalFeature`, `ApprovalStandard`, `ComboStatus`,
+`ComboLegStatus`).
