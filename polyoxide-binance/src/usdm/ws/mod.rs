@@ -39,7 +39,7 @@ pub const USDM_WS_BASE: &str = "wss://fstream.binance.com";
 
 /// Streams one connection may carry. The 1025th is answered with an error,
 /// and then the server closes the connection.
-pub const MAX_STREAMS_PER_CONNECTION: usize = 1024;
+pub const MAX_STREAMS_PER_CONNECTION: usize = crate::shared::ws::MAX_STREAMS_PER_CONNECTION;
 
 /// Stream names per `SUBSCRIBE` or `UNSUBSCRIBE`. 200 were measured accepted.
 pub const MAX_NAMES_PER_REQUEST: usize = 200;

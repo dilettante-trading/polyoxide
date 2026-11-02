@@ -9,10 +9,10 @@
 //! marker type and not a second copy.
 
 // The test-only `scripted` below is a second `mod` item over `usdm::ws`'s scripted
-// server, which is private to `usdm::ws` and not copied. The allow sits here, not on
-// the item, because the test-bodies gate reads an item's attributes as the gate of
-// the file it declares.
-#![allow(clippy::duplicate_mod)]
+// server, which is private to `usdm::ws` and not copied; it exists only under
+// `cfg(test)`, so the allow is too. The allow sits here, not on the item, because the
+// test-bodies gate reads an item's attributes as the gate of the file it declares.
+#![cfg_attr(test, allow(clippy::duplicate_mod))]
 
 use std::{fmt, time::Duration};
 

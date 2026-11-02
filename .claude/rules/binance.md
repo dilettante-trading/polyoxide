@@ -205,6 +205,9 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
   USDⓈ-M rows.
 - The offline tests drive the kit's scripted server with Binance's answer
   (`src/usdm/ws/scripted.rs`, built for the unit tests and included by the integration suites with
-  `#[path]`). The `test-server` feature, with `usdm-ws`, exposes the captured frames as
+  `#[path]`; `shared::ws`'s unit tests include it with `#[path]` too, under
+  `#![cfg_attr(test, allow(clippy::duplicate_mod))]` at module level, since an allow on the
+  `mod` item changes scripted.rs's test-body gate, and a further unit-test include needs the
+  same). The `test-server` feature, with `usdm-ws`, exposes the captured frames as
   `usdm::ws::fixtures`, which the CLI's tests import, and nothing else; it turns no module on, so a
   build that wants the frames names both features.
