@@ -313,7 +313,11 @@ first, so it needs a spine amendment (D15).
   through a connect, a replay and a reconnect without TCP. Test bodies changed by D6's paths and
   D11's types each get a `[[drift]]` entry in `ci/test-body-diff.toml` (AD-12), naming a new
   DRIFT row, `R22`, in `_bmad-output/specs/spec-venue-extensibility/divergences.md`: the
-  wasm32 seams change the names and types tests use, never what they assert. The story that
+  wasm32 seams change the names and types tests use, never what they assert, except that a row
+  asserting an `ApiError::Network` case no transport can produce goes with the variant (owner,
+  2026-11-02: core's `every_variant_classifies` loses its reqwest decode, 503 and 404 rows; the
+  decode case is re-pinned on `Response::json`, and status stays covered by the
+  `ApiError::Response` rows). The story that
   first changes a test body adds the row; later stories cite it. Divergence row D20's text
   moves the CLOB's dial into `TungsteniteTransport::per_address()`. Each moved or re-proved line
   in `docs/MUTANTS.md` moves with it.
