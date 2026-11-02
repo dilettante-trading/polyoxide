@@ -4,8 +4,9 @@
 //! cross-origin (the route paths and the 429's `Retry-After` are `polyoxide_wasm_smoke`'s), and
 //! one scripted socket on `polyoxide-ws`'s test server that echoes text and closes on command.
 //! The slow route is on a second mockito server, since mockito answers it by sleeping its
-//! server's one thread. It writes `POLYOXIDE_SMOKE_HTTP=<url>`, `POLYOXIDE_SMOKE_WS=<url>` and
-//! `POLYOXIDE_SMOKE_SLOW=<url>` to the file its one argument names, whole and once every server
+//! server's one thread. A fourth server, a hand-written responder, sends one route's head at once
+//! and stalls its body, which mockito cannot do. It writes `POLYOXIDE_SMOKE_HTTP=<url>`,
+//! `POLYOXIDE_SMOKE_WS=<url>`, `POLYOXIDE_SMOKE_SLOW=<url>` and `POLYOXIDE_SMOKE_STALL=<url>` to the file its one argument names, whole and once every server
 //! listens, then runs until it is killed.
 //!
 //! On wasm32 it is an empty program: cargo builds a package's bins for an integration test, and
@@ -19,9 +20,15 @@ mod native {
     use polyoxide_wasm_smoke::{
         CLOSE_CODE, CLOSE_COMMAND, CLOSE_REASON, ECHO_PREFIX, HTTP_ENV, LIMITED_BODY,
         LIMITED_EXPOSED_PATH, LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH, RETRY_AFTER_SECS, SLOW_DELAY,
-        SLOW_ENV, SLOW_PATH, WS_ENV,
+        SLOW_ENV, SLOW_PATH, STALL_BODY_DELAY, STALL_ENV, STALL_FIRST, STALL_PATH, STALL_REST,
+        WS_ENV,
     };
     use polyoxide_ws::test_server::{Script, ScriptedServer};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        task::JoinHandle,
+    };
     use tungstenite::{
         protocol::{frame::coding::CloseCode, CloseFrame},
         Message,
@@ -33,12 +40,80 @@ mod native {
         pub(crate) http: String,
         /// The base URL of the HTTP server that holds the slow route.
         pub(crate) slow: String,
+        /// The base URL of the responder that stalls the body of its one route.
+        pub(crate) stall: String,
         /// The socket server's `ws://` URL.
         pub(crate) ws: String,
         _http: ServerGuard,
         _slow: ServerGuard,
         _mocks: Vec<Mock>,
         _ws: ScriptedServer,
+        _stall: Stall,
+    }
+
+    /// The stalling responder's accept loop, stopped when it is dropped.
+    struct Stall(JoinHandle<()>);
+
+    impl Drop for Stall {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+
+    const CORS: &str = "access-control-allow-origin: *\r\naccess-control-allow-headers: *\r\n";
+
+    /// Answer one connection: a preflight at once, [`STALL_PATH`] as a head plus the first part
+    /// of its body and, after [`STALL_BODY_DELAY`], the rest, anything else with a 404.
+    ///
+    /// mockito cannot do this: it writes a response whole, so a route that sends its head and
+    /// stalls the body behind it is a responder of its own. Every response closes its
+    /// connection, so the framing is the declared length and nothing else.
+    async fn stall_connection(mut stream: TcpStream) -> io::Result<()> {
+        let mut request = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+            let read = stream.read(&mut chunk).await?;
+            if read == 0 {
+                return Ok(());
+            }
+            request.extend_from_slice(&chunk[..read]);
+        }
+        let request = String::from_utf8_lossy(&request);
+        let line = request.lines().next().unwrap_or_default();
+        if line.starts_with("OPTIONS ") {
+            let head = format!("HTTP/1.1 204 No Content\r\n{CORS}connection: close\r\n\r\n");
+            return stream.write_all(head.as_bytes()).await;
+        }
+        if !line.starts_with(&format!("GET {STALL_PATH} ")) {
+            let head = format!(
+                "HTTP/1.1 404 Not Found\r\n{CORS}content-length: 0\r\nconnection: close\r\n\r\n"
+            );
+            return stream.write_all(head.as_bytes()).await;
+        }
+        let length = STALL_FIRST.len() + STALL_REST.len();
+        let head = format!(
+            "HTTP/1.1 200 OK\r\n{CORS}content-type: text/plain\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n{STALL_FIRST}"
+        );
+        stream.write_all(head.as_bytes()).await?;
+        stream.flush().await?;
+        tokio::time::sleep(STALL_BODY_DELAY).await;
+        stream.write_all(STALL_REST.as_bytes()).await?;
+        stream.shutdown().await
+    }
+
+    /// Start the responder on `127.0.0.1`: its base URL, and its accept loop.
+    async fn start_stall() -> (String, Stall) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("the stalling responder binds a port");
+        let url = format!("http://{}", listener.local_addr().expect("a bound address"));
+        let accepting = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                // A peer that hangs up mid-answer is the browser abandoning the exchange.
+                tokio::spawn(stall_connection(stream));
+            }
+        });
+        (url, Stall(accepting))
     }
 
     /// The socket's answer to a text frame: a close for the command, an echo for anything else.
@@ -134,14 +209,18 @@ mod native {
         // One script is repeated for every connection, so each test gets a fresh socket.
         let ws = ScriptedServer::start_answering(vec![Script::hold()], answerer).await;
 
+        let (stall, stalling) = start_stall().await;
+
         Running {
             http: server.url(),
             slow: slow_server.url(),
+            stall,
             ws: ws.url.clone(),
             _http: server,
             _slow: slow_server,
             _mocks: mocks,
             _ws: ws,
+            _stall: stalling,
         }
     }
 
@@ -151,8 +230,8 @@ mod native {
         std::fs::write(
             &staged,
             format!(
-                "{HTTP_ENV}={}\n{WS_ENV}={}\n{SLOW_ENV}={}\n",
-                running.http, running.ws, running.slow
+                "{HTTP_ENV}={}\n{WS_ENV}={}\n{SLOW_ENV}={}\n{STALL_ENV}={}\n",
+                running.http, running.ws, running.slow, running.stall
             ),
         )?;
         std::fs::rename(staged, path)
@@ -200,7 +279,8 @@ mod tests {
     use polyoxide_core::reqwest::{Client, Method, StatusCode};
     use polyoxide_wasm_smoke::{
         CLOSE_CODE, CLOSE_COMMAND, CLOSE_REASON, HTTP_ENV, LIMITED_EXPOSED_PATH,
-        LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH, RETRY_AFTER_SECS, SLOW_ENV, SLOW_PATH, WS_ENV,
+        LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH, RETRY_AFTER_SECS, SLOW_ENV, SLOW_PATH,
+        STALL_BODY_DELAY, STALL_ENV, STALL_FIRST, STALL_PATH, STALL_REST, WS_ENV,
     };
     use tungstenite::Message;
 
@@ -342,6 +422,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_stall_route_sends_its_head_at_once_and_stalls_the_body() {
+        let running = start().await;
+        let started = std::time::Instant::now();
+        let mut response = Client::new()
+            .get(format!("{}{STALL_PATH}", running.stall))
+            .send()
+            .await
+            .expect("the head arrives");
+        assert!(
+            started.elapsed() < STALL_BODY_DELAY / 2,
+            "the head took {:?}",
+            started.elapsed()
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["access-control-allow-origin"], "*");
+        // The first part of the body arrives with the head; the rest only after the delay.
+        let first = response
+            .chunk()
+            .await
+            .expect("a chunk")
+            .expect("a first chunk");
+        assert_eq!(first, STALL_FIRST.as_bytes());
+        assert!(started.elapsed() < STALL_BODY_DELAY / 2);
+        let rest = response.chunk().await.expect("a chunk").expect("the rest");
+        assert_eq!(rest, STALL_REST.as_bytes());
+        assert!(
+            started.elapsed() >= STALL_BODY_DELAY,
+            "the rest arrived after {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_stall_route_answers_a_preflight_and_refuses_other_paths() {
+        let running = start().await;
+        let client = Client::new();
+        let preflight = client
+            .request(Method::OPTIONS, format!("{}{STALL_PATH}", running.stall))
+            .send()
+            .await
+            .expect("the preflight answers");
+        assert_eq!(preflight.status(), StatusCode::NO_CONTENT);
+        assert_eq!(preflight.headers()["access-control-allow-origin"], "*");
+        let other = client
+            .get(format!("{}/elsewhere", running.stall))
+            .send()
+            .await
+            .expect("the other path answers");
+        assert_eq!(other.status(), StatusCode::NOT_FOUND);
+        assert_eq!(other.headers()["access-control-allow-origin"], "*");
+    }
+
+    #[tokio::test]
     async fn the_env_file_names_every_address() {
         let running = start().await;
         let dir = std::env::temp_dir().join(format!("wasm-smoke-env-{}", std::process::id()));
@@ -352,8 +485,8 @@ mod tests {
         assert_eq!(
             text,
             format!(
-                "{HTTP_ENV}={}\n{WS_ENV}={}\n{SLOW_ENV}={}\n",
-                running.http, running.ws, running.slow
+                "{HTTP_ENV}={}\n{WS_ENV}={}\n{SLOW_ENV}={}\n{STALL_ENV}={}\n",
+                running.http, running.ws, running.slow, running.stall
             )
         );
         assert!(running.http.starts_with("http://127.0.0.1:"));
@@ -363,6 +496,12 @@ mod tests {
             running.slow, running.http,
             "the slow route needs a server of its own"
         );
+        assert!(running.stall.starts_with("http://127.0.0.1:"));
+        assert_ne!(
+            running.stall, running.http,
+            "the stalled body needs a server of its own"
+        );
+        assert_ne!(running.stall, running.slow);
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 }

@@ -20,6 +20,11 @@ pub const WS_ENV: &str = "POLYOXIDE_SMOKE_WS";
 /// would hold up every other route on that server.
 pub const SLOW_ENV: &str = "POLYOXIDE_SMOKE_SLOW";
 
+/// The environment variable holding the base URL of the server that answers [`STALL_PATH`]: a
+/// hand-written responder on a port of its own, since mockito cannot send a head and stall the
+/// body behind it.
+pub const STALL_ENV: &str = "POLYOXIDE_SMOKE_STALL";
+
 /// A route answering 200 with [`OK_BODY`].
 pub const OK_PATH: &str = "/ok";
 /// The body of [`OK_PATH`].
@@ -29,6 +34,16 @@ pub const OK_BODY: &str = r#"{"ok":true}"#;
 pub const SLOW_PATH: &str = "/slow";
 /// How long [`SLOW_PATH`] holds its answer back.
 pub const SLOW_DELAY: Duration = Duration::from_millis(1500);
+
+/// A route on the server [`STALL_ENV`] names that answers its head at once and the first part of
+/// its body, then holds the rest back for [`STALL_BODY_DELAY`].
+pub const STALL_PATH: &str = "/stall";
+/// The body bytes [`STALL_PATH`] sends with its head.
+pub const STALL_FIRST: &str = "early";
+/// The body bytes [`STALL_PATH`] sends once [`STALL_BODY_DELAY`] has passed.
+pub const STALL_REST: &str = "-late";
+/// How long [`STALL_PATH`] holds the rest of its body back.
+pub const STALL_BODY_DELAY: Duration = Duration::from_millis(3000);
 
 /// A route answering 429 whose `Retry-After` the browser may read, since the response names it
 /// in `Access-Control-Expose-Headers`.

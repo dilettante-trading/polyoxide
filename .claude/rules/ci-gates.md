@@ -169,9 +169,11 @@ Chrome, inside a dedicated Worker, through `wasm-bindgen-test-runner`. It builds
 native `wasm-smoke-server`, which binds `127.0.0.1:0` for mockito routes (every one answering CORS
 headers: a 200 and two 429s, one exposing `Retry-After` and one not, on one server, and a slow
 route on a server of its own, since mockito answers it by sleeping its server's one thread and
-wasm-bindgen-test may run async tests concurrently) and for one scripted socket on
-`polyoxide-ws`'s test server, and writes `POLYOXIDE_SMOKE_HTTP`, `POLYOXIDE_SMOKE_WS` and
-`POLYOXIDE_SMOKE_SLOW` to the file its one argument names. The script exports them, and the tests
+wasm-bindgen-test may run async tests concurrently), for one scripted socket on
+`polyoxide-ws`'s test server and for a hand-written tokio responder whose one route sends its head
+and the first bytes of its body at once and stalls the rest for 3 s (mockito writes a response
+whole, so it cannot), and writes `POLYOXIDE_SMOKE_HTTP`, `POLYOXIDE_SMOKE_WS`,
+`POLYOXIDE_SMOKE_SLOW` and `POLYOXIDE_SMOKE_STALL` to the file its one argument names. The script exports them, and the tests
 read them with `env!`, so a build without them does not compile and the suite cannot pass empty.
 The runner starts Chrome with the arguments in `polyoxide-wasm-smoke/webdriver.json`
 (`--headless`, `--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`): without `--no-sandbox`
@@ -182,7 +184,16 @@ since the runner rejects a module built by another. The suite covers `BrowserRun
 `sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, a sleep past
 `i32::MAX` ms), `FetchTransport` (a 200, a timeout, both 429s read through `ErrorResponse`) and
 `WebSocketTransport` (a text echo, a close with its code, a refused handshake header and ping
-frame). Each test's failure was shown by breaking the one thing it pins, so a new test comes with
+frame). Three browser-only paths no host test reaches have a test each: a CLOB auth signature
+through `Account::sign_clob_auth`, byte-equal to the host's py-clob-client golden vector, which
+drives the wasm32 `SendWrapper` arm of `sign_digest` in `clob/core/eip712.rs` around alloy's
+`?Send` `sign_hash` future (the smoke crate's browser dev-dependency on `polyoxide-polymarket`
+with `clob`); a body read that outlives `FetchTransport`'s deadline, which comes back as
+`TransportKind::Timeout` because the transport counts a failure at or after the deadline as one
+(reqwest's wasm client reports that cut-short read as a decode error); and a window-quota wait
+that paces on the runtime's clock, shown with a runtime running four times fast since quanta
+reads the same `performance.now()` in a Worker and a real-clock test cannot tell the two apart.
+Each test's failure was shown by breaking the one thing it pins, so a new test comes with
 the same proof.
 
 CI's job installs the wasm32 target and `wasm-bindgen-cli` at the locked version, and uses the

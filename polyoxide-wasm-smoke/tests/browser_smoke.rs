@@ -249,6 +249,9 @@ mod fetch {
     // The slow route's server is its own: the browser may run these tests concurrently, and a
     // sleeping slow route must not hold up another test's request.
     const SLOW_BASE: &str = env!("POLYOXIDE_SMOKE_SLOW");
+    // The stalled-body route's server is its own too: a hand-written responder, since mockito
+    // cannot send a head and hold the body behind it.
+    const STALL_BASE: &str = env!("POLYOXIDE_SMOKE_STALL");
 
     /// A request through an `HttpClient` on the fetch transport and the browser runtime, with no
     /// retries, so a 429 is the first answer and a timeout the only wait. `HttpRequest` has no
@@ -305,6 +308,38 @@ mod fetch {
         assert!(
             elapsed < Duration::from_millis(1400),
             "the timeout fired after {elapsed:?}, not before the server's 1500 ms answer"
+        );
+    }
+
+    // Why: no host test reaches the wasm32 body path. The head comes back at once and the body
+    // stalls past the request's deadline; reqwest's wasm client reports that cut-short read as
+    // a decode error, so `Timeout` here proves FetchTransport's own clock decided it.
+    #[wasm_bindgen_test]
+    async fn a_body_read_that_outlives_the_deadline_is_a_transport_timeout() {
+        let start = BrowserRuntime.now();
+        let response = request_to(STALL_BASE, "/stall", 500)
+            .send_raw()
+            .await
+            .expect("the head arrives before the deadline");
+        assert_eq!(response.status(), StatusCode::OK);
+        let head_at = BrowserRuntime.now().saturating_duration_since(start);
+        assert!(
+            head_at < Duration::from_millis(500),
+            "the head took {head_at:?}"
+        );
+        let err = response
+            .bytes()
+            .await
+            .err()
+            .expect("the stalled body must not arrive");
+        match err {
+            ApiError::Transport(err) => assert_eq!(err.kind(), TransportKind::Timeout, "{err}"),
+            other => panic!("expected a transport timeout, got {other:?}"),
+        }
+        let elapsed = BrowserRuntime.now().saturating_duration_since(start);
+        assert!(
+            elapsed >= Duration::from_millis(450) && elapsed < Duration::from_millis(2_500),
+            "the body timed out after {elapsed:?}, not near the 500 ms deadline and before the server's 3000 ms rest"
         );
     }
 
@@ -437,5 +472,135 @@ mod socket {
             .await
             .expect("send after the refusal");
         assert_eq!(next(&mut socket).await, Message::Text("echo:still".into()));
+    }
+}
+
+mod signing {
+    use polyoxide_polymarket::clob::{Account, Credentials};
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    // Hardhat's well-known test key #0, the key of the host's golden vector.
+    const TEST_KEY: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    // The signature py-clob-client (with poly_eip712_structs) produces for TEST_KEY, chain 137,
+    // timestamp 1700000000 and nonce 42: the golden vector `clob/core/eip712.rs`'s host test
+    // `sign_clob_auth_matches_the_reference_implementation` pins.
+    const REFERENCE_SIGNATURE: &str = "0x8e61f918d542a48ff9433fb6cc4c172a2763ad53dda8afa07f77321e2e0a1e3055f29fac1408e0020dca977190fd4f01b1c73b5e2078be29c88a32887945fe2a1b";
+
+    // Why: no host test reaches the wasm32 arm of `sign_digest`, which sits alloy's `?Send`
+    // `sign_hash` future in a `SendWrapper`. A signature byte-equal to the reference one proves
+    // the wrapped future ran to the end in the browser and signed the same digest.
+    #[wasm_bindgen_test]
+    async fn a_clob_auth_signature_matches_the_reference_vector() {
+        let credentials = Credentials {
+            key: "k".into(),
+            secret: "c2VjcmV0".into(),
+            passphrase: "p".into(),
+        };
+        let account = Account::new(TEST_KEY, credentials).expect("the test key parses");
+        let signature = account
+            .sign_clob_auth(137, 1_700_000_000, 42)
+            .await
+            .expect("the browser signs");
+        assert_eq!(signature, REFERENCE_SIGNATURE);
+    }
+}
+
+mod quota {
+    use std::{sync::Arc, time::Duration};
+
+    use polyoxide_core::{http::Method, WindowQuotaTable};
+    use polyoxide_rt::{BoxFuture, BrowserRuntime, Instant, Runtime};
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    // Why: a window quota keeps time with governor, whose own clock (quanta) panics on
+    // wasm32-unknown-unknown if anything reaches it. A second acquisition that waits about the
+    // quota's interval on BrowserRuntime's clock, and does not panic, proves the limiter reads
+    // and sleeps on the runtime it was given.
+    #[wasm_bindgen_test]
+    async fn a_second_acquisition_waits_the_interval_on_the_runtimes_clock() {
+        let runtime: Arc<dyn Runtime> = Arc::new(BrowserRuntime);
+        let mut table = WindowQuotaTable::new(10, Duration::from_secs(3));
+        table.with_runtime(Arc::clone(&runtime));
+        let limiter = table.build();
+        let interval = limiter.effective_quota(&Method::GET, "/quota")[0].interval();
+        assert!(
+            interval >= Duration::from_millis(100),
+            "{interval:?} is too short to see"
+        );
+
+        let start = runtime.now();
+        limiter.acquire("/quota", Some(&Method::GET)).await;
+        let first = runtime.now().saturating_duration_since(start);
+        assert!(
+            first < interval / 2,
+            "the first acquisition waited {first:?}"
+        );
+
+        limiter.acquire("/quota", Some(&Method::GET)).await;
+        let both = runtime.now().saturating_duration_since(start);
+        assert!(
+            both >= interval.mul_f64(0.9),
+            "two acquisitions took {both:?}, less than the {interval:?} interval"
+        );
+        assert!(
+            both < interval + Duration::from_secs(1),
+            "two acquisitions took {both:?}, far past the {interval:?} interval"
+        );
+    }
+
+    /// The browser's runtime with its clock running four times fast: `now` reads four times the
+    /// real time since the runtime was made, and `sleep` waits a quarter of the duration.
+    #[derive(Debug)]
+    struct Fast {
+        origin: Instant,
+    }
+
+    impl Fast {
+        const SPEED: u32 = 4;
+    }
+
+    impl Runtime for Fast {
+        fn spawn(&self, task: BoxFuture<()>) {
+            BrowserRuntime.spawn(task)
+        }
+        fn sleep(&self, duration: Duration) -> BoxFuture<()> {
+            BrowserRuntime.sleep(duration / Self::SPEED)
+        }
+        fn now(&self) -> Instant {
+            let real = BrowserRuntime.now().saturating_duration_since(self.origin);
+            self.origin + real * Self::SPEED
+        }
+    }
+
+    // Why: on a real clock the test above cannot tell the runtime's clock from quanta's, which
+    // reads the same `performance.now()` in a Worker. A runtime that runs four times fast can: a
+    // limiter on that clock waits the interval in a quarter of the real time, and one that read
+    // quanta's would wait the whole interval and show four times it on the runtime's clock.
+    #[wasm_bindgen_test]
+    async fn the_wait_is_paced_by_the_injected_runtime_not_by_the_real_clock() {
+        let runtime: Arc<dyn Runtime> = Arc::new(Fast {
+            origin: BrowserRuntime.now(),
+        });
+        let mut table = WindowQuotaTable::new(10, Duration::from_secs(3));
+        table.with_runtime(Arc::clone(&runtime));
+        let limiter = table.build();
+        let interval = limiter.effective_quota(&Method::GET, "/quota")[0].interval();
+
+        let real_start = BrowserRuntime.now();
+        let start = runtime.now();
+        limiter.acquire("/quota", Some(&Method::GET)).await;
+        limiter.acquire("/quota", Some(&Method::GET)).await;
+        let on_runtime = runtime.now().saturating_duration_since(start);
+        let on_real = BrowserRuntime.now().saturating_duration_since(real_start);
+
+        assert!(
+            on_runtime >= interval.mul_f64(0.9) && on_runtime < interval + Duration::from_millis(300),
+            "the wait took {on_runtime:?} on the runtime's clock, not about the {interval:?} interval"
+        );
+        assert!(
+            on_real < interval.mul_f64(0.6),
+            "the wait took {on_real:?} of real time: its sleeps did not go through the runtime"
+        );
     }
 }
