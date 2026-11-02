@@ -3,6 +3,7 @@
 
 use std::{future::Future, time::Duration};
 
+use polyoxide_rt::{default_runtime, Runtime};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     client_async_tls, connect_async, tungstenite::client::IntoClientRequest, MaybeTlsStream,
@@ -66,9 +67,21 @@ where
 /// caller's. Install the rustls provider before a TLS connect of its own
 /// ([`ensure_crypto_provider`]).
 pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F::Output, WsError> {
-    tokio::time::timeout(timeout, connect)
+    let runtime = default_runtime();
+    bounded(runtime.as_ref(), timeout, connect).await
+}
+
+/// Run `future` within `timeout` on `runtime`, giving up with
+/// [`Kind::ConnectTimeout`]. A transport bounds each of its own steps with the
+/// runtime it is given.
+pub(crate) async fn bounded<F: Future>(
+    runtime: &dyn Runtime,
+    timeout: Duration,
+    future: F,
+) -> Result<F::Output, WsError> {
+    polyoxide_rt::timeout(runtime, timeout, future)
         .await
-        .map_err(|_| WsError::connect_timeout(timeout))
+        .ok_or_else(|| WsError::connect_timeout(timeout))
 }
 
 /// Whether reconnecting can help after a connect failed this way.
@@ -79,9 +92,10 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 /// `|status| class_for_handshake_status(status).is_retriable()`.
 ///
 /// A bad URL, an upgrade request that could not be built, a refused TLS
-/// configuration, an attack detection and a capacity limit replay the same
-/// failure on every attempt, so they are `false`. Everything else, an I/O
-/// failure, a timeout or a lost connection among them, is `true`.
+/// configuration, an attack detection, a capacity limit and an operation the
+/// transport cannot perform replay the same failure on every attempt, so they
+/// are `false`. Everything else, an I/O failure, a timeout or a lost
+/// connection among them, is `true`.
 ///
 /// This decides only whether a reconnect can help, not what a failure is:
 /// that is the venue's classification. What to do after
@@ -96,7 +110,12 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 pub fn retrying_can_fix(err: &WsError, retriable_status: impl Fn(u16) -> bool) -> bool {
     match err.kind() {
         Kind::Refused { status, .. } => retriable_status(status),
-        Kind::Url | Kind::HttpFormat | Kind::Tls | Kind::AttackAttempt | Kind::Capacity => false,
+        Kind::Url
+        | Kind::HttpFormat
+        | Kind::Tls
+        | Kind::AttackAttempt
+        | Kind::Capacity
+        | Kind::Unsupported => false,
         _ => true,
     }
 }
@@ -273,6 +292,7 @@ mod tests {
             tungstenite::Error::Tls(TlsError::InvalidDnsName),
             tungstenite::Error::AttackAttempt,
             tungstenite::Error::Capacity(CapacityError::TooManyHeaders),
+            tungstenite::Error::Io(std::io::ErrorKind::Unsupported.into()),
         ] {
             let err = WsError::from(err);
             assert!(!retrying_can_fix(&err, |_| true), "{err:?}");

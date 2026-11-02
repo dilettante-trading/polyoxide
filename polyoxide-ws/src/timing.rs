@@ -82,7 +82,7 @@ impl Timing {
 /// Each deadline is a limit and the time elapsed against it; a limit of `None`
 /// never falls due. The arithmetic saturates: a deadline already past waits
 /// zero, a limit of `Duration::MAX` waits about that long, and no deadline at
-/// all, or none that is set, gives `Duration::MAX`, which `tokio::time::timeout`
+/// all, or none that is set, gives `Duration::MAX`, which a timeout
 /// treats as never. It is a wait, not an `Instant`, because adding a limit
 /// such as `Duration::MAX` to an `Instant` overflows.
 ///

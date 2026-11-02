@@ -4206,6 +4206,7 @@ name = "polyoxide-ws"
 version = "0.44.0"
 dependencies = [
  "futures-util",
+ "polyoxide-rt",
  "rustls",
  "serde_json",
  "thiserror 2.0.18",

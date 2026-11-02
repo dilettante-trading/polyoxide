@@ -13,6 +13,10 @@
 //! - [`WsError`] is the one socket error, read through its [`Kind`].
 //!   `polyoxide_venue::impl_ws_classification!` classifies it in the venue
 //!   crate that wraps it.
+//! - [`SocketTransport`] is how a connection is dialled, giving a
+//!   [`BoxSocket`] and reporting its [`Capabilities`]; [`TungsteniteTransport`]
+//!   is the native one, and [`transport_setters!`] gives a builder its
+//!   `runtime` and `socket_transport` setters.
 //! - [`connect`] opens a connection within a timeout, [`connect_over`]
 //!   upgrades a TCP connection a venue opened itself, [`with_timeout`] bounds
 //!   a venue's own connect, and [`retrying_can_fix`] says whether a
@@ -54,6 +58,7 @@ mod supervisor;
 pub mod test_server;
 mod timing;
 mod tls;
+mod transport;
 
 pub use backoff::{Backoff, MIN_BACKOFF};
 pub use bare::{Connection, Mode};
@@ -70,3 +75,6 @@ pub use tls::ensure_crypto_provider;
 /// The WebSocket library the kit is built on, re-exported so a venue names
 /// its types (`Message`, `CloseFrame`, `http`) through this crate.
 pub use tokio_tungstenite::tungstenite;
+#[cfg(not(target_arch = "wasm32"))]
+pub use transport::TungsteniteTransport;
+pub use transport::{default_socket_transport, BoxSocket, Capabilities, SocketIo, SocketTransport};

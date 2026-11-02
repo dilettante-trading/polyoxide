@@ -5,8 +5,9 @@
 //! which expands it against `polyoxide_ws::WsError` in the venue crate: an
 //! I/O error (a TLS EOF included), a protocol error and a closed connection
 //! are [`Network`](Class::Network); a bad URL, a malformed handshake request,
-//! a TLS configuration error, an attack-attempt detection, a capacity limit
-//! and a use after close are [`InvalidRequest`](Class::InvalidRequest); a
+//! a TLS configuration error, an attack-attempt detection, a capacity limit,
+//! a use after close and an operation the transport cannot perform are
+//! [`InvalidRequest`](Class::InvalidRequest); a
 //! server close goes through [`class_for_close_code`]; a handshake refused
 //! with an HTTP status goes through [`class_for_handshake_status`]; anything
 //! else is [`Network`](Class::Network).
