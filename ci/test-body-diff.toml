@@ -90,10 +90,18 @@
 
 # The kit's host-only code is gated off wasm32 (the wasm32 seams' story 7): the scripted
 # test server and the TLS install sit under `not(target_arch = "wasm32")`, which changes no
-# test's body, only what gates it, so the gate is dropped at HEAD.
+# test's body, only what gates it, so the gate is dropped at HEAD. Test-support's modules are
+# gated the same way (story 10), since only its failure tags build in a browser.
 [gates]
 "polyoxide-ws/src/test_server" = 'not(target_arch = "wasm32")'
 "polyoxide-ws/src/tls.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/agreement" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/creds.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/fixtures.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/minute.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/openapi.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/query.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/soak" = 'not(target_arch = "wasm32")'
 
 [[drift]]
 file = "polyoxide-polymarket/tests/mock_gamma.rs"
