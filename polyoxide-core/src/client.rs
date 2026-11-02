@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use http::Method;
 use polyoxide_rt::Runtime;
-use reqwest::Method;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
-use reqwest::header::RETRY_AFTER;
+use http::header::RETRY_AFTER;
 
 use crate::error::ApiError;
 use crate::hooks::{
@@ -320,7 +320,7 @@ impl Default for HttpClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::StatusCode;
+    use http::StatusCode;
 
     #[test]
     fn test_should_retry_uses_retry_after_header() {

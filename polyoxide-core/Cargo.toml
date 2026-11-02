@@ -24,6 +24,10 @@ polyoxide-rt = { workspace = true }
 # crate can change its features for the rest. `gzip` is on, so every client
 # asks for compressed bodies unless a builder turns it off.
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
+# The request vocabulary reqwest re-exports (`Method`, `StatusCode`, `HeaderMap`,
+# `HeaderValue`, `header`), re-exported as `polyoxide_core::http`. Reqwest 0.12
+# is built on `http` 1, so these are the same types.
+http = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

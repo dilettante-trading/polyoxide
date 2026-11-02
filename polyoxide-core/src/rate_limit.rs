@@ -11,8 +11,8 @@ use crate::hold::Hold;
 use crate::hooks::{AttemptInfo, Charge, Refused, RequestMeta, ResponseMeta, Throttle};
 use governor::clock::Clock;
 use governor::Quota;
+use http::Method;
 use polyoxide_rt::{Instant, Runtime};
-use reqwest::Method;
 
 /// Governor's clock over a [`Runtime`]: the time that has passed on the
 /// runtime's [`now`](Runtime::now) since the clock was made.
@@ -454,7 +454,7 @@ pub struct QuotaRow<'a> {
 /// use std::time::Duration;
 ///
 /// use polyoxide_core::{Matching, WindowQuotaTable};
-/// use reqwest::Method;
+/// use polyoxide_core::http::Method;
 ///
 /// let ten_seconds = Duration::from_secs(10);
 /// let mut table = WindowQuotaTable::new(1_000, ten_seconds);

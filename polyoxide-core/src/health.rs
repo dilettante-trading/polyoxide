@@ -3,8 +3,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use http::Method;
 use polyoxide_rt::{Instant, Runtime};
-use reqwest::{Method, Response};
+use reqwest::Response;
 
 use crate::client::HttpClient;
 use crate::error::ApiError;

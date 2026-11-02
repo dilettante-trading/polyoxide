@@ -1,8 +1,9 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use reqwest::header::{HeaderValue, CONTENT_TYPE};
-use reqwest::{Method, Response};
+use http::header::{HeaderValue, CONTENT_TYPE};
+use http::Method;
+use reqwest::Response;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

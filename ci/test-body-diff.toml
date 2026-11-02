@@ -261,3 +261,27 @@ file = "polyoxide-polymarket/tests/polymarket_limits.rs"
 item = "cooldown_tests::an_expired_cooldown_stops_delaying"
 row = "R22"
 sha256 = "587011b6ff011697ce6899d1de6670d5d548b7d4d5a3f857b692b35f95405d2b"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_post_sends_its_body_serialised_once"
+row = "R22"
+sha256 = "fb08704f8b44af8cd4447d7dfdcde81db1144d5e05a1d716ead8581725938173"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_request_s_costs_reach_the_throttle"
+row = "R22"
+sha256 = "ef7ace6413e8d69c2fd3986bcb623d9ebc8acd5a5d4415179e09687303f1ae44"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_request_parts_timeout_bounds_its_attempt"
+row = "R22"
+sha256 = "311f17f232cbc5a260b28a73a004954eda4d343aac880d0e38fd5c44c3ec7172"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_request_parts_timeout_outlasts_the_client_s"
+row = "R22"
+sha256 = "fba60726dd0ec8bad291aac7a82bc9f3744664501b76614ab8ebc5c67a4c7782"

@@ -78,12 +78,20 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// The request vocabulary core's HTTP client speaks: `Method`, `StatusCode`,
+/// `HeaderMap`, `HeaderValue` and `header::*`.
+///
+/// Venue code, tests and examples name these through this path, never through
+/// reqwest. They are the very types reqwest re-exports, so moving a path here
+/// changes no type.
+pub use http;
+
 /// The HTTP client core sends with, re-exported whole.
 ///
-/// Venue crates name its types (`Response`, `StatusCode`, `HeaderMap`,
-/// `Method`) through this path and never depend on reqwest themselves, so
-/// core alone decides its features and every client sends the same headers
-/// (AD-18). CI's dependency fence fails when any other member declares it.
+/// Venue crates name its client types (`Client`, `Response`, `RequestBuilder`)
+/// through this path and never depend on reqwest themselves, so core alone
+/// decides its features and every client sends the same headers (AD-18). CI's
+/// dependency fence fails when any other member declares it.
 pub use reqwest;
 
 pub use capacity::CapacityBucket;
@@ -123,6 +131,24 @@ const _: fn() = || {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `polyoxide_core::http` names the types reqwest sends with: each value
+    /// below is assigned to the reqwest-typed binding with no conversion, so a
+    /// re-export of any other version of the crate would not compile.
+    #[test]
+    fn the_http_vocabulary_is_the_type_reqwest_sends() {
+        let method: reqwest::Method = http::Method::POST;
+        let status: reqwest::StatusCode = http::StatusCode::TOO_MANY_REQUESTS;
+        let mut headers: reqwest::header::HeaderMap = http::HeaderMap::new();
+        headers.insert(
+            http::header::RETRY_AFTER,
+            http::HeaderValue::from_static("3"),
+        );
+
+        assert_eq!(method, reqwest::Method::POST);
+        assert_eq!(status.as_u16(), 429);
+        assert_eq!(headers[reqwest::header::RETRY_AFTER].to_str().unwrap(), "3");
+    }
 
     #[test]
     fn test_truncate_for_log_short_string_unchanged() {

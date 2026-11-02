@@ -1,8 +1,8 @@
 use std::time::Duration;
 
+use http::header::{HeaderMap, RETRY_AFTER};
+use http::StatusCode;
 use polyoxide_venue::{class_for_status, parse_retry_after, Class, Classify};
-use reqwest::header::{HeaderMap, RETRY_AFTER};
-use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::hooks::Refused;

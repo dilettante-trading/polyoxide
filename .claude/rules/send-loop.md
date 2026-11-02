@@ -101,7 +101,10 @@ The loop retries only what the client's policy decides; callers decide with
 
 - Core is the only member that declares reqwest (AD-18): it enables `json`, `rustls-tls` and
   `gzip` with no default features and re-exports the crate as `polyoxide_core::reqwest`, through
-  which every other member's src, tests and examples name its types. No crate but core sends
+  which every other member's src, tests and examples name its client types (`Client`, `Response`,
+  `RequestBuilder`). The request vocabulary, `Method`, `StatusCode`, `HeaderMap`, `HeaderValue`
+  and `header::*`, they name through `polyoxide_core::http`, core's re-export of the `http` crate:
+  the very types reqwest re-exports, so a path change only. No crate but core sends
   through `HttpClient`'s reqwest client. `test_dependency_fences.py` fails on any other member's
   direct dependency, so no crate can change reqwest's features for the rest.
 - `HttpClientBuilder::gzip` is unset by default, which leaves reqwest's default: every client asks

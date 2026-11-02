@@ -185,7 +185,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 28 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 32 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -201,7 +201,11 @@ stage does not hold, printing each one's key to copy there.
   `every_enum_matches_the_spec`, for `InstrumentCategory`'s undocumented `pre_ipo` (R21). The
   test bodies the wasm32 seams' stories changed cite R22: story 2's is `polymarket_limits`'
   `an_expired_cooldown_stops_delaying`, which advances virtual time past the quota's refill before
-  its second acquire, since a window quota now keeps the runtime's clock and its pacing shows.
+  its second acquire, since a window quota now keeps the runtime's clock and its pacing shows;
+  story 3's, which name `Method` and `StatusCode` through `polyoxide_core::http`, are core's
+  `mock_request` items `a_post_sends_its_body_serialised_once`,
+  `a_request_s_costs_reach_the_throttle`, `a_request_parts_timeout_bounds_its_attempt` and
+  `a_request_parts_timeout_outlasts_the_client_s`.
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`
