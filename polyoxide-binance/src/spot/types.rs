@@ -98,7 +98,8 @@ pub struct SymbolInfo {
     pub oco_allowed: bool,
     /// Whether OTO order lists are allowed.
     pub oto_allowed: bool,
-    /// Whether OPO order lists are allowed. Absent on a host that predates them.
+    /// Whether OPO order lists are allowed. Every captured row carries the flag;
+    /// it is optional so a row without it still decodes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opo_allowed: Option<bool>,
     /// Whether a market order may name a quote quantity.
@@ -107,10 +108,12 @@ pub struct SymbolInfo {
     pub allow_trailing_stop: bool,
     /// Whether cancel-replace is allowed.
     pub cancel_replace_allowed: bool,
-    /// Whether order amendment is allowed. Absent on a host that predates it.
+    /// Whether order amendment is allowed. Every captured row carries the flag;
+    /// it is optional so a row without it still decodes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub amend_allowed: Option<bool>,
-    /// Whether pegged orders are allowed. Absent on a host that predates them.
+    /// Whether pegged orders are allowed. Every captured row carries the flag;
+    /// it is optional so a row without it still decodes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peg_instructions_allowed: Option<bool>,
     /// Whether the symbol can be traded as spot.
@@ -238,12 +241,6 @@ filters! {
         max_price: Decimal => "rust_decimal::serde::str",
         tick_size: Decimal => "rust_decimal::serde::str",
     }
-    /// `PERCENT_PRICE`.
-    PercentPrice = "PERCENT_PRICE" {
-        multiplier_up: Decimal => "rust_decimal::serde::str",
-        multiplier_down: Decimal => "rust_decimal::serde::str",
-        avg_price_mins: u32,
-    }
     /// `PERCENT_PRICE_BY_SIDE`.
     PercentPriceBySide = "PERCENT_PRICE_BY_SIDE" {
         bid_multiplier_up: Decimal => "rust_decimal::serde::str",
@@ -257,12 +254,6 @@ filters! {
         min_qty: Decimal => "rust_decimal::serde::str",
         max_qty: Decimal => "rust_decimal::serde::str",
         step_size: Decimal => "rust_decimal::serde::str",
-    }
-    /// `MIN_NOTIONAL`: the older minimum-value filter.
-    MinNotional = "MIN_NOTIONAL" {
-        min_notional: Decimal => "rust_decimal::serde::str",
-        apply_to_market: bool,
-        avg_price_mins: u32,
     }
     /// `NOTIONAL`: the minimum and maximum order value.
     Notional = "NOTIONAL" {
@@ -290,10 +281,6 @@ filters! {
     MaxNumAlgoOrders = "MAX_NUM_ALGO_ORDERS" {
         max_num_algo_orders: u32,
     }
-    /// `MAX_NUM_ICEBERG_ORDERS`.
-    MaxNumIcebergOrders = "MAX_NUM_ICEBERG_ORDERS" {
-        max_num_iceberg_orders: u32,
-    }
     /// `MAX_POSITION`.
     MaxPosition = "MAX_POSITION" {
         max_position: Decimal => "rust_decimal::serde::str",
@@ -311,22 +298,6 @@ filters! {
     }
     /// `MAX_NUM_ORDER_LISTS`.
     MaxNumOrderLists = "MAX_NUM_ORDER_LISTS" {
-        max_num_order_lists: u32,
-    }
-    /// `EXCHANGE_MAX_NUM_ORDERS`: an exchange-wide filter.
-    ExchangeMaxNumOrders = "EXCHANGE_MAX_NUM_ORDERS" {
-        max_num_orders: u32,
-    }
-    /// `EXCHANGE_MAX_NUM_ALGO_ORDERS`: an exchange-wide filter.
-    ExchangeMaxNumAlgoOrders = "EXCHANGE_MAX_NUM_ALGO_ORDERS" {
-        max_num_algo_orders: u32,
-    }
-    /// `EXCHANGE_MAX_NUM_ICEBERG_ORDERS`: an exchange-wide filter.
-    ExchangeMaxNumIcebergOrders = "EXCHANGE_MAX_NUM_ICEBERG_ORDERS" {
-        max_num_iceberg_orders: u32,
-    }
-    /// `EXCHANGE_MAX_NUM_ORDER_LISTS`: an exchange-wide filter.
-    ExchangeMaxNumOrderLists = "EXCHANGE_MAX_NUM_ORDER_LISTS" {
         max_num_order_lists: u32,
     }
 }

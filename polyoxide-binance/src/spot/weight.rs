@@ -113,8 +113,8 @@ impl Route {
     /// weights`).
     ///
     /// `depth` costs 5 without a `limit` and for 1 to 100 levels, 25 for 101 to
-    /// 500, 50 for 501 to 1000 and 250 above, the last band as Binance
-    /// documents it. `exchangeInfo` costs 20 with a `symbol` or without. The
+    /// 500, 50 for 501 to 1000 and 250 above, each band measured
+    /// (`OBSERVED.md`, `## Spot`). `exchangeInfo` costs 20 with a `symbol` or without. The
     /// one-symbol tickers and `klines` and `avgPrice` cost 2, `trades` 25 and
     /// `aggTrades` 4, whatever their `limit`.
     pub fn cost(self) -> Cost {
