@@ -755,9 +755,12 @@ fn requests_of(server: &ScriptedServer, method: &str) -> Vec<serde_json::Value> 
         .collect()
 }
 
-/// What the server's clock may read over the client's between two sends:
-/// scheduling jitter, far below the 50 ms of an unpaced ping tick.
-const JITTER: Duration = Duration::from_millis(20);
+/// What the server's clock may read over the client's between two sends. The
+/// client paces by the time it sends and the test reads the time the server's
+/// task saw each request, so a loaded machine can shorten (or lengthen) a gap
+/// by a scheduling delay. An unpaced keepalive arrives one 50 ms tick after the
+/// subscription, which this slack still leaves 100 ms short of the interval.
+const JITTER: Duration = Duration::from_millis(50);
 
 /// The ping tick of the tests' builder (`fast` sets 50 ms).
 const TICK: Duration = Duration::from_millis(50);
@@ -836,7 +839,7 @@ async fn a_keepalive_tick_inside_the_pacing_interval_is_skipped_and_the_next_one
         // lost keepalive, so a gap is the interval and at most a tick or two
         // beyond it.
         assert!(
-            gap <= MIN_REQUEST_INTERVAL + TICK * 2 + Duration::from_millis(100),
+            gap <= MIN_REQUEST_INTERVAL + TICK * 2 + JITTER * 2,
             "a skipped tick was not followed by a send at the next one: {gap:?}"
         );
         previous = request.at;

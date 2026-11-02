@@ -157,9 +157,14 @@ pub trait Protocol: Send + Sized + 'static {
     /// the attempt's, and dials it through the transport. A protocol that
     /// wants another dial injects a transport that makes it, such as one that
     /// tries each resolved address in turn
-    /// ([`TungsteniteTransport::per_address`](crate::TungsteniteTransport::per_address));
-    /// it overrides this only to shape the transport's error. An error is a
-    /// failed attempt, which [`recover`](Self::recover) decides on.
+    /// ([`TungsteniteTransport::per_address`](crate::TungsteniteTransport::per_address)).
+    /// It overrides this for either of two reasons: to shape the transport's
+    /// error, or to read the transport's
+    /// [`capabilities`](SocketTransport::capabilities) before it dials, since
+    /// this is the one hook that is handed the transport. A protocol that keeps
+    /// a connection alive with a frame of its own where the transport cannot
+    /// send a protocol ping notes here which kind it has. An error is a failed
+    /// attempt, which [`recover`](Self::recover) decides on.
     fn connect(
         &mut self,
         transport: Arc<dyn SocketTransport>,
