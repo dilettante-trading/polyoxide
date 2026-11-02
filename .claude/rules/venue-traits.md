@@ -44,9 +44,8 @@ rules file.
 - Each `KeySpace` declares its product's `ProductClass` as `CLASS` (ADR 0001): `EventContract`
   (the clob, Kalshi's `predictions`), `PerpetualFuture` (perps, USDⓈ-M) or `Spot` (Binance's
   `spot`), `#[non_exhaustive]`, a variant added only when a product of that class lands. Every key
-  carries it as
-  `MarketKey::class()`; it follows from the venue and product, so the text form, `Eq` and `Hash`
-  are unchanged.
+  carries it as `MarketKey::class()`; it follows from the venue and product, so the text form, `Eq`
+  and `Hash` are unchanged.
 - Each venue crate's `the_ids_are_the_ones_the_crate_registers` test holds its `VENUE`, product and
   class constants to its `[package.metadata.polyoxide]`, read with
   `polyoxide_test_support::registration!()`: `products`, and `classes`, a table of
@@ -104,14 +103,13 @@ rules file.
 ## Class bundles (ADR 0001)
 
 `PerpetualMarket` is `MarketData + Funding`; `EventContractMarket` is `MarketData + EventGroups`;
-`SpotMarket` is `MarketData` alone. Each has a blanket impl and no `Dyn` wrapper, so a
-class-generic function needs one bound, and
-code that holds trait objects holds one per member. A bundle holds only what defines its class; a
-capability other classes share, such as `Candles`, stays out, so a bundle never has to lose a
-member. Each venue crate's `lib.rs` pins its products to their bundles in a `const _` beside its
-`Classify` assertions: `Perps` (`perps`) and `Usdm` (`usdm`) to `PerpetualMarket`, `Clob`
-(`all(clob, gamma)`) and `Predictions` (`predictions`) to `EventContractMarket`, and `Spot`
-(`spot`) to `SpotMarket`.
+`SpotMarket` is `MarketData` alone. Each has a blanket impl and no `Dyn` wrapper, so a class-generic
+function needs one bound, and code that holds trait objects holds one per member. A bundle holds
+only what defines its class; a capability other classes share, such as `Candles`, stays out, so a
+bundle never has to lose a member. Each venue crate's `lib.rs` pins its products to their bundles
+in a `const _` beside its `Classify` assertions: `Perps` (`perps`) and `Usdm` (`usdm`) to
+`PerpetualMarket`, `Clob` (`all(clob, gamma)`) and `Predictions` (`predictions`) to
+`EventContractMarket`, and `Spot` (`spot`) to `SpotMarket`.
 `polyoxide/tests/parse_key.rs` checks every product's class.
 
 ## The trading trait (feature `trading`, which turns on `market`; AD-3, AD-5, amendment A7-1)
