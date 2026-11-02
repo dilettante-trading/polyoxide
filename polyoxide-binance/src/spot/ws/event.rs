@@ -647,6 +647,8 @@ mod tests {
             ["p", "P", "w", "x", "c", "Q", "b", "B", "a", "A", "o", "h", "l", "v", "q"]
                 .map(|k| dec(&row, k))
         );
+        assert_eq!(e.symbol, text(&row, "s"));
+        assert_eq!(e.event_type, text(&row, "e"));
         assert_eq!(
             [e.event_time, e.open_time, e.close_time, e.trade_count],
             ["E", "O", "C", "n"].map(|k| int(&row, k))
@@ -673,6 +675,7 @@ mod tests {
         );
         assert_eq!(e.is_buyer_maker, row["m"].as_bool().unwrap());
         assert_eq!(e.symbol, text(&row, "s"));
+        assert_eq!(e.event_type, text(&row, "e"));
 
         let row = data(fixtures::TRADE);
         let Payload::Trade(e) = payload(fixtures::TRADE) else {
@@ -684,8 +687,11 @@ mod tests {
             ["E", "t", "T"].map(|k| int(&row, k))
         );
         assert_eq!(e.is_buyer_maker, row["m"].as_bool().unwrap());
+        assert_eq!(e.symbol, text(&row, "s"));
+        assert_eq!(e.event_type, text(&row, "e"));
 
-        let row = data(fixtures::KLINE)["k"].clone();
+        let event = data(fixtures::KLINE);
+        let row = event["k"].clone();
         let Payload::Kline(e) = payload(fixtures::KLINE) else {
             panic!("not Kline");
         };
@@ -713,6 +719,9 @@ mod tests {
         );
         assert_eq!(k.interval.as_str(), text(&row, "i"));
         assert_eq!(k.is_closed, row["x"].as_bool().unwrap());
+        assert_eq!(k.symbol, text(&row, "s"));
+        assert_eq!(e.symbol, text(&event, "s"));
+        assert_eq!(e.event_type, text(&event, "e"));
 
         let row = data(fixtures::BOOK_TICKER);
         let Payload::BookTicker(e) = payload(fixtures::BOOK_TICKER) else {
@@ -735,6 +744,8 @@ mod tests {
             ["E", "T"].map(|k| int(&row, k))
         );
         assert_eq!(e.interval, text(&row, "i"));
+        assert_eq!(e.symbol, text(&row, "s"));
+        assert_eq!(e.event_type, text(&row, "e"));
     }
 
     #[test]
