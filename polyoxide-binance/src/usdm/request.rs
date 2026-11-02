@@ -11,8 +11,7 @@ use crate::usdm::{
     weight::{Cost, Route},
 };
 
-/// The header carrying the IP's weight used in the current minute.
-pub const USED_WEIGHT_HEADER: &str = "x-mbx-used-weight-1m";
+pub use crate::shared::weight::USED_WEIGHT_HEADER;
 
 /// A route and its query, sent as core's [`Request`] with the route's cost.
 ///
