@@ -666,60 +666,16 @@ async fn the_namespaces_share_one_hold() {
 
 // ── market ──────────────────────────────────────────────────────
 
-fn market_fixture(name: &str) -> String {
-    polyoxide_test_support::fixtures!("spot/rest").text(name)
-}
-
-fn market_client(server: &mockito::ServerGuard) -> polyoxide_binance::spot::Spot {
-    polyoxide_binance::spot::Spot::builder()
-        .base_url(server.url())
-        .build()
-        .unwrap()
-}
-
-fn market_btc() -> polyoxide_binance::spot::types::Symbol {
-    polyoxide_binance::spot::types::Symbol::new("BTCUSDT").unwrap()
-}
-
-/// A route answering `body`, matched on its whole query string so a missing
-/// or extra parameter fails the request.
-async fn market_route(
-    server: &mut mockito::ServerGuard,
-    path: &str,
-    query: &str,
-    body: &str,
-) -> mockito::Mock {
-    let query = if query.is_empty() {
-        mockito::Matcher::Missing
-    } else {
-        mockito::Matcher::Exact(query.to_owned())
-    };
-    server
-        .mock("GET", path)
-        .match_query(query)
-        .with_status(200)
-        .with_header("x-mbx-used-weight-1m", "1")
-        .with_body(body)
-        .create_async()
-        .await
-}
-
 #[tokio::test]
 async fn depth_sends_a_limit_only_when_asked_and_decodes_the_capture() {
     let mut server = mockito::Server::new_async().await;
-    let raw = market_fixture("depth");
+    let raw = fixture("depth");
     let wire: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    let limited = market_route(&mut server, "/api/v3/depth", "symbol=BTCUSDT&limit=5", &raw).await;
-    let bare = market_route(&mut server, "/api/v3/depth", "symbol=BTCUSDT", &raw).await;
+    let limited = route(&mut server, "/api/v3/depth", "symbol=BTCUSDT&limit=5", &raw).await;
+    let bare = route(&mut server, "/api/v3/depth", "symbol=BTCUSDT", &raw).await;
 
-    let client = market_client(&server);
-    let book = client
-        .market()
-        .depth(&market_btc())
-        .limit(5)
-        .send()
-        .await
-        .unwrap();
+    let client = spot(&server);
+    let book = client.market().depth(&btc()).limit(5).send().await.unwrap();
     assert_eq!(book.last_update_id, wire["lastUpdateId"].as_u64().unwrap());
     assert_eq!(book.bids.len(), wire["bids"].as_array().unwrap().len());
     assert_eq!(book.asks.len(), wire["asks"].as_array().unwrap().len());
@@ -733,7 +689,7 @@ async fn depth_sends_a_limit_only_when_asked_and_decodes_the_capture() {
         wire["asks"][0][1].as_str().unwrap()
     );
 
-    client.market().depth(&market_btc()).send().await.unwrap();
+    client.market().depth(&btc()).send().await.unwrap();
     limited.assert_async().await;
     bare.assert_async().await;
 }
@@ -741,18 +697,18 @@ async fn depth_sends_a_limit_only_when_asked_and_decodes_the_capture() {
 #[tokio::test]
 async fn trades_send_their_limit_and_decode_the_capture() {
     let mut server = mockito::Server::new_async().await;
-    let raw = market_fixture("trades");
+    let raw = fixture("trades");
     let wire: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    let mock = market_route(
+    let mock = route(
         &mut server,
         "/api/v3/trades",
         "symbol=BTCUSDT&limit=3",
         &raw,
     )
     .await;
-    let trades = market_client(&server)
+    let trades = spot(&server)
         .market()
-        .trades(&market_btc())
+        .trades(&btc())
         .limit(3)
         .send()
         .await
@@ -766,17 +722,17 @@ async fn trades_send_their_limit_and_decode_the_capture() {
 #[tokio::test]
 async fn agg_trades_send_their_filters() {
     let mut server = mockito::Server::new_async().await;
-    let raw = market_fixture("agg_trades");
+    let raw = fixture("agg_trades");
     let wire: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let first = wire[0]["a"].as_u64().unwrap();
-    let by_id = market_route(
+    let by_id = route(
         &mut server,
         "/api/v3/aggTrades",
         &format!("symbol=BTCUSDT&fromId={first}&limit=3"),
         &raw,
     )
     .await;
-    let by_time = market_route(
+    let by_time = route(
         &mut server,
         "/api/v3/aggTrades",
         "symbol=BTCUSDT&startTime=1791350000000&endTime=1791353600000&limit=3",
@@ -784,10 +740,10 @@ async fn agg_trades_send_their_filters() {
     )
     .await;
 
-    let client = market_client(&server);
+    let client = spot(&server);
     let trades = client
         .market()
-        .agg_trades(&market_btc())
+        .agg_trades(&btc())
         .from_id(first)
         .limit(3)
         .send()
@@ -798,7 +754,7 @@ async fn agg_trades_send_their_filters() {
     assert_eq!(trades[0].price.to_string(), wire[0]["p"].as_str().unwrap());
     client
         .market()
-        .agg_trades(&market_btc())
+        .agg_trades(&btc())
         .start_time(1_791_350_000_000)
         .end_time(1_791_353_600_000)
         .limit(3)
@@ -814,16 +770,16 @@ async fn klines_send_every_parameter_once_and_the_interval_by_its_wire_name() {
     use polyoxide_binance::spot::types::Interval;
 
     let mut server = mockito::Server::new_async().await;
-    let minutes = market_fixture("klines");
-    let seconds = market_fixture("klines_1s");
-    let hourly = market_route(
+    let minutes = fixture("klines");
+    let seconds = fixture("klines_1s");
+    let hourly = route(
         &mut server,
         "/api/v3/klines",
         "symbol=BTCUSDT&interval=1h&startTime=1791350000000&endTime=1791354000000&limit=2",
         &minutes,
     )
     .await;
-    let second = market_route(
+    let second = route(
         &mut server,
         "/api/v3/klines",
         "symbol=BTCUSDT&interval=1s&limit=2",
@@ -831,10 +787,10 @@ async fn klines_send_every_parameter_once_and_the_interval_by_its_wire_name() {
     )
     .await;
 
-    let client = market_client(&server);
+    let client = spot(&server);
     let candles = client
         .market()
-        .klines(&market_btc(), Interval::Hour1)
+        .klines(&btc(), Interval::Hour1)
         .start_time(1_791_350_000_000)
         .end_time(1_791_354_000_000)
         .limit(100)
@@ -849,7 +805,7 @@ async fn klines_send_every_parameter_once_and_the_interval_by_its_wire_name() {
 
     let candles = client
         .market()
-        .klines(&market_btc(), Interval::Second1)
+        .klines(&btc(), Interval::Second1)
         .limit(2)
         .send()
         .await
@@ -862,12 +818,12 @@ async fn klines_send_every_parameter_once_and_the_interval_by_its_wire_name() {
 #[tokio::test]
 async fn avg_price_sends_the_symbol_and_decodes_the_capture() {
     let mut server = mockito::Server::new_async().await;
-    let raw = market_fixture("avg_price");
+    let raw = fixture("avg_price");
     let wire: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    let mock = market_route(&mut server, "/api/v3/avgPrice", "symbol=BTCUSDT", &raw).await;
-    let average = market_client(&server)
+    let mock = route(&mut server, "/api/v3/avgPrice", "symbol=BTCUSDT", &raw).await;
+    let average = spot(&server)
         .market()
-        .avg_price(&market_btc())
+        .avg_price(&btc())
         .send()
         .await
         .unwrap();
@@ -880,26 +836,21 @@ async fn avg_price_sends_the_symbol_and_decodes_the_capture() {
 #[tokio::test]
 async fn ticker_24h_sends_the_symbol_and_tickers_24h_sends_nothing() {
     let mut server = mockito::Server::new_async().await;
-    let one_raw = market_fixture("ticker_24hr");
-    let all_raw = market_fixture("tickers_24hr");
+    let one_raw = fixture("ticker_24hr");
+    let all_raw = fixture("tickers_24hr");
     let one_wire: serde_json::Value = serde_json::from_str(&one_raw).unwrap();
     let all_wire: serde_json::Value = serde_json::from_str(&all_raw).unwrap();
-    let single = market_route(
+    let single = route(
         &mut server,
         "/api/v3/ticker/24hr",
         "symbol=BTCUSDT",
         &one_raw,
     )
     .await;
-    let every = market_route(&mut server, "/api/v3/ticker/24hr", "", &all_raw).await;
+    let every = route(&mut server, "/api/v3/ticker/24hr", "", &all_raw).await;
 
-    let client = market_client(&server);
-    let ticker = client
-        .market()
-        .ticker_24h(&market_btc())
-        .send()
-        .await
-        .unwrap();
+    let client = spot(&server);
+    let ticker = client.market().ticker_24h(&btc()).send().await.unwrap();
     assert_eq!(ticker.symbol, "BTCUSDT");
     assert_eq!(
         ticker.last_price.to_string(),
@@ -914,21 +865,21 @@ async fn ticker_24h_sends_the_symbol_and_tickers_24h_sends_nothing() {
 #[tokio::test]
 async fn price_and_prices_send_the_symbol_or_nothing() {
     let mut server = mockito::Server::new_async().await;
-    let one_raw = market_fixture("price");
-    let all_raw = market_fixture("prices");
+    let one_raw = fixture("price");
+    let all_raw = fixture("prices");
     let one_wire: serde_json::Value = serde_json::from_str(&one_raw).unwrap();
     let all_wire: serde_json::Value = serde_json::from_str(&all_raw).unwrap();
-    let single = market_route(
+    let single = route(
         &mut server,
         "/api/v3/ticker/price",
         "symbol=BTCUSDT",
         &one_raw,
     )
     .await;
-    let every = market_route(&mut server, "/api/v3/ticker/price", "", &all_raw).await;
+    let every = route(&mut server, "/api/v3/ticker/price", "", &all_raw).await;
 
-    let client = market_client(&server);
-    let price = client.market().price(&market_btc()).send().await.unwrap();
+    let client = spot(&server);
+    let price = client.market().price(&btc()).send().await.unwrap();
     assert_eq!(price.symbol, "BTCUSDT");
     assert_eq!(price.price.to_string(), one_wire["price"].as_str().unwrap());
     let prices = client.market().prices().send().await.unwrap();
@@ -940,26 +891,21 @@ async fn price_and_prices_send_the_symbol_or_nothing() {
 #[tokio::test]
 async fn book_ticker_and_book_tickers_send_the_symbol_or_nothing() {
     let mut server = mockito::Server::new_async().await;
-    let one_raw = market_fixture("book_ticker");
-    let all_raw = market_fixture("book_tickers");
+    let one_raw = fixture("book_ticker");
+    let all_raw = fixture("book_tickers");
     let one_wire: serde_json::Value = serde_json::from_str(&one_raw).unwrap();
     let all_wire: serde_json::Value = serde_json::from_str(&all_raw).unwrap();
-    let single = market_route(
+    let single = route(
         &mut server,
         "/api/v3/ticker/bookTicker",
         "symbol=BTCUSDT",
         &one_raw,
     )
     .await;
-    let every = market_route(&mut server, "/api/v3/ticker/bookTicker", "", &all_raw).await;
+    let every = route(&mut server, "/api/v3/ticker/bookTicker", "", &all_raw).await;
 
-    let client = market_client(&server);
-    let book = client
-        .market()
-        .book_ticker(&market_btc())
-        .send()
-        .await
-        .unwrap();
+    let client = spot(&server);
+    let book = client.market().book_ticker(&btc()).send().await.unwrap();
     assert_eq!(book.symbol, "BTCUSDT");
     assert_eq!(
         book.ask_qty.to_string(),
@@ -979,7 +925,7 @@ fn every_market_builder_charges_its_route() {
 
     let spot = Spot::new().unwrap();
     let market = spot.market();
-    let btc = market_btc();
+    let btc = btc();
     let w = Cost::Weight;
 
     // depth: 5 without a limit and up to 100, then 25, 50 and 250 by band.
@@ -1029,19 +975,19 @@ fn every_market_builder_charges_its_route() {
 /// route reaches the send loop, not only `cost()`.
 #[tokio::test]
 async fn a_deep_depth_is_charged_its_band() {
-    polyoxide_test_support::minute::wait_unless_within(0..=57_000, 100).await;
+    clear_of_a_minute_boundary().await;
     let mut server = mockito::Server::new_async().await;
-    let _deep = market_route(
+    let _deep = route(
         &mut server,
         "/api/v3/depth",
         "symbol=BTCUSDT&limit=1001",
-        &market_fixture("depth"),
+        &fixture("depth"),
     )
     .await;
-    let client = market_client(&server);
+    let client = spot(&server);
     client
         .market()
-        .depth(&market_btc())
+        .depth(&btc())
         .limit(1001)
         .send()
         .await
@@ -1051,16 +997,16 @@ async fn a_deep_depth_is_charged_its_band() {
 
 #[tokio::test]
 async fn all_tickers_are_charged_their_weight() {
-    polyoxide_test_support::minute::wait_unless_within(0..=57_000, 100).await;
+    clear_of_a_minute_boundary().await;
     let mut server = mockito::Server::new_async().await;
-    let _every = market_route(
+    let _every = route(
         &mut server,
         "/api/v3/ticker/24hr",
         "",
-        &market_fixture("tickers_24hr"),
+        &fixture("tickers_24hr"),
     )
     .await;
-    let client = market_client(&server);
+    let client = spot(&server);
     client.market().tickers_24h().send().await.unwrap();
     assert_eq!(client.weight_budget().used(), 80);
 }
@@ -1070,7 +1016,7 @@ async fn an_unknown_symbol_on_a_market_route_is_a_venue_error() {
     use polyoxide_binance::spot::{types::Symbol, SpotError};
 
     let mut server = mockito::Server::new_async().await;
-    let raw = market_fixture("error_invalid_symbol");
+    let raw = fixture("error_invalid_symbol");
     let wire: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let mock = server
         .mock("GET", "/api/v3/depth")
@@ -1079,7 +1025,7 @@ async fn an_unknown_symbol_on_a_market_route_is_a_venue_error() {
         .with_body(&raw)
         .create_async()
         .await;
-    let error = market_client(&server)
+    let error = spot(&server)
         .market()
         .depth(&Symbol::new("NOPEUSDT").unwrap())
         .send()

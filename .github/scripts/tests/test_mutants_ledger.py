@@ -104,8 +104,8 @@ SNIPPETS = {
     ("polyoxide-polymarket/src/sports/supervised.rs", 419):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
     ("polyoxide-binance/src/spot/api/market.rs", 167): ".route(Route::Depth { limit: Some(limit) })",
-    ("polyoxide-binance/tests/mock_spot.rs", 977): "fn every_market_builder_charges_its_route(",
-    ("polyoxide-binance/tests/mock_spot.rs", 1031): "async fn a_deep_depth_is_charged_its_band(",
+    ("polyoxide-binance/tests/mock_spot.rs", 923): "fn every_market_builder_charges_its_route(",
+    ("polyoxide-binance/tests/mock_spot.rs", 977): "async fn a_deep_depth_is_charged_its_band(",
 }
 
 
