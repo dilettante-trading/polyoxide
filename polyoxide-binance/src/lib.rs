@@ -21,6 +21,9 @@ struct ReadmeDoctests;
 struct UsdmReadmeDoctests;
 
 #[cfg(feature = "usdm")]
+mod shared;
+
+#[cfg(feature = "usdm")]
 pub mod usdm;
 
 // Every public error type implements `Classify`; one without it fails the
