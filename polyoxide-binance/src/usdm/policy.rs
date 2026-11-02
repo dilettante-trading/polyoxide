@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::reqwest::StatusCode;
+use polyoxide_core::http::StatusCode;
 use polyoxide_core::{AttemptInfo, Decision, Outcome, ResponseMeta, RetryConfig, RetryPolicy};
 
 use crate::usdm::{
@@ -70,7 +70,7 @@ impl RetryPolicy for UsdmRetryPolicy {
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+    use polyoxide_core::http::header::{HeaderMap, HeaderValue, RETRY_AFTER};
 
     use super::*;
 

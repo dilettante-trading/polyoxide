@@ -285,3 +285,21 @@ file = "polyoxide-core/tests/mock_request.rs"
 item = "a_request_parts_timeout_outlasts_the_client_s"
 row = "R22"
 sha256 = "fba60726dd0ec8bad291aac7a82bc9f3744664501b76614ab8ebc5c67a4c7782"
+
+[[drift]]
+file = "polyoxide-binance/examples/weight_probe.rs"
+item = "used_after"
+row = "R22"
+sha256 = "752465a1851832a5fadf9b25b8de9599c198928c474c42267a488afcd0c1ed27"
+
+[[drift]]
+file = "polyoxide-binance/src/usdm/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "cb219300127bdd95384e55f366d9beccd85b619a683501b19bd17b24c4537ea7"
+
+[[drift]]
+file = "polyoxide-binance/tests/failure_tags_usdm.rs"
+item = "raw"
+row = "R22"
+sha256 = "6c45de9ddf27866576688e6b904bc750d9ddee4ea40f49fbe153ca05132c7102"
