@@ -344,82 +344,28 @@ mod tests {
 
     // ── Classify ────────────────────────────────────────────────
 
-    /// One reqwest error of each kind a transport reports, to be the source
-    /// of a `TransportError` of that kind.
+    /// The source text of a transport failure of each kind a transport
+    /// reports. The names stay as the baseline's, whose items held real
+    /// reqwest errors; a `TransportError` only displays its source.
     struct ReqwestErrors {
-        builder: reqwest::Error,
-        cut_off: reqwest::Error,
-        connect: reqwest::Error,
-        timeout: reqwest::Error,
+        builder: &'static str,
+        cut_off: &'static str,
+        connect: &'static str,
+        timeout: &'static str,
     }
 
-    async fn reqwest_errors() -> ReqwestErrors {
-        use std::io::{Read, Write};
-
-        let builder = reqwest::Client::new().get("not a url").build().unwrap_err();
-        assert!(builder.is_builder());
-
-        // No proxy, so a proxy set in the environment cannot answer for the
-        // local addresses below.
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
-
-        // A body that promises 100 bytes and stops after 6. reqwest reports
-        // the broken read as a decode error.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let cut_off_url = format!("http://{}", listener.local_addr().unwrap());
-        let server_thread = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let _ = stream.read(&mut [0; 1024]);
-            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{\"a\":");
-        });
-        let cut_off = client
-            .get(&cut_off_url)
-            .send()
-            .await
-            .unwrap()
-            .json::<serde_json::Value>()
-            .await
-            .unwrap_err();
-        server_thread.join().unwrap();
-        assert!(cut_off.is_decode(), "{cut_off:?}");
-
-        // Bind a port, then free it, so nothing is listening there.
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let connect = client
-            .get(format!("http://127.0.0.1:{port}"))
-            .send()
-            .await
-            .unwrap_err();
-        assert!(connect.is_connect());
-
-        // A listener that never accepts: the connection opens and no answer comes.
-        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let timeout = reqwest::Client::builder()
-            .no_proxy()
-            .timeout(std::time::Duration::from_millis(300))
-            .build()
-            .unwrap()
-            .get(format!("http://{}", silent.local_addr().unwrap()))
-            .send()
-            .await
-            .unwrap_err();
-        assert!(timeout.is_timeout());
-
+    fn reqwest_errors() -> ReqwestErrors {
         ReqwestErrors {
-            builder,
-            cut_off,
-            connect,
-            timeout,
+            builder: "not a url",
+            cut_off: "connection closed before the body ended",
+            connect: "connection refused",
+            timeout: "operation timed out",
         }
     }
 
-    #[tokio::test]
-    async fn every_variant_classifies() {
-        let reqwest = reqwest_errors().await;
+    #[test]
+    fn every_variant_classifies() {
+        let reqwest = reqwest_errors();
         let json = serde_json::from_str::<String>("not json").unwrap_err();
         let url = url::Url::parse("://bad").unwrap_err();
         let unavailable = Class::Unavailable { code: None };
@@ -505,7 +451,8 @@ mod tests {
                 true,
                 None,
             ),
-            // Labelled a decode error by reqwest, but the connection broke.
+            // A body that broke off is a failure in transit, so `Network`, though reqwest
+            // labels it a decode error.
             (
                 transport(TransportKind::Body, reqwest.cut_off),
                 Class::Network,

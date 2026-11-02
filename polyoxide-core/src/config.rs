@@ -6,6 +6,7 @@ use polyoxide_rt::Runtime;
 
 use crate::client::{HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS};
 use crate::rate_limit::RetryConfig;
+use crate::transport::HttpTransport;
 
 /// The transport settings a client builder holds: the base URL, the timeout,
 /// the connection pool, the retry schedule, the concurrency budget, the
@@ -33,7 +34,7 @@ pub struct ClientConfig {
     /// The transport every attempt is sent on; `None` keeps the target's
     /// default, which is built from the timeout, the pool size and the
     /// client's `gzip` (`ReqwestTransport` on the native targets).
-    pub http_transport: Option<std::sync::Arc<dyn crate::transport::HttpTransport>>,
+    pub http_transport: Option<Arc<dyn HttpTransport>>,
     /// The runtime every wait, clock read and spawn of the client goes
     /// through; `None` takes [`polyoxide_rt::default_runtime`].
     pub runtime: Option<Arc<dyn Runtime>>,
@@ -59,8 +60,8 @@ impl ClientConfig {
 
     /// An [`HttpClientBuilder`] for the base URL, with the timeout, the pool
     /// size, the concurrency (the set value, else the client's default), the
-    /// runtime and the retry config if they are set. It sets no throttle,
-    /// policy or `gzip`.
+    /// runtime, the transport and the retry config if they are set. It sets
+    /// no throttle, policy or `gzip`.
     pub fn http_builder(&self) -> HttpClientBuilder {
         let builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
@@ -71,7 +72,7 @@ impl ClientConfig {
             None => builder,
         };
         let builder = match &self.http_transport {
-            Some(transport) => builder.http_transport(std::sync::Arc::clone(transport)),
+            Some(transport) => builder.http_transport(Arc::clone(transport)),
             None => builder,
         };
         match &self.retry_config {

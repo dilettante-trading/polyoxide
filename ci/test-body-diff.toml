@@ -374,20 +374,20 @@ sha256 = "5d926c7be269a67f3dec6a66ae7f23ab182ad4ba95f76d9055ab1af811487dcf"
 file = "polyoxide-core/src/error.rs"
 item = "tests::every_variant_classifies"
 row = "R22"
-sha256 = "1e810f30a9b1c465479d16863ae2508d869a43fd6a9e3d4826db7f763a96ba20"
+sha256 = "d44b5de9f3b1fe2f4c546746437767ec1d94edb131c90780da8cc24983ed5808"
 
 [[drift]]
 file = "polyoxide-core/src/error.rs"
 item = "tests::reqwest_errors"
 row = "R22"
-sha256 = "749608f29191685c9e7e31ce97be606774f0fd3b998d44ad1f1dbfa6bd13782c"
+sha256 = "965410d3b986445dee94bfa562c7657bbe822c5a4e8179b7bea7be8750d612fb"
 
 [[drift]]
 file = "polyoxide-core/src/error.rs"
 item = "tests::ReqwestErrors"
 kind = "struct"
 row = "R22"
-sha256 = "9aa951b42548acb92450da9e0236e6ca0a3dce3690dd3bddabf0f88f70fb1ac9"
+sha256 = "4ad8d6267cca26e915ef5eac5226f33757d634ad1c497c361a74437a1f963dca"
 
 [[drift]]
 file = "polyoxide-core/tests/health.rs"

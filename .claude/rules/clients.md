@@ -16,9 +16,9 @@ paths:
   `Gamma::builder()`, `DataApi::builder()`, `Perps::builder()`, `Usdm::builder()`,
   `Predictions::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
 - Each venue builder holds a `polyoxide_core::ClientConfig` (base URL, timeout, pool size, retry
-  config, concurrency, runtime, and the client's default concurrency: relay 2; gamma, data, perps,
+  config, concurrency, runtime, transport, and the client's default concurrency: relay 2; gamma, data, perps,
   Binance and Kalshi 4; clob 8) and gets its transport setters, `base_url`, `timeout_ms`,
-  `pool_size`, `with_retry_config`, `max_concurrent` and `runtime`, from
+  `pool_size`, `with_retry_config`, `max_concurrent`, `runtime` and `http_transport`, from
   `polyoxide_core::client_config_setters!`; `runtime` names `polyoxide_rt::Runtime`, which core
   does not re-export, so the venue crate declares `polyoxide-rt` itself. Its `build` resolves the
   runtime once with `ClientConfig::runtime_or_default()`, starts from
@@ -38,10 +38,10 @@ paths:
     path prefix is kept;
   - clob: `chain`, `signature_type`, `builder_code`, `with_account`; `gamma` (built only with the
     `gamma` feature, which `clob` does not imply); `data` (built only with `data`, for the `Trades`
-    the CLOB reads through the Data API; `build` makes one with the builder's timeout and pool
-    size when none is given, and the unified client hands clob its own); `user_socket` (built
-    only with `clob-ws`: the URL and timing of the supervised user socket each
-    `Trading::events` stream opens).
+    the CLOB reads through the Data API; `build` makes one, and the Gamma one, with the builder's
+    timeout, pool size, runtime and transport when none is given, and the unified client hands clob
+    its own); `user_socket` (built only with `clob-ws`: the URL and timing of the supervised user
+    socket each `Trading::events` stream opens).
 - `polyoxide_polymarket::Polymarket`, the unified client (built with `clob`, `gamma` and `data`),
   builds one CLOB, Gamma and Data client from one `Account`, and the CLOB client reads through
   that same Gamma and Data client. `Polymarket::new` and `PolymarketBuilder::build` return a

@@ -207,23 +207,64 @@ impl HttpTransport for ReqwestTransport {
     }
 }
 
-/// The transport error for a reqwest one, by the rule core has always used: a
-/// timeout, a failed connect, a body that broke off (reqwest labels that one
-/// a decode error), or a request that could not be built; anything else is a
-/// failure in transit, which is `Network` whatever its kind.
+/// The transport error for a reqwest one, by the rule core has always used:
+/// a failure in transit is `Network` whatever reqwest labels it, so it is
+/// decided before a request that could not be built.
 fn map_error(err: reqwest::Error) -> TransportError {
-    let kind = if err.is_timeout() {
+    let flags = Flags {
+        timeout: err.is_timeout(),
+        connect: err.is_connect(),
+        body: err.is_body() || err.is_decode(),
+        builder: err.is_builder(),
+    };
+    TransportError::new(kind_of(flags, &err), err)
+}
+
+/// What a reqwest error reports about itself.
+#[derive(Clone, Copy)]
+struct Flags {
+    timeout: bool,
+    connect: bool,
+    /// A body that broke off; reqwest labels that one a decode error too.
+    body: bool,
+    builder: bool,
+}
+
+/// The kind for a reqwest error's flags and its source chain: a timeout, a
+/// failed connect, a body that broke off, or an I/O error or a body error
+/// anywhere in the chain is a failure in transit, checked before a request
+/// that could not be built; anything else is `Other`.
+fn kind_of(flags: Flags, err: &(dyn std::error::Error + 'static)) -> TransportKind {
+    if flags.timeout {
         TransportKind::Timeout
-    } else if err.is_connect() {
+    } else if flags.connect {
         TransportKind::Connect
-    } else if err.is_builder() {
-        TransportKind::Request
-    } else if err.is_body() || err.is_decode() {
+    } else if flags.body {
         TransportKind::Body
+    } else if failed_in_transit(err) {
+        TransportKind::Other
+    } else if flags.builder {
+        TransportKind::Request
     } else {
         TransportKind::Other
-    };
-    TransportError::new(kind, err)
+    }
+}
+
+/// Whether an I/O error or a body-kind reqwest error is anywhere in the
+/// error's source chain, however reqwest labels the error itself.
+fn failed_in_transit(err: &(dyn std::error::Error + 'static)) -> bool {
+    let mut source = err.source();
+    while let Some(inner) = source {
+        if inner.is::<std::io::Error>()
+            || inner
+                .downcast_ref::<reqwest::Error>()
+                .is_some_and(reqwest::Error::is_body)
+        {
+            return true;
+        }
+        source = inner.source();
+    }
+    false
 }
 
 #[cfg(test)]
@@ -280,6 +321,82 @@ mod tests {
         let err = TransportError::new(TransportKind::Request, "x");
         assert_eq!(err.class(), Class::InvalidRequest);
         assert!(!err.is_retriable());
+    }
+
+    /// An error with an I/O error behind it, as a reqwest error that failed
+    /// in transit has.
+    #[derive(Debug, Error)]
+    #[error("wrapped")]
+    struct Wrapped(#[source] std::io::Error);
+
+    #[test]
+    fn an_io_error_in_the_source_chain_is_never_a_request_error() {
+        let err = Wrapped(std::io::Error::from(std::io::ErrorKind::ConnectionReset));
+        for (flags, expected) in [
+            (
+                Flags {
+                    timeout: false,
+                    connect: false,
+                    body: false,
+                    builder: true,
+                },
+                TransportKind::Other,
+            ),
+            (
+                Flags {
+                    timeout: false,
+                    connect: false,
+                    body: false,
+                    builder: false,
+                },
+                TransportKind::Other,
+            ),
+            (
+                Flags {
+                    timeout: true,
+                    connect: false,
+                    body: false,
+                    builder: true,
+                },
+                TransportKind::Timeout,
+            ),
+            (
+                Flags {
+                    timeout: false,
+                    connect: true,
+                    body: false,
+                    builder: true,
+                },
+                TransportKind::Connect,
+            ),
+            (
+                Flags {
+                    timeout: false,
+                    connect: false,
+                    body: true,
+                    builder: true,
+                },
+                TransportKind::Body,
+            ),
+        ] {
+            let kind = kind_of(flags, &err);
+            assert_eq!(kind, expected);
+            assert_eq!(TransportError::new(kind, "x").class(), Class::Network);
+        }
+        // With no I/O error behind it, a builder error stays a request error.
+        let plain = TransportError::new(
+            kind_of(
+                Flags {
+                    timeout: false,
+                    connect: false,
+                    body: false,
+                    builder: true,
+                },
+                &fmt::Error,
+            ),
+            "x",
+        );
+        assert_eq!(plain.kind(), TransportKind::Request);
     }
 
     fn request(url: &str) -> HttpRequest {

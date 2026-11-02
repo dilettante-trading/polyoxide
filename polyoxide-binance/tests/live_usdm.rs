@@ -187,10 +187,25 @@ async fn live_an_unknown_symbol_is_venue_error_1121() {
 /// core gives it: a refused connection or a timeout is `Network`, hence
 /// transient.
 fn transport(err: polyoxide_core::reqwest::Error) -> ApiError {
+    // A failure in transit is decided before a request that could not be built,
+    // as core's transport decides it.
+    let mut in_transit = false;
+    let mut source = std::error::Error::source(&err);
+    while let Some(inner) = source {
+        in_transit |= inner.is::<std::io::Error>()
+            || inner
+                .downcast_ref::<polyoxide_core::reqwest::Error>()
+                .is_some_and(polyoxide_core::reqwest::Error::is_body);
+        source = inner.source();
+    }
     let kind = if err.is_timeout() {
         TransportKind::Timeout
     } else if err.is_connect() {
         TransportKind::Connect
+    } else if err.is_body() || err.is_decode() {
+        TransportKind::Body
+    } else if in_transit {
+        TransportKind::Other
     } else if err.is_builder() {
         TransportKind::Request
     } else {
