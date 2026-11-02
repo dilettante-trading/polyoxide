@@ -8,9 +8,9 @@ use std::{
     task::{Context, Poll},
 };
 
+use crate::tungstenite::Message;
 use futures_util::{SinkExt, Stream, StreamExt};
 use polyoxide_rt::{default_runtime, Instant, Runtime};
-use tokio_tungstenite::tungstenite::Message;
 
 use crate::{request::Requests, BoxSocket, WsError};
 

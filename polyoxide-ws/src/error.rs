@@ -2,7 +2,7 @@
 
 use std::{error::Error, fmt, time::Duration};
 
-use tokio_tungstenite::tungstenite::{self, http::header::RETRY_AFTER, protocol::CloseFrame};
+use crate::tungstenite::{self, http::header::RETRY_AFTER, protocol::CloseFrame};
 
 /// A WebSocket failure: a transport error, a refused upgrade, a server close,
 /// or one of the kit's own timeouts.

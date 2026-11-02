@@ -99,11 +99,18 @@ impl Capabilities {
     }
 }
 
-/// The transport a builder uses when none was injected: the native one on this
-/// target.
+/// The transport a socket uses when none is injected: `TungsteniteTransport`
+/// on a host target and `WebSocketTransport` on `wasm32`.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn default_socket_transport() -> Arc<dyn SocketTransport> {
     Arc::new(TungsteniteTransport::new())
+}
+
+/// The transport a socket uses when none is injected: `TungsteniteTransport`
+/// on a host target and `WebSocketTransport` on `wasm32`.
+#[cfg(target_arch = "wasm32")]
+pub fn default_socket_transport() -> Arc<dyn SocketTransport> {
+    Arc::new(crate::WebSocketTransport::new())
 }
 
 /// The native transport: tokio-tungstenite over TCP, with TLS from rustls.

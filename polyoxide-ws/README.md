@@ -49,6 +49,11 @@ It depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds no
 HTTP or signing stack, so a credential-free feed built on it stays light. It
 logs under the `polyoxide_ws` target and never installs a subscriber.
 
+On `wasm32` the kit builds no TLS or TCP stack. `WebSocketTransport`, the browser's
+`WebSocket`, is the default socket transport there; `connect_over`,
+`ensure_crypto_provider`, the scripted test server and `TungsteniteTransport` are built for
+native targets only, and the `test-server` feature turns on nothing.
+
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-ws/).
 
 ## Installation

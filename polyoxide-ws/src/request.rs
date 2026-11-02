@@ -2,9 +2,9 @@
 
 use std::{future::Future, sync::Arc, time::Duration};
 
+use crate::tungstenite::Message;
 use futures_util::StreamExt;
 use polyoxide_rt::{Instant, Runtime};
-use tokio_tungstenite::tungstenite::Message;
 
 use crate::{Connection, WsError};
 
@@ -226,7 +226,7 @@ async fn within<A>(
 
 /// The error for a connection used after its read failed.
 fn already_closed() -> WsError {
-    WsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed)
+    WsError::from(crate::tungstenite::Error::AlreadyClosed)
 }
 
 #[cfg(test)]

@@ -14,10 +14,10 @@
 //!   `polyoxide_venue::impl_ws_classification!` classifies it in the venue
 //!   crate that wraps it.
 //! - [`SocketTransport`] is how a connection is dialled, giving a
-//!   [`BoxSocket`] and reporting its [`Capabilities`]; [`TungsteniteTransport`]
+//!   [`BoxSocket`] and reporting its [`Capabilities`]; `TungsteniteTransport`
 //!   is the native one, and [`transport_setters!`] gives a builder its
 //!   `runtime` and `socket_transport` setters.
-//! - [`connect`] opens a connection within a timeout, [`connect_over`]
+//! - [`connect`] opens a connection within a timeout, `connect_over`
 //!   upgrades a TCP connection a venue opened itself, [`with_timeout`] bounds
 //!   a venue's own connect, and [`retrying_can_fix`] says whether a
 //!   reconnect can help after one failed.
@@ -31,6 +31,10 @@
 //!
 //! [`tungstenite`] is re-exported, so a venue names `Message` and
 //! `CloseFrame` through this crate rather than depending on it.
+//!
+//! On `wasm32` the kit builds no TLS or TCP stack: its transport is the
+//! browser's `WebSocket`, `connect_over` and the scripted test server are
+//! host-only, and the `test-server` feature turns on nothing.
 //!
 //! Behind the `test-server` feature, the doc-hidden `test_server` module holds
 //! the scripted local server and the helpers the offline suites share. It is
@@ -49,19 +53,23 @@ struct ReadmeDoctests;
 
 mod backoff;
 mod bare;
+mod browser;
 mod connect;
 mod error;
 mod request;
 mod supervisor;
-#[cfg(any(test, feature = "test-server"))]
+#[cfg(all(not(target_arch = "wasm32"), any(test, feature = "test-server")))]
 #[doc(hidden)]
 pub mod test_server;
 mod timing;
+#[cfg(not(target_arch = "wasm32"))]
 mod tls;
 mod transport;
 
 pub use backoff::{Backoff, MIN_BACKOFF};
 pub use bare::{Connection, Mode};
+#[cfg(target_arch = "wasm32")]
+pub use browser::WebSocketTransport;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connect::connect_over;
 pub use connect::{connect, retrying_can_fix, with_timeout, DEFAULT_CONNECT_TIMEOUT};
@@ -71,10 +79,11 @@ pub use supervisor::{
     Decoded, MembershipHandle, Offline, Outage, Protocol, Queue, Recovery, Supervised, Supervisor,
 };
 pub use timing::{next_wait, Timing};
+#[cfg(not(target_arch = "wasm32"))]
 pub use tls::ensure_crypto_provider;
-/// The WebSocket library the kit is built on, re-exported so a venue names
-/// its types (`Message`, `CloseFrame`, `http`) through this crate.
-pub use tokio_tungstenite::tungstenite;
 #[cfg(not(target_arch = "wasm32"))]
 pub use transport::TungsteniteTransport;
 pub use transport::{default_socket_transport, BoxSocket, Capabilities, SocketIo, SocketTransport};
+/// The WebSocket library the kit is built on, re-exported so a venue names
+/// its types (`Message`, `CloseFrame`, `http`) through this crate.
+pub use tungstenite;

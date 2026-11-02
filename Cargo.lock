@@ -4228,13 +4228,18 @@ version = "0.44.0"
 dependencies = [
  "futures-sink",
  "futures-util",
+ "js-sys",
  "polyoxide-rt",
  "rustls",
+ "send_wrapper",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite",
  "tracing",
+ "tungstenite",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
