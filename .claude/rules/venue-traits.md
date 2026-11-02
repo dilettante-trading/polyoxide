@@ -100,8 +100,9 @@ rules file.
 
 ## Class bundles (ADR 0001)
 
-`PerpetualMarket` is `MarketData + Funding`; `EventContractMarket` is `MarketData + EventGroups`.
-Each has a blanket impl and no `Dyn` wrapper, so a class-generic function needs one bound, and
+`PerpetualMarket` is `MarketData + Funding`; `EventContractMarket` is `MarketData + EventGroups`;
+`SpotMarket` is `MarketData` alone. Each has a blanket impl and no `Dyn` wrapper, so a
+class-generic function needs one bound, and
 code that holds trait objects holds one per member. A bundle holds only what defines its class; a
 capability other classes share, such as `Candles`, stays out, so a bundle never has to lose a
 member. Each venue crate's `lib.rs` pins its products to their bundles in a `const _` beside its

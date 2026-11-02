@@ -29,9 +29,9 @@
 //!   market data reads the same on every venue: `MarketData`, which every
 //!   product implements, and the capability traits `Instruments`, `Trades`,
 //!   `Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper. The
-//!   class bundles `PerpetualMarket` and `EventContractMarket` name what every
-//!   product of a class offers. The traits return the records market data is
-//!   read into (`Instrument`, `Quote`, `Book`, `Trade`, `Candle`,
+//!   class bundles `PerpetualMarket`, `EventContractMarket` and `SpotMarket`
+//!   name what every product of a class offers. The traits return the records
+//!   market data is read into (`Instrument`, `Quote`, `Book`, `Trade`, `Candle`,
 //!   `FundingRate` and `EventGroup`), each carrying `Extensions`, a venue's own
 //!   facts on a shared record, one value per type.
 //! - With the `trading` feature, `Trading` places and cancels orders, reads
@@ -97,7 +97,8 @@ pub use key::{KeyError, KeySpace, MarketKey, ProductClass, ProductId, RawKey, Ve
 #[cfg(feature = "market")]
 pub use market::{
     Candles, DynCandles, DynEventGroups, DynFunding, DynInstruments, DynMarketData, DynTrades,
-    EventContractMarket, EventGroups, Funding, Instruments, MarketData, PerpetualMarket, Trades,
+    EventContractMarket, EventGroups, Funding, Instruments, MarketData, PerpetualMarket,
+    SpotMarket, Trades,
 };
 #[cfg(feature = "market")]
 pub use records::{
