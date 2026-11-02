@@ -16,18 +16,18 @@ paths:
   `Gamma::builder()`, `DataApi::builder()`, `Perps::builder()`, `Usdm::builder()`,
   `Predictions::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
 - Each venue builder holds a `polyoxide_core::ClientConfig` (base URL, timeout, pool size, retry
-  config, concurrency, runtime, transport, and the client's default concurrency: relay 2; gamma, data, perps,
-  Binance and Kalshi 4; clob 8) and gets its transport setters, `base_url`, `timeout_ms`,
-  `pool_size`, `with_retry_config`, `max_concurrent`, `runtime` and `http_transport`, from
-  `polyoxide_core::client_config_setters!`; `runtime` names `polyoxide_rt::Runtime`, which core
+  config, concurrency, runtime, transport, and the client's default concurrency: relay 2; gamma,
+  data, perps, Binance and Kalshi 4; clob 8) and gets its transport setters, `base_url`,
+  `timeout_ms`, `pool_size`, `with_retry_config`, `max_concurrent`, `runtime` and `http_transport`,
+  from `polyoxide_core::client_config_setters!`; `runtime` names `polyoxide_rt::Runtime`, which core
   does not re-export, so the venue crate declares `polyoxide-rt` itself. Its `build` resolves the
-  runtime once with `ClientConfig::runtime_or_default()`, starts from
-  `ClientConfig::http_builder()` and gives it `HttpClientBuilder::runtime`, and adds the throttle
-  (built on the same runtime) and retry policy the venue installs; the config sets no `gzip`.
+  runtime once with `ClientConfig::runtime_or_default()`, starts from `ClientConfig::http_builder()`
+  and gives it `HttpClientBuilder::runtime`, and adds the throttle (built on the same runtime) and
+  retry policy the venue installs; the config sets no `gzip`.
 - `http_transport(..)`, from the same macro, injects the `Arc<dyn HttpTransport>` every attempt is
   sent on; with none set, `build` makes `ReqwestTransport` on a host target and `FetchTransport` on
   `wasm32` (`send-loop.md`), and `pool_size` and the client's `gzip` feed only the host default.
-- Each socket builder (perps, Binance, the CLOB's market socket and `user_socket`, sports, rtds,
+- Each socket builder (perps, Binance, the CLOB's bare, market and user sockets, sports, rtds,
   Kalshi) gets `runtime(..)` and `socket_transport(..)` from `polyoxide_ws::transport_setters!`,
   beside `timing_setters!`; its `build` falls back to `polyoxide_rt::default_runtime()` and the
   target's default transport (the CLOB's, on a host target: `TungsteniteTransport::per_address()`).
