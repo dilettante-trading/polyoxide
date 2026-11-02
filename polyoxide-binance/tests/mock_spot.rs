@@ -9,6 +9,7 @@ use mockito::{Matcher, Mock, Server, ServerGuard};
 use polyoxide_binance::spot::{types::Symbol, weight::Cost, Spot, SpotError, WeightBudget};
 use polyoxide_core::RetryConfig;
 use polyoxide_test_support::{fixtures, minute};
+use polyoxide_venue::{Class, Classify};
 
 fn spot(server: &ServerGuard) -> Spot {
     Spot::builder().base_url(server.url()).build().unwrap()
@@ -92,7 +93,8 @@ async fn a_ping_whose_body_does_not_decode_is_an_error() {
     let mock = route(&mut server, "/api/v3/ping", "", "<html>").await;
     let result = spot(&server).health().ping().await;
     mock.assert_async().await;
-    assert!(result.is_err(), "{result:?}");
+    let err = result.unwrap_err();
+    assert_eq!(err.class(), Class::Decode, "{err:?}");
 }
 
 #[tokio::test]
@@ -627,4 +629,37 @@ async fn a_gzip_body_is_requested_and_decoded() {
     let time = spot(&server).health().time().send().await.unwrap();
     mock.assert_async().await;
     assert_eq!(time.server_time, 1);
+}
+
+#[tokio::test]
+async fn the_namespaces_share_one_hold() {
+    // Both namespaces are cut from one client, so a 418 through one holds a
+    // request made through the other.
+    let mut server = Server::new_async().await;
+    let _banned = failing(
+        &mut server,
+        418,
+        &[("retry-after", "1")],
+        r#"{"code":-1003,"msg":"banned"}"#,
+    )
+    .await;
+    let _info = route(
+        &mut server,
+        "/api/v3/exchangeInfo",
+        "",
+        &fixture("exchange_info"),
+    )
+    .await;
+    let client = spot(&server);
+
+    let err = client.health().time().send().await.unwrap_err();
+    assert!(matches!(err, SpotError::IpBanned { .. }), "{err:?}");
+
+    let start = Instant::now();
+    let _ = client.exchange().exchange_info().send().await;
+    let held = start.elapsed();
+    assert!(
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "the exchange namespace went after {held:?}, inside the ban"
+    );
 }

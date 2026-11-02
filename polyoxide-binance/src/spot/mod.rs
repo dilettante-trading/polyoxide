@@ -177,14 +177,4 @@ mod tests {
             "5th permit should block with default limit of 4"
         );
     }
-
-    #[test]
-    fn the_namespaces_share_the_client_s_http_client() {
-        // Both namespaces are cut from one client, so a hold set through one
-        // is the other's.
-        let spot = Spot::new().unwrap();
-        let _health = spot.health();
-        let exchange = spot.exchange();
-        assert_eq!(exchange.exchange_info().cost(), weight::Cost::Weight(20));
-    }
 }
