@@ -33,8 +33,9 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
    layer), an optional `Authenticator` signs it, it is sent, `Throttle::observe` sees the
    response, and `RetryPolicy::decide` returns `Done`, `Retry(wait)` or `Fail` with an optional
    hold, which is applied whatever the outcome.
-3. A retry releases the permit and sleeps the longer of the policy's wait and the loop's floor,
-   `RetryConfig::retry_delay(attempt)`, never past `max_retries`.
+3. A retry releases the permit and sleeps, on the client's runtime (`HttpClient::runtime()`), the
+   longer of the policy's wait and the loop's floor, `RetryConfig::retry_delay(attempt)`, never
+   past `max_retries`.
 
 - A transport error is neither observed nor retried. A refused cost returns `ApiError::Refused`
   with nothing sent.
@@ -45,7 +46,9 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
 - `send_raw`, `get_bytes` and `health` turn a non-2xx `Done`, which only a custom policy produces,
   into the same error, so a failed response never reaches a caller as data.
 - `HttpClient` holds one `Arc<DynThrottle<'static>>` and one `Arc<DynRetryPolicy<'static>>`
-  (dynosaur), shared with its `with_base_url` siblings, so a 429 on one host holds them all.
+  (dynosaur), shared with its `with_base_url` siblings, so a 429 on one host holds them all. It
+  holds its `Arc<dyn polyoxide_rt::Runtime>` the same way, which the retry sleep and `health`'s
+  stopwatch go through.
 - A signing failure is `ApiError::Sign`; `ClobError`'s hand-written `From<ApiError>` takes it back
   out, as it turns a signer-layer `ApiError::Refused` into `BurstCapacityExceeded`.
 - Core's `Request::send` (which clob's and Binance's requests go through) and relay's `post_json`
@@ -75,8 +78,9 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
 
 Every venue's `ping` calls `HttpClient::health(path, costs)` (`polyoxide-core/src/health.rs`): one
 `GET` on the send loop that returns a `Pong { round_trip, response }`. `round_trip` is the attempt
-that answered, timed from its signing by a core-private authenticator, so it leaves out the
-permit, throttle and backoff waits; a final non-2xx is `ApiError::Response` as the caller's error.
+that answered, timed on the client's runtime clock from its signing by a core-private
+authenticator, so it leaves out the permit, throttle and backoff waits; a final non-2xx is
+`ApiError::Response` as the caller's error.
 Each ping keeps its path (gamma `/status`; data, clob and relay their base URL's path, so relay
 keeps a prefix; perps `/v1/info/ping`; Binance `/fapi/v1/ping`, costed from `Route::Ping`) and its
 body check (perps `status == "ok"`, Binance `{}`).

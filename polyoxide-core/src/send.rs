@@ -109,7 +109,7 @@ impl HttpClient {
                             .as_millis()
                     );
                     drop(permit);
-                    tokio::time::sleep(sleep).await;
+                    self.runtime.sleep(sleep).await;
                 }
                 Outcome::Done | Outcome::Fail | Outcome::Retry(_) => {
                     // A hold outlives this request, so it is logged even when
