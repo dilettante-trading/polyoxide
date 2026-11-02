@@ -101,6 +101,10 @@ pub enum ProductClass {
     /// Perpetual futures. A price is unbounded, a position's size is signed,
     /// and holders pay or receive funding.
     PerpetualFuture,
+    /// Buying and selling the asset itself. A price is unbounded, a position
+    /// is a balance of the base asset and so never negative, and there is no
+    /// funding.
+    Spot,
 }
 
 impl ProductClass {
@@ -109,6 +113,7 @@ impl ProductClass {
         match self {
             Self::EventContract => "event-contract",
             Self::PerpetualFuture => "perpetual-future",
+            Self::Spot => "spot",
         }
     }
 }

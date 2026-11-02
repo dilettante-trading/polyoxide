@@ -40,8 +40,8 @@ rules file.
   `polyoxide::parse_key` hands a `RawKey` to the constructors of whichever enabled product it
   names. Every `KeyError` is an `InvalidRequest`.
 - Each `KeySpace` declares its product's `ProductClass` as `CLASS` (ADR 0001): `EventContract`
-  (the clob, Kalshi's `predictions`) or `PerpetualFuture` (perps, USDⓈ-M), `#[non_exhaustive]`, a
-  variant added only when a product of that class lands. Every key carries it as
+  (the clob, Kalshi's `predictions`), `PerpetualFuture` (perps, USDⓈ-M) or `Spot` (no product yet),
+  `#[non_exhaustive]`, a variant added only when a product of that class lands. Every key carries it as
   `MarketKey::class()`; it follows from the venue and product, so the text form, `Eq` and `Hash`
   are unchanged.
 - Each venue crate's `the_ids_are_the_ones_the_crate_registers` test holds its `VENUE`, product and
