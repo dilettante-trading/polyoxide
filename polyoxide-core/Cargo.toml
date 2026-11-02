@@ -34,12 +34,13 @@ governor = { workspace = true }
 dynosaur = { workspace = true }
 fastrand = { workspace = true }
 keyring = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["time", "sync"] }
+tokio = { workspace = true, features = ["sync"] }
 
-# The one HTTP client, and the only member that declares it (AD-18): every
-# venue crate names its types through `polyoxide_core::reqwest`, so no other
-# crate can change its features for the rest. `gzip` is on, so every client
-# asks for compressed bodies unless a builder turns it off.
+# The one HTTP client, and the only member that declares it (AD-18): no other
+# crate declares reqwest, so none can change its features for the rest. Core
+# re-exports it as `polyoxide_core::reqwest` for `ReqwestTransport::new` and
+# for the tests and examples that open raw clients. `gzip` is on, so every
+# client asks for compressed bodies unless a builder turns it off.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
 
