@@ -341,3 +341,101 @@ mod fetch {
         assert_eq!(response.retry_after, None);
     }
 }
+
+mod socket {
+    use std::{sync::Arc, time::Duration};
+
+    use futures_util::{SinkExt, StreamExt};
+    use polyoxide_rt::{timeout, BrowserRuntime, Runtime};
+    use polyoxide_ws::{BoxSocket, Kind, SocketTransport, WebSocketTransport, WsError};
+    use tungstenite::{http::Request, Message};
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    const URL: &str = env!("POLYOXIDE_SMOKE_WS");
+    const WAIT: Duration = Duration::from_secs(5);
+
+    const NO_HEADER: &str = "a handshake header is not supported by the browser transport";
+    const NO_PING: &str = "a ping frame is not supported by the browser transport";
+
+    async fn open(header: Option<(&str, &str)>) -> Result<BoxSocket, WsError> {
+        let mut request = Request::builder().uri(URL);
+        if let Some((name, value)) = header {
+            request = request.header(name, value);
+        }
+        let request = request.body(()).expect("a handshake request");
+        let runtime: Arc<dyn Runtime> = Arc::new(BrowserRuntime);
+        WebSocketTransport::new()
+            .connect(request, WAIT, runtime)
+            .await
+    }
+
+    async fn next(socket: &mut BoxSocket) -> Message {
+        timeout(&BrowserRuntime, WAIT, socket.next())
+            .await
+            .expect("a frame within five seconds")
+            .expect("the stream ended")
+            .expect("a frame, not an error")
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_text_frame_is_echoed() {
+        let mut socket = open(None).await.ok().expect("the socket opens");
+        socket
+            .send(Message::Text("hello".into()))
+            .await
+            .expect("send");
+        assert_eq!(next(&mut socket).await, Message::Text("echo:hello".into()));
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_close_arrives_with_its_code_and_reason() {
+        let mut socket = open(None).await.ok().expect("the socket opens");
+        socket
+            .send(Message::Text("close".into()))
+            .await
+            .expect("send");
+        let Message::Close(Some(frame)) = next(&mut socket).await else {
+            panic!("the command must be answered with a close frame");
+        };
+        assert_eq!(u16::from(frame.code), 4001);
+        assert_eq!(frame.reason.as_str(), "smoke close");
+        assert!(
+            timeout(&BrowserRuntime, WAIT, socket.next())
+                .await
+                .expect("the stream ends within five seconds")
+                .is_none(),
+            "the stream ends after the close"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_handshake_header_is_refused_before_dialling() {
+        let err = open(Some(("x-smoke", "1")))
+            .await
+            .err()
+            .expect("a handshake header must be refused");
+        assert_eq!(err.kind(), Kind::Unsupported, "{err}");
+        assert!(err.to_string().contains(NO_HEADER), "{err}");
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_ping_frame_is_refused_and_the_socket_stays_usable() {
+        let mut socket = open(None).await.ok().expect("the socket opens");
+        let err = socket
+            .send(Message::Ping(vec![1, 2, 3].into()))
+            .await
+            .expect_err("a ping frame must be refused");
+        match err {
+            tungstenite::Error::Io(io) => {
+                assert_eq!(io.kind(), std::io::ErrorKind::Unsupported);
+                assert!(io.to_string().contains(NO_PING), "{io}");
+            }
+            other => panic!("expected an I/O error, got {other:?}"),
+        }
+        socket
+            .send(Message::Text("still".into()))
+            .await
+            .expect("send after the refusal");
+        assert_eq!(next(&mut socket).await, Message::Text("echo:still".into()));
+    }
+}
