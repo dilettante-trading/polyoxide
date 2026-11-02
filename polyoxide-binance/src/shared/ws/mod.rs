@@ -16,11 +16,6 @@
 
 use std::{fmt, time::Duration};
 
-// Named by another path so that `Shape`, which is not an error and holds the kit's
-// error only to read its `Kind`, is not swept by `test_classify_coverage.py` as a
-// type that wraps `WsError` and must expand the socket table.
-use polyoxide_ws::WsError as KitError;
-
 pub(crate) mod bare;
 pub(crate) mod protocol;
 pub(crate) mod request;
@@ -80,7 +75,7 @@ pub(crate) trait StreamSet: Sized + Send + Sync + 'static {
 /// not on a product's enum.
 pub(crate) enum Shape<'a> {
     /// The kit's transport error, which recovery reads through its `Kind`.
-    Connect(&'a KitError),
+    Connect(&'a polyoxide_ws::WsError),
     /// The connection did not open in time.
     ConnectTimeout,
     /// The server closed the connection.
@@ -156,7 +151,7 @@ mod tests {
     #[derive(Debug, thiserror::Error)]
     enum ProbeError {
         #[error("transport: {0}")]
-        Connect(#[source] KitError),
+        Connect(#[source] WsError),
         #[error("refused: {code} {msg}")]
         Refused { code: i64, msg: String },
         #[error("no answer to {id} within {timeout:?}")]

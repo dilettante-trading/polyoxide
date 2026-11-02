@@ -54,6 +54,15 @@ SOCKET_KIT = "polyoxide-ws"
 # on the other, and in a venue crate both are foreign), so each venue's enum
 # that wraps it classifies it.
 EXEMPT = frozenset({(VOCABULARY, "ClassifiedError"), (SOCKET_KIT, "WsError")})
+# (crate, type, file) triples that hold a `WsError` and expand no socket table, because
+# neither is a classified socket error. `Shape` is a crate-private borrowed view of a
+# product's socket error that the shared recovery matches on; each product's error, which
+# `Shape` views, does expand `impl_ws_classification!`. `ProbeError` is a test-only error
+# in the same file. Keyed by file too, so a same-named type anywhere else is still fenced.
+WS_VIEWS = frozenset({
+    ("polyoxide-binance", "Shape", "polyoxide-binance/src/shared/ws/mod.rs"),
+    ("polyoxide-binance", "ProbeError", "polyoxide-binance/src/shared/ws/mod.rs"),
+})
 # Public error types whose names do not end in `Error`.
 AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "BurstCapacityExceeded",
                        "UnservedInterval"})
@@ -201,7 +210,8 @@ def unexpanded(root: Path) -> list[str]:
     problems = []
     for crate, src in _swept(root):
         for name, path in sorted(ws_wrappers(src)):
-            if not expands_the_table(path):
+            location = path.relative_to(root).as_posix()
+            if not expands_the_table(path) and (crate, name, location) not in WS_VIEWS:
                 problems.append(f"{crate}: {name} ({path.relative_to(root).as_posix()})")
     return problems
 
@@ -259,6 +269,30 @@ def test_every_ws_error_wrapper_expands_the_socket_table() -> None:
         "field through `ws_class`, `ws_is_fault` and `ws_retry_after`:\n  "
         + "\n  ".join(problems)
     )
+
+
+def test_the_ws_view_exemptions_each_excuse_a_wrapper_that_is_there() -> None:
+    # An entry that matches no type, or one a file expands the table for, is stale.
+    found = {(crate, name, path.relative_to(REPO).as_posix())
+             for crate, src in _swept(REPO) for name, path in ws_wrappers(src)}
+    assert WS_VIEWS <= found
+    assert not [view for view in WS_VIEWS
+                if expands_the_table(REPO / view[2])], "an exempt file now expands the table"
+
+
+def test_a_ws_view_exemption_is_keyed_by_crate_type_and_file(tmp_path: Path) -> None:
+    # The same names in another crate, or another file of the exempt crate, stay fenced.
+    view = "pub(crate) enum Shape<'a> { Connect(&'a WsError) }\n"
+    for crate, file in (("polyoxide-feed", "src/shared/ws/mod.rs"),
+                        ("polyoxide-binance", "src/shared/ws/other.rs"),
+                        ("polyoxide-binance", "src/shared/ws/mod.rs")):
+        path = tmp_path / crate / file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(view)
+    assert unexpanded(tmp_path) == [
+        "polyoxide-binance: Shape (polyoxide-binance/src/shared/ws/other.rs)",
+        "polyoxide-feed: Shape (polyoxide-feed/src/shared/ws/mod.rs)",
+    ]
 
 
 def test_every_file_that_expands_the_socket_table_calls_all_of_it() -> None:
