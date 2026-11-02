@@ -42,6 +42,8 @@
               "clippy"
               "rustfmt"
             ];
+            # The browser build (`scripts/wasm_check.sh`).
+            targets = [ "wasm32-unknown-unknown" ];
           };
           # The MSRV job's toolchain. It sits behind `msrv-cargo`, so it never shadows the
           # default `cargo`, and it builds into its own target directory.

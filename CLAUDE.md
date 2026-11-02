@@ -49,7 +49,7 @@ This file holds the commands, the CI gates and the rules that cut across crates.
 
 **MSRV:** 1.91 (set in the workspace `Cargo.toml`).
 
-**Dev shell:** `nix develop` (`flake.nix`) puts Rust 1.99.0 with clippy and rustfmt on `PATH`, with the MSRV toolchain as `msrv-cargo` (cargo 1.91.0, building into `target/msrv`), cargo-hack 0.6.45, cargo-semver-checks 0.51.0, cargo-nextest, uv and python3, so `nix develop --command <step>` runs a CI step on CI's tools. CI itself does not use the flake: its removals job pins Rust 1.99.0 and its msrv job 1.91, and every other job floats on `stable`, so a newer stable's lints can fail only in CI.
+**Dev shell:** `nix develop` (`flake.nix`) puts Rust 1.99.0 with clippy, rustfmt and the `wasm32-unknown-unknown` target on `PATH`, with the MSRV toolchain as `msrv-cargo` (cargo 1.91.0, building into `target/msrv`), cargo-hack 0.6.45, cargo-semver-checks 0.51.0, cargo-nextest, uv and python3, so `nix develop --command <step>` runs a CI step on CI's tools. CI itself does not use the flake: its removals job pins Rust 1.99.0 and its msrv job 1.91, and every other job floats on `stable`, so a newer stable's lints can fail only in CI.
 
 ```bash
 cargo build --all-features --workspace                          # everything
