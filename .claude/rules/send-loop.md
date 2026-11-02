@@ -5,6 +5,7 @@ paths:
   - "polyoxide-polymarket/src/clob/authenticator.rs"
   - "polyoxide-polymarket/src/{clob,gamma,data,relay,perps}/client.rs"
   - "polyoxide-binance/src/usdm/{policy,request}.rs"
+  - "polyoxide-binance/src/shared/policy.rs"
   - "polyoxide-kalshi/src/predictions/{auth,request}.rs"
   - "**/tests/{send_loop,health,mock_request}.rs"
   - "**/tests/headers_*.rs"

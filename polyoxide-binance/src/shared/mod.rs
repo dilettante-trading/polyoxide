@@ -7,5 +7,6 @@
 //! policy handle and response types, and builds them on these.
 
 pub(crate) mod error;
+pub(crate) mod policy;
 pub(crate) mod symbol;
 pub(crate) mod weight;
