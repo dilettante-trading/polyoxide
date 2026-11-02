@@ -153,7 +153,8 @@ declares (inside an inline `mod y { .. }`, `y/x.rs`), `polyoxide-ws/src/test_ser
 `scripted.rs`; `polyoxide-rt` implements the runtime and is not scanned. A line ending
 `// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is: the two in tree are the
 wall-clock reads, `UnixMillis::now` and `shared::auth::current_timestamp`, which are never
-injected. The scripts job runs it through `test_runtime_gate.py`.
+injected. The scripts job runs it through `test_runtime_gate.py` and also directly, as
+`python3 scripts/runtime_gate.py`.
 
 ## wasm
 
@@ -161,8 +162,10 @@ injected. The scripts job runs it through `test_runtime_gate.py`.
 `wasm32-unknown-unknown` over the supported set, crate by crate with its features named. It sets
 `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'` itself, replacing any inherited value, since an
 inherited `RUSTFLAGS` (a host `target-cpu`) would override a config file's and break the target;
-with `--target` cargo passes no `RUSTFLAGS` to build scripts, so the host cache is untouched. A
-change to the supported set edits that script.
+with `--target` cargo passes no `RUSTFLAGS` to build scripts, so the host cache is untouched. It
+also lints `polyoxide-wasm-smoke`'s browser tests (`clippy --tests`), which no other step builds,
+with placeholder server addresses for their `env!` reads; the real ones come from
+`wasm_smoke.sh`. A change to the supported set edits that script.
 
 `scripts/wasm_smoke.sh` then runs `polyoxide-wasm-smoke`'s `tests/browser_smoke.rs` in headless
 Chrome, inside a dedicated Worker, through `wasm-bindgen-test-runner`. It builds and starts the
@@ -173,12 +176,14 @@ wasm-bindgen-test may run async tests concurrently), for one scripted socket on
 `polyoxide-ws`'s test server and for a hand-written tokio responder whose one route sends its head
 and the first bytes of its body at once and stalls the rest for 3 s (mockito writes a response
 whole, so it cannot), and writes `POLYOXIDE_SMOKE_HTTP`, `POLYOXIDE_SMOKE_WS`,
-`POLYOXIDE_SMOKE_SLOW` and `POLYOXIDE_SMOKE_STALL` to the file its one argument names. The script exports them, and the tests
-read them with `env!`, so a build without them does not compile and the suite cannot pass empty.
+`POLYOXIDE_SMOKE_SLOW` and `POLYOXIDE_SMOKE_STALL` to the file its one argument names. The script
+exports them, and the tests read them with `env!`, so a build without them does not compile and
+the suite cannot pass empty.
 The runner starts Chrome with the arguments in `polyoxide-wasm-smoke/webdriver.json`
 (`--headless`, `--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`): without `--no-sandbox`
 Chrome cannot start where unprivileged user namespaces are restricted, as on a hosted runner, and
-the script refuses to run without the file.
+the script refuses to run without the file. The runner exits 0 when it finds no tests, so the script
+also requires its summary line to report at least one passed and 0 failed.
 It refuses a `wasm-bindgen-cli` whose version is not the `wasm-bindgen` one `Cargo.lock` pins,
 since the runner rejects a module built by another. The suite covers `BrowserRuntime` (sleep,
 `sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, a sleep past

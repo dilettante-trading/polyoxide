@@ -6,8 +6,9 @@
 //! The slow route is on a second mockito server, since mockito answers it by sleeping its
 //! server's one thread. A fourth server, a hand-written responder, sends one route's head at once
 //! and stalls its body, which mockito cannot do. It writes `POLYOXIDE_SMOKE_HTTP=<url>`,
-//! `POLYOXIDE_SMOKE_WS=<url>`, `POLYOXIDE_SMOKE_SLOW=<url>` and `POLYOXIDE_SMOKE_STALL=<url>` to the file its one argument names, whole and once every server
-//! listens, then runs until it is killed.
+//! `POLYOXIDE_SMOKE_WS=<url>`, `POLYOXIDE_SMOKE_SLOW=<url>` and `POLYOXIDE_SMOKE_STALL=<url>` to
+//! the file its one argument names, whole and once every server listens, then runs until it is
+//! killed.
 //!
 //! On wasm32 it is an empty program: cargo builds a package's bins for an integration test, and
 //! the browser tests live in the same package.

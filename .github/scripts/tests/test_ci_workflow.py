@@ -498,7 +498,7 @@ def test_the_semver_tool_and_its_toolchain_are_pinned_alike_in_both_workflows() 
         ["dtolnay/rust-toolchain@1.99.0"], ["cargo-semver-checks@0.51.0"])
 
 
-@pytest.mark.parametrize("job", ["msrv", "features", "removals", "test-bodies"])
+@pytest.mark.parametrize("job", ["msrv", "features", "removals", "test-bodies", "wasm"])
 def test_each_new_gate_runs_on_every_pull_request(job: str) -> None:
     """A gate behind a condition or another job can be skipped, and a skipped job
     does not withhold the release."""
@@ -507,11 +507,26 @@ def test_each_new_gate_runs_on_every_pull_request(job: str) -> None:
     assert "secrets." not in yaml.safe_dump(JOBS[job])
 
 
-@pytest.mark.parametrize("job", ["msrv", "features", "removals"])
+@pytest.mark.parametrize("job", ["msrv", "features", "removals", "wasm"])
 def test_each_compiling_gate_installs_the_sccache_it_is_wrapped_in(job: str) -> None:
     """The workflow sets RUSTC_WRAPPER to sccache for every job."""
     assert CI["env"]["RUSTC_WRAPPER"] == "sccache"
     assert any(u.startswith("mozilla-actions/sccache-action") for u in _uses(job))
+
+
+def test_the_wasm_job_checks_then_smokes_on_the_target_and_the_locked_cli() -> None:
+    """The browser seam (spec D13): the job builds for wasm32, then runs the smoke suite with a
+    wasm-bindgen-cli at the version Cargo.lock pins, which the id'd step reads."""
+    assert _job_runs("wasm")[-2:] == ["bash scripts/wasm_check.sh", "bash scripts/wasm_smoke.sh"]
+    toolchain = next(s for s in _steps("wasm") if s.get("uses", "").startswith("dtolnay/"))
+    assert "wasm32-unknown-unknown" in toolchain["with"]["targets"]
+    assert _installed("wasm") == ["wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}"]
+    assert any(s.get("id") == "wasm-bindgen" for s in _steps("wasm"))
+
+
+def test_the_scripts_job_runs_the_runtime_gate_directly() -> None:
+    """The gate's own tests run it too, but the script is the line spec D3 holds."""
+    assert "python3 scripts/runtime_gate.py" in _job_runs("scripts")
 
 
 def _caches(job: str) -> dict[str, dict]:

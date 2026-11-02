@@ -298,16 +298,16 @@ mod fetch {
         let err = request_to(SLOW_BASE, "/slow", 300)
             .send_raw()
             .await
-            .err()
-            .expect("the slow route must time out");
+            .expect_err("the slow route must time out");
         match err {
             ApiError::Transport(err) => assert_eq!(err.kind(), TransportKind::Timeout, "{err}"),
             other => panic!("expected a transport timeout, got {other:?}"),
         }
         let elapsed = BrowserRuntime.now().saturating_duration_since(start);
         assert!(
-            elapsed < Duration::from_millis(1400),
-            "the timeout fired after {elapsed:?}, not before the server's 1500 ms answer"
+            elapsed >= Duration::from_millis(250) && elapsed < Duration::from_millis(1400),
+            "the timeout fired after {elapsed:?}, not in the window after the request's 300 ms \
+             deadline and before the server's 1500 ms answer"
         );
     }
 
@@ -330,8 +330,7 @@ mod fetch {
         let err = response
             .bytes()
             .await
-            .err()
-            .expect("the stalled body must not arrive");
+            .expect_err("the stalled body must not arrive");
         match err {
             ApiError::Transport(err) => assert_eq!(err.kind(), TransportKind::Timeout, "{err}"),
             other => panic!("expected a transport timeout, got {other:?}"),
@@ -348,8 +347,7 @@ mod fetch {
         let err = request("/limited-exposed", 10_000)
             .send_raw()
             .await
-            .err()
-            .expect("a 429 is an error");
+            .expect_err("a 429 is an error");
         let ApiError::Response(response) = err else {
             panic!("expected an error response, got {err:?}");
         };
@@ -364,8 +362,7 @@ mod fetch {
         let err = request("/limited-hidden", 10_000)
             .send_raw()
             .await
-            .err()
-            .expect("a 429 is an error");
+            .expect_err("a 429 is an error");
         let ApiError::Response(response) = err else {
             panic!("expected an error response, got {err:?}");
         };
@@ -414,7 +411,7 @@ mod socket {
 
     #[wasm_bindgen_test]
     async fn a_text_frame_is_echoed() {
-        let mut socket = open(None).await.ok().expect("the socket opens");
+        let mut socket = open(None).await.expect("the socket opens");
         socket
             .send(Message::Text("hello".into()))
             .await
@@ -424,7 +421,7 @@ mod socket {
 
     #[wasm_bindgen_test]
     async fn a_close_arrives_with_its_code_and_reason() {
-        let mut socket = open(None).await.ok().expect("the socket opens");
+        let mut socket = open(None).await.expect("the socket opens");
         socket
             .send(Message::Text("close".into()))
             .await
@@ -445,17 +442,17 @@ mod socket {
 
     #[wasm_bindgen_test]
     async fn a_handshake_header_is_refused_before_dialling() {
-        let err = open(Some(("x-smoke", "1")))
-            .await
-            .err()
-            .expect("a handshake header must be refused");
+        // The socket is not `Debug`, so `expect_err` is unavailable.
+        let Err(err) = open(Some(("x-smoke", "1"))).await else {
+            panic!("a handshake header must be refused");
+        };
         assert_eq!(err.kind(), Kind::Unsupported, "{err}");
         assert!(err.to_string().contains(NO_HEADER), "{err}");
     }
 
     #[wasm_bindgen_test]
     async fn a_ping_frame_is_refused_and_the_socket_stays_usable() {
-        let mut socket = open(None).await.ok().expect("the socket opens");
+        let mut socket = open(None).await.expect("the socket opens");
         let err = socket
             .send(Message::Ping(vec![1, 2, 3].into()))
             .await
@@ -513,10 +510,11 @@ mod quota {
     use polyoxide_rt::{BoxFuture, BrowserRuntime, Instant, Runtime};
     use wasm_bindgen_test::wasm_bindgen_test;
 
-    // Why: a window quota keeps time with governor, whose own clock (quanta) panics on
-    // wasm32-unknown-unknown if anything reaches it. A second acquisition that waits about the
-    // quota's interval on BrowserRuntime's clock, and does not panic, proves the limiter reads
-    // and sleeps on the runtime it was given.
+    // Why: a window quota keeps time with governor. A second acquisition that waits about one
+    // interval in the browser, without panicking, proves the limiter works there. That it paces
+    // on the injected runtime's clock, and not the real one, is proved by the fast-clock test
+    // below (`the_wait_is_paced_by_the_injected_runtime_not_by_the_real_clock`); quanta does not
+    // panic in a Worker.
     #[wasm_bindgen_test]
     async fn a_second_acquisition_waits_the_interval_on_the_runtimes_clock() {
         let runtime: Arc<dyn Runtime> = Arc::new(BrowserRuntime);
@@ -595,7 +593,7 @@ mod quota {
         let on_real = BrowserRuntime.now().saturating_duration_since(real_start);
 
         assert!(
-            on_runtime >= interval.mul_f64(0.9) && on_runtime < interval + Duration::from_millis(300),
+            on_runtime >= interval.mul_f64(0.9) && on_runtime < interval + Duration::from_millis(600),
             "the wait took {on_runtime:?} on the runtime's clock, not about the {interval:?} interval"
         );
         assert!(

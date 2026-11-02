@@ -36,3 +36,14 @@ check polyoxide-ws
 check polyoxide-binance --no-default-features --features usdm,usdm-ws
 check polyoxide-polymarket --no-default-features \
     --features clob,gamma,data,perps,perps-ws,sports,clob-ws
+
+# The smoke suite's browser tests (tests/browser_smoke.rs) are compiled out on the host and
+# built by no step above, so lint them here. They read the smoke server's addresses with `env!`,
+# which needs a value to compile; these placeholders are for this lint only, and
+# scripts/wasm_smoke.sh, which runs the tests, takes the real addresses from the server.
+echo "==> polyoxide-wasm-smoke --tests"
+POLYOXIDE_SMOKE_HTTP=http://127.0.0.1:0 \
+POLYOXIDE_SMOKE_WS=ws://127.0.0.1:0 \
+POLYOXIDE_SMOKE_SLOW=http://127.0.0.1:0 \
+POLYOXIDE_SMOKE_STALL=http://127.0.0.1:0 \
+    cargo clippy --package polyoxide-wasm-smoke --tests --target "${target}" -- -D warnings

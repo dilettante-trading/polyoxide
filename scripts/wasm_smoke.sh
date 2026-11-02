@@ -75,12 +75,22 @@ if [ ! -s "$work/smoke.env" ]; then
   exit 1
 fi
 
-# POLYOXIDE_SMOKE_HTTP, POLYOXIDE_SMOKE_WS and POLYOXIDE_SMOKE_SLOW, for the tests' `env!`.
+# POLYOXIDE_SMOKE_HTTP, POLYOXIDE_SMOKE_WS, POLYOXIDE_SMOKE_SLOW and POLYOXIDE_SMOKE_STALL, for
+# the tests' `env!`.
 set -a
 . "$work/smoke.env"
 set +a
 
+# The runner exits 0 when it finds no tests, so its exit code is not enough: its output must also
+# report at least one test passed and none failed. `pipefail` keeps a failing run failing.
 RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 WASM_BINDGEN_TEST_TIMEOUT=120 \
-  cargo test -p polyoxide-wasm-smoke --target wasm32-unknown-unknown --test browser_smoke
+  cargo test -p polyoxide-wasm-smoke --target wasm32-unknown-unknown --test browser_smoke \
+  2>&1 | tee "$work/runner.log"
+
+summary=$(grep -E '^test result: ' "$work/runner.log" | tail -n 1 || true)
+if ! printf '%s\n' "$summary" | grep -Eq ' ([1-9][0-9]*) passed; 0 failed'; then
+  echo "wasm_smoke: the runner did not report at least one passed test and 0 failed (got: ${summary:-no summary line})" >&2
+  exit 1
+fi

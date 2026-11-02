@@ -72,7 +72,7 @@
             ]
             # nixpkgs has no chromium for darwin; there the installed Chrome and a chromedriver
             # on PATH (or CHROMEDRIVER) do.
-            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
               pkgs.chromium
               pkgs.chromedriver
             ];
