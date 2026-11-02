@@ -13,7 +13,7 @@ use polyoxide_binance::usdm::{
     types::Symbol,
     ws::{
         fixtures, DisconnectReason, Event, StreamName, StreamPath, SupervisedUsdmWs, UsdmWsBuilder,
-        UsdmWsError,
+        UsdmWsError, MIN_REQUEST_INTERVAL,
     },
 };
 use polyoxide_venue::{Class, Classify};
@@ -714,5 +714,175 @@ async fn supervision_logs_under_the_polyoxide_ws_target() {
         !warnings.is_empty() && warnings.iter().all(|t| t.starts_with("polyoxide_ws")),
         "the reconnect's warnings: {warnings:?}"
     );
+    ws.close().await.unwrap();
+}
+
+use polyoxide_rt::{BoxFuture, Runtime};
+use polyoxide_ws::{
+    tungstenite::http, BoxSocket, Capabilities, SocketTransport, TungsteniteTransport, WsError,
+};
+
+/// A transport that reports what a browser's socket can do (no protocol pings
+/// either way, no handshake headers) and dials as the native one does.
+#[derive(Debug)]
+struct BrowserLike(TungsteniteTransport);
+
+impl SocketTransport for BrowserLike {
+    fn connect(
+        &self,
+        request: http::Request<()>,
+        timeout: Duration,
+        runtime: Arc<dyn Runtime>,
+    ) -> BoxFuture<Result<BoxSocket, WsError>> {
+        self.0.connect(request, timeout, runtime)
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::new(false, false, false)
+    }
+}
+
+fn browser_like() -> Arc<dyn SocketTransport> {
+    Arc::new(BrowserLike(TungsteniteTransport::new()))
+}
+
+/// The requests the server received whose method is `method`, in order.
+fn requests_of(server: &ScriptedServer, method: &str) -> Vec<serde_json::Value> {
+    server
+        .requests()
+        .into_iter()
+        .filter(|request| request["method"] == method)
+        .collect()
+}
+
+/// What the server's clock may read over the client's between two sends:
+/// scheduling jitter, far below the 50 ms of an unpaced ping tick.
+const JITTER: Duration = Duration::from_millis(20);
+
+/// The ping tick of the tests' builder (`fast` sets 50 ms).
+const TICK: Duration = Duration::from_millis(50);
+
+#[tokio::test]
+async fn a_transport_without_client_pings_keeps_a_quiet_path_alive_with_paced_list_subscriptions_d9(
+) {
+    // The path carries one quiet stream: only the answers to the keepalive
+    // arrive, and they are what keeps it from going stale at 600 ms. The tick
+    // is 50 ms and a request may follow another no sooner than 200 ms, so
+    // three ticks in four are skipped.
+    let server = ScriptedServer::start(vec![Script::default()]).await;
+    let mut ws = fast(&server)
+        .stale_after(Duration::from_millis(600))
+        .socket_transport(browser_like())
+        .streams([btc_mark()])
+        .connect()
+        .await
+        .unwrap();
+    let quiet = tokio::time::timeout(Duration::from_millis(1500), ws.next()).await;
+    assert!(quiet.is_err(), "the path went stale or ended: {quiet:?}");
+    assert_eq!(server.connection_count(), 1);
+    assert_eq!(server.ping_count(), 0, "a protocol ping was sent");
+    let lists = requests_of(&server, "LIST_SUBSCRIPTIONS");
+    assert!(
+        lists.len() >= 4,
+        "only {} keepalives in 1500 ms at a 200 ms pacing",
+        lists.len()
+    );
+    // Each keepalive takes its own id, so a late answer is never taken for
+    // the answer to a later request.
+    let mut ids: Vec<u64> = server
+        .requests()
+        .iter()
+        .map(|request| request["id"].as_u64().unwrap())
+        .collect();
+    let sent = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), sent, "an id was reused: {ids:?}");
+    // Paced as every request is: no two requests the server saw, the
+    // replay's `SUBSCRIBE` and the keepalives alike, are closer than
+    // `MIN_REQUEST_INTERVAL`. An unpaced keepalive goes out at the first tick,
+    // 50 ms after the subscription.
+    for pair in server.received().windows(2) {
+        let gap = pair[1].at.duration_since(pair[0].at);
+        assert!(
+            gap + JITTER >= MIN_REQUEST_INTERVAL,
+            "{} and {} arrived only {gap:?} apart",
+            pair[0].request,
+            pair[1].request
+        );
+    }
+    ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_keepalive_tick_inside_the_pacing_interval_is_skipped_and_the_next_one_sends_d9() {
+    let server = ScriptedServer::start(vec![Script::default()]).await;
+    let mut ws = fast(&server)
+        .stale_after(Duration::from_millis(600))
+        .socket_transport(browser_like())
+        .streams([btc_mark()])
+        .connect()
+        .await
+        .unwrap();
+    let quiet = tokio::time::timeout(Duration::from_millis(1500), ws.next()).await;
+    assert!(quiet.is_err(), "the path went stale or ended: {quiet:?}");
+    let received = server.received();
+    let mut previous = received[0].at;
+    let mut keepalives = 0;
+    for request in &received[1..] {
+        assert_eq!(request.request["method"], "LIST_SUBSCRIPTIONS");
+        let gap = request.at.duration_since(previous);
+        // The first tick past the interval sends: a skipped tick is not a
+        // lost keepalive, so a gap is the interval and at most a tick or two
+        // beyond it.
+        assert!(
+            gap <= MIN_REQUEST_INTERVAL + TICK * 2 + Duration::from_millis(100),
+            "a skipped tick was not followed by a send at the next one: {gap:?}"
+        );
+        previous = request.at;
+        keepalives += 1;
+    }
+    assert!(keepalives >= 4, "only {keepalives} keepalives in 1500 ms");
+    ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_transport_with_client_pings_keeps_the_protocol_ping_d9() {
+    let server = ScriptedServer::start(vec![Script::default()]).await;
+    let ws = fast(&server)
+        .socket_transport(Arc::new(TungsteniteTransport::new()))
+        .streams([btc_mark()])
+        .connect()
+        .await
+        .unwrap();
+    server.wait_for("two pings", |s| s.ping_count() >= 2).await;
+    assert!(requests_of(&server, "LIST_SUBSCRIPTIONS").is_empty());
+    ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn an_unanswered_list_subscriptions_is_a_stale_outage_d9() {
+    // After the subscription, the server answers nothing and sends nothing:
+    // the keepalive is liveness only through its answer.
+    let server = ScriptedServer::start(vec![Script {
+        ignore_later_requests: true,
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = fast(&server)
+        .stale_after(Duration::from_millis(600))
+        .socket_transport(browser_like())
+        .streams([btc_mark()])
+        .connect()
+        .await
+        .unwrap();
+    match next_marker(&mut ws).await {
+        Event::Disconnected {
+            path,
+            reason: DisconnectReason::Stale,
+        } => assert_eq!(path, StreamPath::Market),
+        other => panic!("expected a stale outage, got {other:?}"),
+    }
+    assert!(!requests_of(&server, "LIST_SUBSCRIPTIONS").is_empty());
     ws.close().await.unwrap();
 }

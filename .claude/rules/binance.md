@@ -92,7 +92,11 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
   deliver nothing), behind a router that sends each change to its path, opens a path for its first
   stream, and forwards both paths into one queue of 1024.
 - The private `UsdmProtocol` (`src/usdm/ws/protocol.rs`) keeps Binance's rows: pings on the wall
-  clock, also while the queue is full, so a slow consumer is never stale; staleness counting every
+  clock, also while the queue is full, so a slow consumer is never stale (on a transport with no
+  protocol pings, a browser's, the ping is a `LIST_SUBSCRIPTIONS` request under an id of its own,
+  paced as every request is by `MIN_REQUEST_INTERVAL` (a tick inside it sends nothing and the next
+  sends), and its answer is the liveness; the bare client's `ping()` fails with `Kind::Unsupported`
+  there); staleness counting every
   frame, pongs and the server's pings included; reconnect with a paced replay, bounded as a whole
   by `stale_after`; rotation at 23 h 50 min, under Binance's 24-hour cutoff; a change recorded
   before it is sent, so one whose connection dies under it, or that the server leaves unanswered

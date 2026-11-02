@@ -1,17 +1,19 @@
 //! Binance's socket protocol for one routed path, as the kit's `Supervisor`
 //! drives it. The supervised tier runs one supervisor per path.
 
-use std::time::Duration;
+use std::{future::Future, sync::Arc, time::Duration};
 
+use polyoxide_rt::Runtime;
 use polyoxide_venue::{class_for_handshake_status, Classify};
 use polyoxide_ws::{
     retrying_can_fix,
     tungstenite::{client::IntoClientRequest, handshake::client::Request as Handshake, Message},
-    Connection, Decoded, Kind, Offline, Outage, Protocol, Queue, Recovery, WsError,
+    BoxSocket, Connection, Decoded, Kind, Offline, Outage, Protocol, Queue, Recovery,
+    SocketTransport, WsError,
 };
 
 use crate::usdm::ws::{
-    client::{request, Answer},
+    client::{request, request_frame, Answer},
     error::UsdmWsError,
     event::Update,
     stream::StreamName,
@@ -34,7 +36,12 @@ pub(crate) enum Change {
 /// at most 200 names a request, one request per 200 ms, with the 1024-stream
 /// cap checked first (D9). Its divergence rows:
 ///
-/// - **D4, the ping:** an empty protocol `Ping` on the wall clock.
+/// - **D4, the ping:** an empty protocol `Ping` on the wall clock; on a
+///   transport that cannot send one (`Capabilities::client_pings` false, a
+///   browser's) a `LIST_SUBSCRIPTIONS` request under an id of its own, paced
+///   as every request is (a tick inside `MIN_REQUEST_INTERVAL` of the last
+///   request sends nothing, and the next tick sends), whose answer is a frame
+///   like any other and so is liveness (D9).
 /// - **D5, liveness:** every frame, the server's pings and the pongs to the
 ///   client's own included.
 /// - **D6, a delivered connection:** one that decoded an update.
@@ -55,11 +62,18 @@ pub(crate) enum Change {
 pub(crate) struct UsdmProtocol {
     base_url: String,
     path: StreamPath,
+    /// Whether the transport of the connection last dialled can send protocol
+    /// pings; read from its capabilities in `connect`.
+    client_pings: bool,
 }
 
 impl UsdmProtocol {
     pub(crate) fn new(base_url: String, path: StreamPath) -> Self {
-        Self { base_url, path }
+        Self {
+            base_url,
+            path,
+            client_pings: true,
+        }
     }
 
     fn too_many(&self) -> UsdmWsError {
@@ -116,6 +130,23 @@ impl Protocol for UsdmProtocol {
             .url(&self.base_url)
             .into_client_request()
             .map_err(WsError::from)?)
+    }
+
+    /// Dials the handshake through the transport, as the default does, and
+    /// reads from the transport whether it can send a protocol ping (D9),
+    /// which `ping` acts on for this connection.
+    fn connect(
+        &mut self,
+        transport: Arc<dyn SocketTransport>,
+        runtime: Arc<dyn Runtime>,
+        timeout: Duration,
+    ) -> impl Future<Output = Result<BoxSocket, UsdmWsError>> + Send {
+        self.client_pings = transport.capabilities().client_pings;
+        let request = self.handshake();
+        async move {
+            let socket = transport.connect(request?, timeout, runtime).await?;
+            Ok::<_, UsdmWsError>(socket)
+        }
     }
 
     /// Requests no faster than one per 200 ms. No answer timeout: the
@@ -241,8 +272,20 @@ impl Protocol for UsdmProtocol {
         matches!(decoded, Decoded::Event(Event::Update(_)))
     }
 
-    fn ping(&mut self, _connection: &mut Connection) -> Option<Message> {
-        Some(Message::Ping(Vec::new().into()))
+    /// An empty protocol `Ping`; on a transport that cannot send one,
+    /// `LIST_SUBSCRIPTIONS` under an id taken from the connection, so a late
+    /// answer is never taken for the answer to a later request. The id is the
+    /// connection's paced one (`take_paced_id`): a tick that comes within the
+    /// connection's minimum request interval of the last request, the
+    /// replay's included, sends nothing, and the next tick sends, as every
+    /// request waits that interval (D9). The answer decodes to nothing and
+    /// counts as liveness, as every frame does.
+    fn ping(&mut self, connection: &mut Connection) -> Option<Message> {
+        if self.client_pings {
+            return Some(Message::Ping(Vec::new().into()));
+        }
+        let id = connection.take_paced_id()?;
+        Some(request_frame("LIST_SUBSCRIPTIONS", None, id))
     }
 
     fn wanted(streams: &Vec<StreamName>) -> bool {
@@ -482,5 +525,15 @@ mod tests {
         assert!(matches!(decoded, Decoded::Error(UsdmWsError::Frame { .. })));
         assert!(!protocol.delivered(&bad, &decoded));
         assert!(protocol.is_live(&Message::Pong(Vec::new().into()), &Decoded::Nothing));
+    }
+
+    #[test]
+    fn the_answer_to_a_list_subscriptions_keepalive_is_nothing_and_is_live_d9() {
+        let mut protocol = UsdmProtocol::new(USDM_WS_BASE.to_owned(), StreamPath::Market);
+        let answer = Message::Text(r#"{"result":["btcusdt@markPrice@1s"],"id":7}"#.into());
+        let decoded = protocol.decode(&answer);
+        assert!(matches!(decoded, Decoded::Nothing));
+        assert!(protocol.is_live(&answer, &decoded));
+        assert!(!protocol.delivered(&answer, &decoded));
     }
 }

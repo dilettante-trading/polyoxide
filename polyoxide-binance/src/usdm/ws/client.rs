@@ -123,7 +123,7 @@ impl Answer {
 }
 
 /// The request `method` with `params`, for request `id`.
-fn request_frame(method: &str, params: Option<&[StreamName]>, id: u64) -> Message {
+pub(crate) fn request_frame(method: &str, params: Option<&[StreamName]>, id: u64) -> Message {
     let mut body = json!({ "method": method, "id": id });
     if let Some(params) = params {
         let names: Vec<String> = params.iter().map(ToString::to_string).collect();
