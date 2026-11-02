@@ -82,6 +82,9 @@ pub struct Capabilities {
     pub sees_server_pings: bool,
     /// Whether the handshake request may carry headers beyond the ones the
     /// WebSocket protocol generates.
+    ///
+    /// Informational: nothing in the tree reads it. A transport without it
+    /// refuses a handshake header with `Kind::Unsupported` when it dials.
     pub handshake_headers: bool,
 }
 

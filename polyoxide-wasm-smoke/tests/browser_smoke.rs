@@ -246,8 +246,8 @@ mod fetch {
     use wasm_bindgen_test::wasm_bindgen_test;
 
     const BASE: &str = env!("POLYOXIDE_SMOKE_HTTP");
-    // The slow route's server is its own: the browser may run these tests concurrently, and a
-    // sleeping slow route must not hold up another test's request.
+    // The slow route's server is its own: a sleeping slow route holds its server's one thread,
+    // and must not hold up the requests that follow it.
     const SLOW_BASE: &str = env!("POLYOXIDE_SMOKE_SLOW");
     // The stalled-body route's server is its own too: a hand-written responder, since mockito
     // cannot send a head and hold the body behind it.
@@ -438,6 +438,45 @@ mod socket {
                 .is_none(),
             "the stream ends after the close"
         );
+    }
+
+    /// A send while the browser is closing is dropped, not failed: a supervisor reads
+    /// `AlreadyClosed` as the end of the stream, where a server's close should reconnect.
+    ///
+    /// The window (the browser has the close frame, the close event is not yet read) is the
+    /// platform's to open, so this keeps sending between short polls until the close arrives:
+    /// every send before it must succeed, whichever side of the window it lands on, and the one
+    /// after it must fail. It cannot make the window open, but it never fails by a race.
+    #[wasm_bindgen_test]
+    async fn a_send_while_the_server_closes_is_dropped_and_one_after_the_close_fails() {
+        let mut socket = open(None).await.expect("the socket opens");
+        socket
+            .send(Message::Text("close".into()))
+            .await
+            .expect("send");
+        let started = BrowserRuntime.now();
+        let close = loop {
+            socket
+                .send(Message::Text("again".into()))
+                .await
+                .expect("a send before the close is yielded must not fail");
+            assert!(
+                BrowserRuntime.now().saturating_duration_since(started) < WAIT,
+                "no close within five seconds"
+            );
+            match timeout(&BrowserRuntime, Duration::from_millis(1), socket.next()).await {
+                Some(Some(Ok(Message::Close(frame)))) => break frame,
+                Some(Some(Ok(_))) | None => {}
+                Some(Some(Err(error))) => panic!("an error before the close: {error:?}"),
+                Some(None) => panic!("the stream ended without yielding its close"),
+            }
+        };
+        assert_eq!(close.map(|frame| u16::from(frame.code)), Some(4001));
+        let err = socket
+            .send(Message::Text("late".into()))
+            .await
+            .expect_err("a send after the close must fail");
+        assert!(matches!(err, tungstenite::Error::AlreadyClosed), "{err:?}");
     }
 
     #[wasm_bindgen_test]

@@ -129,6 +129,38 @@ mod plain {
         }
     }
 
+    /// What a send means to a browser socket in its current state.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum SendState {
+        /// The socket is open: hand the frame to the platform.
+        Accept,
+        /// The socket is closing and its close has not been yielded: take the
+        /// frame and drop it. The close event that ends the stream is on its
+        /// way, as it is on a native socket whose peer has closed but whose
+        /// close frame has not been read yet.
+        Drop,
+        /// The stream has ended: the send fails.
+        AlreadyClosed,
+    }
+
+    /// Decide a send from the socket's `readyState` (the WHATWG values:
+    /// 0 connecting, 1 open, 2 closing, 3 closed) and whether the stream has
+    /// yielded its close.
+    ///
+    /// A send in the window between the browser starting to close and the
+    /// close event reaching the reader must not fail: a supervisor reads
+    /// `AlreadyClosed` as the end of the stream, where a routine server close
+    /// should reconnect.
+    pub(super) const fn send_state(ready_state: u16, ended: bool) -> SendState {
+        if ended {
+            SendState::AlreadyClosed
+        } else if ready_state >= 2 {
+            SendState::Drop
+        } else {
+            SendState::Accept
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use std::io;
@@ -142,7 +174,9 @@ mod plain {
         };
         use crate::{retrying_can_fix, Kind, WsError};
 
-        use super::{close_code, close_reason, dial_plan, outgoing, Dial, Outgoing};
+        use super::{
+            close_code, close_reason, dial_plan, outgoing, send_state, Dial, Outgoing, SendState,
+        };
 
         fn request(url: &str) -> Request<()> {
             url.into_client_request().expect("a valid WebSocket URL")
@@ -275,6 +309,28 @@ mod plain {
         }
 
         #[test]
+        fn a_send_on_a_live_socket_is_accepted() {
+            for ready_state in [0, 1] {
+                assert_eq!(send_state(ready_state, false), SendState::Accept);
+            }
+        }
+
+        #[test]
+        fn a_send_while_the_close_is_still_to_come_is_dropped_not_failed() {
+            // CLOSING, and CLOSED with the close event still in the channel.
+            for ready_state in [2, 3] {
+                assert_eq!(send_state(ready_state, false), SendState::Drop);
+            }
+        }
+
+        #[test]
+        fn a_send_after_the_stream_has_ended_is_already_closed() {
+            for ready_state in 0..=3 {
+                assert_eq!(send_state(ready_state, true), SendState::AlreadyClosed);
+            }
+        }
+
+        #[test]
         fn ping_pong_and_raw_frames_are_refused_with_their_messages() {
             let cases = [
                 (
@@ -316,7 +372,7 @@ mod web {
     use wasm_bindgen::{closure::Closure, JsCast, JsValue};
     use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
-    use super::plain::{dial_plan, outgoing, Dial, Outgoing};
+    use super::plain::{dial_plan, outgoing, send_state, Dial, Outgoing, SendState};
     use crate::tungstenite::{
         error::UrlError,
         http::Request,
@@ -461,12 +517,11 @@ mod web {
             }
         }
 
-        fn writable(&self) -> Result<(), Error> {
-            if self.ws.ready_state() >= WebSocket::CLOSING {
-                Err(Error::AlreadyClosed)
-            } else {
-                Ok(())
-            }
+        /// What a send means now. Only a send after the stream has yielded its
+        /// close fails; one while the browser is closing is dropped, since the
+        /// close event is coming and ends the stream.
+        fn send_state(&self) -> SendState {
+            send_state(self.ws.ready_state(), self.ended)
         }
     }
 
@@ -516,12 +571,19 @@ mod web {
         type Error = Error;
 
         fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-            Poll::Ready(self.writable())
+            Poll::Ready(match self.send_state() {
+                SendState::AlreadyClosed => Err(Error::AlreadyClosed),
+                SendState::Accept | SendState::Drop => Ok(()),
+            })
         }
 
         fn start_send(self: Pin<&mut Self>, item: Message) -> Result<(), Error> {
             let frame = outgoing(&item)?;
-            self.writable()?;
+            match self.send_state() {
+                SendState::AlreadyClosed => return Err(Error::AlreadyClosed),
+                SendState::Drop => return Ok(()),
+                SendState::Accept => {}
+            }
             let sent = match frame {
                 Outgoing::Text(text) => self.ws.send_with_str(text),
                 Outgoing::Binary(bytes) => self.ws.send_with_u8_array(bytes),
@@ -556,6 +618,10 @@ mod web {
     /// raw frame. A refused upgrade shows no status to a page, so it arrives
     /// as a lost connection, not `Kind::Refused`. A close event yields
     /// `Message::Close` with its code and reason, then the stream ends.
+    /// A send while the browser is closing, before that close event has been
+    /// read, is dropped and returns `Ok`, as a native socket's send does until
+    /// it reads the peer's close; only a send after the stream has ended is
+    /// `AlreadyClosed`.
     #[derive(Debug, Clone, Copy, Default)]
     pub struct WebSocketTransport;
 

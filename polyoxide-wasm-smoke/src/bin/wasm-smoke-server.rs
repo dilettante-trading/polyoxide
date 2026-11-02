@@ -162,8 +162,8 @@ mod native {
                 .await,
         );
         // The callback sleeps its server's one thread, so every route on that server waits
-        // behind it. wasm-bindgen-test may run the browser suite's async tests concurrently, so
-        // the slow route has a server of its own and no other test's request waits on it.
+        // behind it, a timed-out request's included. The slow route has a server of its own, so
+        // no other route's request waits on it.
         mocks.push(
             slow_server
                 .mock("OPTIONS", Matcher::Any)
