@@ -31,6 +31,14 @@ The server sends a protocol PING every 15 s, and data only while a match is live
 has no data at all. `SupervisedSportsWs` resets its 45 s staleness timer on any inbound frame,
 pings included; counting only data would drop a healthy connection every quiet hour.
 
+On a transport that hides the server's pings (`Capabilities::sees_server_pings` false, a
+browser's), `connect` turns the staleness limit off, as `Duration::MAX`, and `stale_after` is
+ignored there: a lost connection ends through its close event or a failed read, and a half-open
+browser socket goes undetected. That is the owner's decision of 2026-11-02 (spec D9), not a
+measurement's verdict. The 2026-11 capture (`docs/specs/sports/OBSERVED.md`, "Browser transport")
+ran with a game live and saw neither of its two text `ping`s answered; a quiet hour's data gap and
+a quiet-hour answer to a text `ping` are unmeasured.
+
 - It is a `Stream` state machine with no background task, because no application message is ever
   sent to this host (only protocol pongs and a close reply). Pongs therefore go out only while the
   caller polls.

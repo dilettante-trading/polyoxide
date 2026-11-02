@@ -385,3 +385,135 @@ async fn a_ping_alone_counts_as_having_received_something() {
         "backoff grew although every connection received a ping: {gaps:?}"
     );
 }
+
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
+use futures_util::{Sink, Stream};
+use polyoxide_rt::{BoxFuture, Runtime};
+use polyoxide_ws::{
+    tungstenite::{self, http},
+    BoxSocket, Capabilities, SocketTransport, TungsteniteTransport, WsError,
+};
+
+/// A socket that does not show the server's protocol pings, as a browser's
+/// does not: they are read and dropped, and everything else passes through.
+struct HidePings(BoxSocket);
+
+impl Stream for HidePings {
+    type Item = Result<Message, tungstenite::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            match self.0.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(Message::Ping(_)))) => continue,
+                other => return other,
+            }
+        }
+    }
+}
+
+impl Sink<Message> for HidePings {
+    type Error = tungstenite::Error;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut *self.0).poll_ready(cx)
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+        Pin::new(&mut *self.0).start_send(item)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut *self.0).poll_flush(cx)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut *self.0).poll_close(cx)
+    }
+}
+
+/// A transport that reports what a browser's socket can do (no protocol pings
+/// either way, no handshake headers) and dials as the native one does, then
+/// hides the server's pings from the reader.
+#[derive(Debug)]
+struct BrowserLike(TungsteniteTransport);
+
+impl SocketTransport for BrowserLike {
+    fn connect(
+        &self,
+        request: http::Request<()>,
+        timeout: Duration,
+        runtime: Arc<dyn Runtime>,
+    ) -> BoxFuture<Result<BoxSocket, WsError>> {
+        let dial = self.0.connect(request, timeout, runtime);
+        Box::pin(async move {
+            let socket: BoxSocket = Box::new(HidePings(dial.await?));
+            Ok(socket)
+        })
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::new(false, false, false)
+    }
+}
+
+fn browser_like() -> Arc<dyn SocketTransport> {
+    Arc::new(BrowserLike(TungsteniteTransport::new()))
+}
+
+#[tokio::test]
+async fn a_transport_that_hides_the_servers_pings_never_goes_stale_d9() {
+    // The server's pings flow, but the transport does not show them, so the
+    // feed has nothing to count in a quiet hour and must not drop the
+    // connection for it.
+    let server = ScriptedServer::start(vec![Script::pings_only(Duration::from_millis(100))]).await;
+    let mut feed = builder(&server)
+        .socket_transport(browser_like())
+        .connect()
+        .await
+        .unwrap();
+    assert!(
+        timeout(STALE * 4, feed.next()).await.is_err(),
+        "went stale although the transport shows no ping"
+    );
+    assert_eq!(server.connection_count(), 1);
+}
+
+#[tokio::test]
+async fn a_transport_that_shows_the_servers_pings_still_goes_stale_d9() {
+    // The same silence on a transport that reports it sees the server's pings,
+    // injected explicitly: the rule follows the capability, not the injection.
+    let server = ScriptedServer::start(vec![Script::hold(), Script::hold()]).await;
+    let mut feed = builder(&server)
+        .socket_transport(Arc::new(TungsteniteTransport::new()))
+        .connect()
+        .await
+        .unwrap();
+    match next_item(&mut feed).await {
+        Ok(Event::Disconnected {
+            reason: SportsError::Stale { after },
+        }) => assert_eq!(after, STALE),
+        other => panic!("expected a stale disconnect, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_close_still_ends_a_feed_whose_staleness_is_off_d9() {
+    let server = ScriptedServer::start(vec![Script::close_at_once(), Script::hold()]).await;
+    let mut feed = builder(&server)
+        .socket_transport(browser_like())
+        .connect()
+        .await
+        .unwrap();
+    assert!(matches!(
+        next_item(&mut feed).await,
+        Ok(Event::Disconnected {
+            reason: SportsError::Closed { .. }
+        })
+    ));
+    assert!(matches!(next_item(&mut feed).await, Ok(Event::Reconnected)));
+}

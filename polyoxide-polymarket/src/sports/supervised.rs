@@ -108,6 +108,10 @@ impl SportsWsBuilder {
     ///
     /// Keep this above the server's 15-second ping interval. Data cannot set
     /// it: when nothing is live anywhere, no data arrives at all.
+    ///
+    /// On a transport that hides the server's pings, a browser's, there is
+    /// nothing to count in a quiet hour, so the limit is not enforced there
+    /// and this value is ignored.
     pub fn stale_after(mut self, stale_after: Duration) -> Self {
         self.stale_after = stale_after;
         self
@@ -135,6 +139,15 @@ impl SportsWsBuilder {
         self
     }
 
+    /// Whether the transport this feed will dial sees the server's protocol
+    /// pings (`Capabilities::sees_server_pings`): a browser's does not (D9).
+    fn sees_server_pings(&self) -> bool {
+        match &self.socket_transport {
+            Some(transport) => transport.capabilities().sees_server_pings,
+            None => default_socket_transport().capabilities().sees_server_pings,
+        }
+    }
+
     polyoxide_ws::transport_setters! {
         /// The runtime the feed's staleness timer and reconnect waits run on.
         /// By default the target's.
@@ -150,7 +163,15 @@ impl SportsWsBuilder {
     /// refusal retrying cannot fix: an HTTP status other than 408, 425, 429
     /// or 5xx, or a malformed URL. That one is yielded as
     /// [`SportsError::Connect`] and ends the stream.
-    pub async fn connect(self) -> Result<SupervisedSportsWs, SportsError> {
+    pub async fn connect(mut self) -> Result<SupervisedSportsWs, SportsError> {
+        // D9: a transport that hides the server's pings leaves a quiet feed
+        // nothing to count, since no data arrives when nothing is live, and
+        // no text ping is known to be answered (`docs/specs/sports/OBSERVED.md`).
+        // The limit is off there, as `Duration::MAX` means never stale, and a
+        // lost connection ends through its close event.
+        if !self.sees_server_pings() {
+            self.stale_after = Duration::MAX;
+        }
         let runtime = self.runtime.clone().unwrap_or_else(default_runtime);
         let transport = self
             .socket_transport
@@ -233,6 +254,10 @@ enum Step {
 /// server's pings are answered only while the stream is being polled. A
 /// caller that stops polling for long enough will be dropped by the server,
 /// and will see a disconnect and a reconnect when it resumes.
+///
+/// On a transport that hides the server's pings, a browser's, nothing is
+/// counted in a quiet hour, so the staleness limit is not enforced: a lost
+/// connection ends through its close event or a failed read (D9).
 pub struct SupervisedSportsWs {
     config: SportsWsBuilder,
     backoff: Backoff,

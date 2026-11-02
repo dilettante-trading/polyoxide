@@ -114,3 +114,8 @@ an hour with none. Whether the server answers a text `ping` on a quiet
 connection is the other: both pings went out with a game live. The script
 printed a rule from the live-feed gap, which is not a result of this capture
 and is not used here.
+
+The supervised feed's rule on such a transport is C: no staleness limit, and a
+lost connection ends through its close event. That is the owner's decision of
+2026-11-02 (spec D9), taken with the quiet-hour figures unmeasured, not a
+measurement's verdict; see `.claude/rules/polymarket-sports.md`.
