@@ -106,6 +106,9 @@ its decode, a core `Response` it keeps included. A zero is no wait anywhere (DRI
   refused status.
 - rustc does not warn about dead code expanded from another crate's macro, so
   `test_classify_coverage.py` is the guard: a type with a `WsError` field must sit in a file that
-  expands the macro, and that file must call all three functions in code.
+  expands the macro, and that file must call all three functions in code. The exception is the
+  (crate, type, file) triples in its `WS_VIEWS`, crate-private views that are not errors, such as
+  Binance's `shared::ws::Shape` and its test-only `ProbeError`; each entry must match a real
+  wrapper, or the test fails.
 
 The Python bindings map errors by class, one class to one exception (`py.md`).
