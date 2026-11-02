@@ -108,10 +108,12 @@ an owned head and a lazy body read by `bytes()`, `text()` and `json()`, each int
 loop decides on the head, releases the permit, then reads an error body.
 
 - `ClientConfig::http_transport`, the `http_transport(..)` setter of `client_config_setters!` and
-  `HttpClientBuilder::http_transport(..)` inject one. With none set, `build` makes,
-  on a host target, `ReqwestTransport` (on `wasm32`, `FetchTransport`, below) from the builder's
-  timeout, pool size and `gzip` (unset), a 10 s connect timeout and no redirects. `pool_size` and
-  `gzip` feed only that native default.
+  `HttpClientBuilder::http_transport(..)` inject one. With none set, `build` makes, on a host
+  target, `ReqwestTransport` from the builder's timeout, pool size and `gzip` (unset), a 10 s
+  connect timeout and no redirects. `pool_size` and `gzip` feed only that native default. On
+  `wasm32` the default is `FetchTransport` instead, which sends through the page's `fetch` with the
+  request's `timeout`, takes neither setting, and leaves compression and redirects to the browser
+  (`## The browser's fetch`, below).
 - A transport that cannot produce a response is `ApiError::Transport(TransportError)`, neither
   observed nor retried. `TransportError::kind()` is `Connect`, `Timeout`, `Body`, `Request` or
   `Other`; only `Request` is `InvalidRequest`, so a body that broke off mid-read is `Network`.

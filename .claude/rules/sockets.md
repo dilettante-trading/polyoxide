@@ -38,6 +38,8 @@ Every dial goes through a `SocketTransport` and every timer, clock read and spaw
   and a timed-out connect is `Kind::ConnectTimeout`. `capabilities()` says whether it can send
   pings (`client_pings`), shows the server's (`sees_server_pings`) and accepts handshake headers
   (`handshake_headers`); `TungsteniteTransport`, the native one, has all three.
+  `handshake_headers` is informational: no in-tree consumer reads it, and a transport without it
+  refuses a handshake header with `Kind::Unsupported` at dial.
 - `Kind::Unsupported` is an operation the transport cannot perform, read from an I/O error of kind
   `std::io::ErrorKind::Unsupported`. Reconnecting never fixes it, and the socket table classes it
   `InvalidRequest`.

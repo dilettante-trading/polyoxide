@@ -21,7 +21,8 @@ CLAUDE.md lists the ten jobs and the command each runs; this file says what each
 `python3 scripts/publish_order.py check-manifests` fails when a publishable crate lacks a
 description or a licence (cargo only warns about those), or a tombstone breaks its rules
 (`release.md`); then `cargo publish --workspace --dry-run --no-verify --locked`; then
-`for m in tombstones/*/Cargo.toml; do [ -e "$m" ] || continue; cargo package --no-verify --manifest-path "$m" || exit 1; done`,
+`for m in tombstones/*/Cargo.toml; do [ -e "$m" ] || continue; cargo package --no-verify
+--manifest-path "$m" || exit 1; done`,
 which packages each tombstone without building it (none since S3), since the workspace dry run
 cannot see them. The job skips `publish = false` members on its own, and catches a manifest fault
 on the PR that introduces it rather than halfway through a release.
@@ -31,9 +32,12 @@ on the PR that introduces it rather than halfway through a release.
 1. `cargo hack check --workspace --each-feature --no-dev-deps --ignore-private`: a feature that
    compiles only alongside another fails.
 2. Each HTTP module's header pin in its minimal build, one `-p` per command so their features
-   never unify: `cargo test -p polyoxide-polymarket --no-default-features --features <m> --test headers_<m>`
-   for clob, gamma, data, relay and perps; `cargo test -p polyoxide-binance --no-default-features --features usdm --test headers_usdm`;
-   `cargo test -p polyoxide-kalshi --no-default-features --features predictions --test headers_predictions`.
+   never unify: `cargo test -p polyoxide-polymarket --no-default-features --features <m> --test
+   headers_<m>`
+   for clob, gamma, data, relay and perps; `cargo test -p polyoxide-binance --no-default-features
+   --features usdm --test headers_usdm`;
+   `cargo test -p polyoxide-kalshi --no-default-features --features predictions --test
+   headers_predictions`.
    The pin test derives the HTTP modules from cargo metadata: a venue crate's products whose
    feature builds `polyoxide-core`, so `rtds` and `sports` pin none.
 3. The same pins under the umbrella's `full`,
@@ -173,8 +177,10 @@ breaks it fails the push, not the nightly job. A change to the supported set edi
 Chrome, inside a dedicated Worker, through `wasm-bindgen-test-runner`. It builds and starts the
 native `wasm-smoke-server`, which binds `127.0.0.1:0` for mockito routes (every one answering CORS
 headers: a 200 and two 429s, one exposing `Retry-After` and one not, on one server, and a slow
-route on a server of its own, since mockito answers it by sleeping its server's one thread and
-wasm-bindgen-test may run async tests concurrently), for one scripted socket on
+route on a server of its own, since mockito answers it by sleeping its server's one thread, and a
+timed-out request leaves that thread asleep, delaying every route on the server for the tests
+that follow; wasm-bindgen-test 0.3.79 runs async tests one at a time, so the separate server keeps
+a slow response from delaying another route, not a concurrent test), for one scripted socket on
 `polyoxide-ws`'s test server and for a hand-written tokio responder whose one route sends its head
 and the first bytes of its body at once and stalls the rest for 3 s (mockito writes a response
 whole, so it cannot), and writes `POLYOXIDE_SMOKE_HTTP`, `POLYOXIDE_SMOKE_WS`,
@@ -291,7 +297,8 @@ stage does not hold, printing each one's key to copy there.
   test bodies the wasm32 seams' stories changed cite R22: story 2's is `polymarket_limits`'
   `an_expired_cooldown_stops_delaying`, which advances virtual time past the quota's refill before
   its second acquire, since a window quota now keeps the runtime's clock and its pacing shows;
-  story 3's, which name the request vocabulary (`Method`, `StatusCode`, `HeaderMap`, `header::*`) through `polyoxide_core::http`, are core's
+  story 3's, which name the request vocabulary (`Method`, `StatusCode`, `HeaderMap`, `header::*`)
+  through `polyoxide_core::http`, are core's
   `mock_request` items `a_post_sends_its_body_serialised_once`,
   `a_request_s_costs_reach_the_throttle`, `a_request_parts_timeout_bounds_its_attempt` and
   `a_request_parts_timeout_outlasts_the_client_s`; binance's `usdm::error` `tests::response`,
@@ -315,11 +322,13 @@ stage does not hold, printing each one's key to copy there.
   happens, and the entry cites R22 too. The test bodies story 5 changed cite R22 as well:
   `Kind::Unsupported`'s row (a sweep over a closed set of kinds gains the row for a variant the
   seams add), added to `every_other_kind`, to the kit's
-  `every_transport_error_has_its_kind` and to `a_failure_that_replays_on_every_attempt_is_not_retried`;
+  `every_transport_error_has_its_kind` and to
+  `a_failure_that_replays_on_every_attempt_is_not_retried`;
   the kit's connect and test-server tests (`polyoxide-ws`'s `connect` tests and the test server's
   `a_refused_upgrade_carries_its_status_and_headers`, `a_stalled_handshake_never_completes` and
   `reject_handshake_fails_the_connection_attempt_recoverably`), whose `expect_err` became
-  `.err().expect(..)` since a `BoxSocket` is not `Debug`; the CLOB's `a_dns_miss_is_a_network_failure`,
+  `.err().expect(..)` since a `BoxSocket` is not `Debug`; the CLOB's
+  `a_dns_miss_is_a_network_failure`,
   whose body changed with its dial, and the three address tests that moved with that dial into the
   kit, gated to native (`connect_tests::addr`, `address_families_are_interleaved` and
   `single_family_lists_pass_through_unchanged`); and `live_sports`' `connect_raw`, returning a

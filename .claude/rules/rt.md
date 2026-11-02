@@ -66,5 +66,6 @@ once a minute after five minutes, which breaks ping cadences.
 Dependencies are per target: tokio's `rt` and `time` are the host's, and `gloo-timers`,
 `send_wrapper`, `wasm-bindgen-futures` and `getrandom` 0.3 with `wasm_js` are `wasm32`'s.
 `getrandom` is here so feature unification reaches `rand` and `tungstenite` from every crate that
-builds this one; the final binary still sets `--cfg getrandom_backend="wasm_js"`, which
-`scripts/wasm_check.sh` sets itself.
+builds this one. With getrandom 0.3.4 locked, its `wasm_js` feature alone selects the backend; the
+RUSTFLAGS `--cfg getrandom_backend="wasm_js"` flag is kept (spec D1), which `scripts/wasm_check.sh`
+sets itself, for consumers that resolve an older 0.3.x.
