@@ -134,11 +134,13 @@ impl Classify for TransportError {
 ///
 /// The client builder makes one from its timeout, pool size and `gzip`; build
 /// one with [`new`](Self::new) to send on a client of your own.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone)]
 pub struct ReqwestTransport {
     client: reqwest::Client,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ReqwestTransport {
     /// A transport that sends on `client`.
     pub fn new(client: reqwest::Client) -> Self {
@@ -169,9 +171,9 @@ impl ReqwestTransport {
     }
 }
 
-/// The default transport, built from a client builder's settings. The browser
-/// story gates this and `ReqwestTransport` to the native targets and adds the
-/// wasm32 twin, over `fetch`.
+/// The default transport, built from a client builder's settings: reqwest's on
+/// a host target.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn default_transport(
     timeout: Duration,
     pool_size: usize,
@@ -182,6 +184,19 @@ pub(crate) fn default_transport(
     )?))
 }
 
+/// The default transport on `wasm32`: the browser's `fetch`. The timeout is set
+/// per request, and the browser has its own pool and compression, so the
+/// builder's pool size and `gzip` choice are unused.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn default_transport(
+    _timeout: Duration,
+    _pool_size: usize,
+    _gzip: Option<bool>,
+) -> Result<std::sync::Arc<dyn HttpTransport>, TransportError> {
+    Ok(std::sync::Arc::new(crate::FetchTransport::new()))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl HttpTransport for ReqwestTransport {
     fn send(&self, request: HttpRequest) -> BoxFuture<Result<Response, TransportError>> {
         let mut builder = self
@@ -210,6 +225,7 @@ impl HttpTransport for ReqwestTransport {
 /// The transport error for a reqwest one, by the rule core has always used:
 /// a failure in transit is `Network` whatever reqwest labels it, so it is
 /// decided before a request that could not be built.
+#[cfg(not(target_arch = "wasm32"))]
 fn map_error(err: reqwest::Error) -> TransportError {
     let flags = Flags {
         timeout: err.is_timeout(),
@@ -221,6 +237,7 @@ fn map_error(err: reqwest::Error) -> TransportError {
 }
 
 /// What a reqwest error reports about itself.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Copy)]
 struct Flags {
     timeout: bool,
@@ -234,6 +251,7 @@ struct Flags {
 /// failed connect, a body that broke off, or an I/O error or a body error
 /// anywhere in the chain is a failure in transit, checked before a request
 /// that could not be built; anything else is `Other`.
+#[cfg(not(target_arch = "wasm32"))]
 fn kind_of(flags: Flags, err: &(dyn std::error::Error + 'static)) -> TransportKind {
     if flags.timeout {
         TransportKind::Timeout
@@ -252,6 +270,7 @@ fn kind_of(flags: Flags, err: &(dyn std::error::Error + 'static)) -> TransportKi
 
 /// Whether an I/O error or a body-kind reqwest error is anywhere in the
 /// error's source chain, however reqwest labels the error itself.
+#[cfg(not(target_arch = "wasm32"))]
 fn failed_in_transit(err: &(dyn std::error::Error + 'static)) -> bool {
     let mut source = err.source();
     while let Some(inner) = source {
@@ -267,6 +286,7 @@ fn failed_in_transit(err: &(dyn std::error::Error + 'static)) -> bool {
     false
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};

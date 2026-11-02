@@ -51,6 +51,7 @@ pub mod capacity;
 pub mod client;
 pub mod config;
 pub mod error;
+mod fetch;
 pub mod health;
 pub mod hold;
 pub mod hooks;
@@ -97,6 +98,7 @@ pub use http;
 /// through this path and never depend on reqwest themselves, so core alone
 /// decides its features and every client sends the same headers (AD-18). CI's
 /// dependency fence fails when any other member declares it.
+#[cfg(not(target_arch = "wasm32"))]
 pub use reqwest;
 
 pub use capacity::CapacityBucket;
@@ -105,6 +107,8 @@ pub use client::{
 };
 pub use config::ClientConfig;
 pub use error::{ApiError, ErrorResponse};
+#[cfg(target_arch = "wasm32")]
+pub use fetch::FetchTransport;
 pub use health::Pong;
 pub use hold::Hold;
 pub use hooks::{
@@ -119,6 +123,7 @@ pub use rate_limit::{
 pub use request::{QueryBuilder, Request, RequestError};
 pub use response::Response;
 pub use send::decode_json;
+#[cfg(not(target_arch = "wasm32"))]
 pub use transport::ReqwestTransport;
 pub use transport::{HttpRequest, HttpTransport, TransportError, TransportKind};
 
