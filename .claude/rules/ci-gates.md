@@ -165,7 +165,9 @@ inherited `RUSTFLAGS` (a host `target-cpu`) would override a config file's and b
 with `--target` cargo passes no `RUSTFLAGS` to build scripts, so the host cache is untouched. It
 also lints `polyoxide-wasm-smoke`'s browser tests (`clippy --tests`), which no other step builds,
 with placeholder server addresses for their `env!` reads; the real ones come from
-`wasm_smoke.sh`. A change to the supported set edits that script.
+`wasm_smoke.sh`. A second pass adds `--features live`, which compiles `tests/browser_live.rs` (a
+target that needs the feature, and so is skipped by the first) and runs nothing, so a change that
+breaks it fails the push, not the nightly job. A change to the supported set edits that script.
 
 `scripts/wasm_smoke.sh` then runs `polyoxide-wasm-smoke`'s `tests/browser_smoke.rs` in headless
 Chrome, inside a dedicated Worker, through `wasm-bindgen-test-runner`. It builds and starts the

@@ -47,3 +47,14 @@ POLYOXIDE_SMOKE_WS=ws://127.0.0.1:0 \
 POLYOXIDE_SMOKE_SLOW=http://127.0.0.1:0 \
 POLYOXIDE_SMOKE_STALL=http://127.0.0.1:0 \
     cargo clippy --package polyoxide-wasm-smoke --tests --target "${target}" -- -D warnings
+
+# tests/browser_live.rs is behind the `live` feature (it calls real hosts, and scripts/wasm_live.sh
+# runs it nightly), so the lint above skips it. Lint it here as well: this compiles it and runs
+# nothing, so a change to core, rt, ws or test-support that breaks it fails this push and not the
+# next night's job.
+echo "==> polyoxide-wasm-smoke --tests --features live"
+POLYOXIDE_SMOKE_HTTP=http://127.0.0.1:0 \
+POLYOXIDE_SMOKE_WS=ws://127.0.0.1:0 \
+POLYOXIDE_SMOKE_SLOW=http://127.0.0.1:0 \
+POLYOXIDE_SMOKE_STALL=http://127.0.0.1:0 \
+    cargo clippy --package polyoxide-wasm-smoke --tests --features live --target "${target}" -- -D warnings
