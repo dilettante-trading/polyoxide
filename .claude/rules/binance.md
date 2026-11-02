@@ -177,8 +177,11 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
 
 - One kit `Supervisor` per routed path, `/market` or `/public` (a stream on the wrong path may
   deliver nothing), behind a router that sends each change to its path, opens a path for its first
-  stream, and forwards both paths into one queue of 1024.
-- The private `UsdmProtocol` (`src/usdm/ws/protocol.rs`) keeps Binance's rows: pings on the wall
+  stream, and forwards both paths into one queue of 1024. The router, the request correlation and
+  the bare connection are `shared::ws`'s (`src/shared/ws/`), generic over `StreamSet`, and
+  `usdm::ws`'s public types wrap them.
+- The crate-private `BinanceProtocol<S>` (`src/shared/ws/protocol.rs`, generic over the product's
+  `StreamSet`; `UsdmProtocol` is its alias on `UsdmStreams`) keeps Binance's rows: pings on the wall
   clock, also while the queue is full, so a slow consumer is never stale; staleness counting every
   frame, pongs and the server's pings included; reconnect with a paced replay, bounded as a whole
   by `stale_after`; rotation at 23 h 50 min, under Binance's 24-hour cutoff; a change recorded

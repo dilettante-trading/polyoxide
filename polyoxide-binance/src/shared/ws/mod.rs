@@ -8,9 +8,6 @@
 //! [`Shape`] view of its variants), so a second product's streams are a second
 //! marker type and not a second copy.
 
-// TEMPORARY, Task 2.1 only: nothing uses `shared::ws` until Task 2.2 moves
-// `usdm::ws` onto it, and Task 2.2 deletes this line.
-#![allow(dead_code)]
 use std::{fmt, time::Duration};
 
 pub(crate) mod bare;

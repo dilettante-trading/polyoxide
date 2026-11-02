@@ -7,15 +7,22 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{Stream, StreamExt};
-use polyoxide_ws::{connect, tungstenite::Message, Connection, Correlated, Kind, Mode, WsError};
-use serde_json::{json, Value};
+use futures_util::Stream;
+#[cfg(test)]
+use futures_util::StreamExt;
+#[cfg(test)]
 use tokio::time::Instant;
 
-use crate::usdm::ws::{
-    error::UsdmWsError, event::Update, stream::StreamName, StreamPath, MAX_NAMES_PER_REQUEST,
-    MAX_STREAMS_PER_CONNECTION, MIN_REQUEST_INTERVAL, USDM_WS_BASE,
+use crate::{
+    shared::ws::bare::Bare,
+    usdm::ws::{
+        error::UsdmWsError, event::Update, protocol::UsdmStreams, stream::StreamName, StreamPath,
+        USDM_WS_BASE,
+    },
 };
+
+#[cfg(test)]
+use crate::usdm::ws::MIN_REQUEST_INTERVAL;
 
 /// How long the bare tier waits for a connection.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -55,124 +62,16 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// # }
 /// ```
 pub struct UsdmWs {
-    connection: Connection,
-    path: StreamPath,
-    streams: Vec<StreamName>,
+    inner: Bare<UsdmStreams>,
 }
 
 impl std::fmt::Debug for UsdmWs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UsdmWs")
-            .field("path", &self.path)
-            .field("streams", &self.streams.len())
-            .field("connection", &self.connection)
+            .field("path", &self.inner.path())
+            .field("streams", &self.inner.streams().len())
+            .field("connection", self.inner.connection())
             .finish_non_exhaustive()
-    }
-}
-
-/// What a text frame that is not an update is.
-pub(crate) enum Answer {
-    /// `{"result": .., "id": n}`.
-    Result { id: Option<u64>, result: Value },
-    /// `{"error": {"code", "msg"}, "id": n}`.
-    Error {
-        id: Option<u64>,
-        code: i64,
-        msg: String,
-    },
-}
-
-impl Answer {
-    pub(crate) fn parse(text: &str) -> Option<Self> {
-        let value: Value = serde_json::from_str(text).ok()?;
-        let object = value.as_object()?;
-        if object.contains_key("stream") {
-            return None;
-        }
-        let id = object.get("id").and_then(Value::as_u64);
-        if let Some(error) = object.get("error") {
-            return Some(Self::Error {
-                id,
-                code: error
-                    .get("code")
-                    .and_then(Value::as_i64)
-                    .unwrap_or_default(),
-                msg: error
-                    .get("msg")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-            });
-        }
-        if object.contains_key("result") || object.contains_key("id") {
-            return Some(Self::Result {
-                id,
-                result: object.get("result").cloned().unwrap_or(Value::Null),
-            });
-        }
-        None
-    }
-
-    fn id(&self) -> Option<u64> {
-        match self {
-            Self::Result { id, .. } | Self::Error { id, .. } => *id,
-        }
-    }
-}
-
-/// The request `method` with `params`, for request `id`.
-fn request_frame(method: &str, params: Option<&[StreamName]>, id: u64) -> Message {
-    let mut body = json!({ "method": method, "id": id });
-    if let Some(params) = params {
-        let names: Vec<String> = params.iter().map(ToString::to_string).collect();
-        body["params"] = json!(names);
-    }
-    Message::Text(body.to_string().into())
-}
-
-/// What a frame read while request `id` awaits its answer is: the answer, an
-/// answer to another request, or anything else, which the stream yields
-/// afterwards.
-fn correlate(id: u64, message: &Message) -> Correlated<Answer> {
-    let Message::Text(text) = message else {
-        return Correlated::Push;
-    };
-    match Answer::parse(text) {
-        Some(answer) if answer.id() == Some(id) => Correlated::Answer(answer),
-        Some(other) => {
-            tracing::debug!(id = ?other.id(), "uncorrelated answer while awaiting {id}");
-            Correlated::Uncorrelated
-        }
-        None => Correlated::Push,
-    }
-}
-
-/// Send request `method` with `params` on `connection`, paced as the
-/// connection is, and wait for its answer's `result`. A request left
-/// unanswered for the connection's answer timeout is
-/// [`UsdmWsError::NoAnswer`] with its id.
-pub(crate) async fn request(
-    connection: &mut Connection,
-    method: &str,
-    params: Option<&[StreamName]>,
-) -> Result<Value, UsdmWsError> {
-    let id = connection.next_id();
-    let answer = connection
-        .request(|id| request_frame(method, params, id), correlate)
-        .await
-        .map_err(|err| no_answer(err, id))?;
-    match answer {
-        Answer::Result { result, .. } => Ok(result),
-        Answer::Error { code, msg, .. } => Err(UsdmWsError::Refused { code, msg }),
-    }
-}
-
-/// The kit's `NoAnswer` as Binance's, with the id of what went unanswered;
-/// every other failure as the socket error maps it.
-fn no_answer(err: WsError, id: u64) -> UsdmWsError {
-    match err.kind() {
-        Kind::NoAnswer { after } => UsdmWsError::NoAnswer { id, timeout: after },
-        _ => UsdmWsError::from(err),
     }
 }
 
@@ -205,14 +104,8 @@ impl UsdmWs {
         connect_timeout: Duration,
         answer_timeout: Duration,
     ) -> Result<Self, UsdmWsError> {
-        let socket = connect(path.url(base_url), connect_timeout).await?;
-        let connection = Connection::new(socket, Mode::Data)
-            .min_request_interval(MIN_REQUEST_INTERVAL)
-            .answer_timeout(answer_timeout);
         Ok(Self {
-            connection,
-            path,
-            streams: Vec::new(),
+            inner: Bare::open(base_url, path, connect_timeout, answer_timeout).await?,
         })
     }
 
@@ -223,103 +116,51 @@ impl UsdmWs {
     /// server answers with an error; batches answered before it stay
     /// subscribed, and [`streams`](Self::streams) says which.
     pub async fn subscribe(&mut self, streams: &[StreamName]) -> Result<(), UsdmWsError> {
-        if let Some(stream) = streams.iter().find(|s| s.path() != self.path) {
+        let path = self.inner.path();
+        if let Some(stream) = streams.iter().find(|s| s.path() != path) {
             return Err(UsdmWsError::WrongPath {
                 stream: stream.clone(),
-                path: self.path,
+                path,
             });
         }
-        let mut new: Vec<StreamName> = Vec::new();
-        for stream in streams {
-            if !self.streams.contains(stream) && !new.contains(stream) {
-                new.push(stream.clone());
-            }
-        }
-        if self.streams.len() + new.len() > MAX_STREAMS_PER_CONNECTION {
-            return Err(UsdmWsError::TooManyStreams {
-                path: self.path,
-                limit: MAX_STREAMS_PER_CONNECTION,
-            });
-        }
-        for batch in new.chunks(MAX_NAMES_PER_REQUEST) {
-            request(&mut self.connection, "SUBSCRIBE", Some(batch)).await?;
-            self.streams.extend(batch.iter().cloned());
-        }
-        Ok(())
+        self.inner.subscribe(streams).await
     }
 
     /// Unsubscribe from streams. A stream not subscribed is skipped.
     pub async fn unsubscribe(&mut self, streams: &[StreamName]) -> Result<(), UsdmWsError> {
-        let mut gone: Vec<StreamName> = Vec::new();
-        for stream in streams {
-            if self.streams.contains(stream) && !gone.contains(stream) {
-                gone.push(stream.clone());
-            }
-        }
-        for batch in gone.chunks(MAX_NAMES_PER_REQUEST) {
-            request(&mut self.connection, "UNSUBSCRIBE", Some(batch)).await?;
-            self.streams.retain(|s| !batch.contains(s));
-        }
-        Ok(())
+        self.inner.unsubscribe(streams).await
     }
 
     /// The stream names the server says this connection carries.
     pub async fn list_subscriptions(&mut self) -> Result<Vec<String>, UsdmWsError> {
-        let id = self.connection.next_id();
-        let result = request(&mut self.connection, "LIST_SUBSCRIPTIONS", None).await?;
-        serde_json::from_value(result.clone()).map_err(|_| UsdmWsError::Response {
-            id,
-            raw: result.to_string(),
-        })
+        self.inner.list_subscriptions().await
     }
 
     /// Send a protocol ping and wait for the pong, returning the round trip.
     pub async fn ping(&mut self) -> Result<Duration, UsdmWsError> {
-        let start = Instant::now();
-        self.send_ping().await?;
-        self.connection
-            .await_answer(|message| match message {
-                Message::Pong(_) => Correlated::Answer(()),
-                _ => Correlated::Push,
-            })
-            .await
-            .map_err(|err| no_answer(err, 0))?;
-        Ok(start.elapsed())
+        self.inner.ping().await
     }
 
     /// Close the connection.
     pub async fn close(&mut self) -> Result<(), UsdmWsError> {
-        self.connection.close().await?;
-        Ok(())
+        self.inner.close().await
     }
 
     /// The streams this connection carries.
     pub fn streams(&self) -> &[StreamName] {
-        &self.streams
+        self.inner.streams()
     }
 
     /// The path this connection is on.
     pub fn path(&self) -> StreamPath {
-        self.path
-    }
-
-    /// Send a protocol ping without waiting for its pong.
-    async fn send_ping(&mut self) -> Result<(), UsdmWsError> {
-        self.connection
-            .send(Message::Ping(Vec::new().into()))
-            .await?;
-        Ok(())
+        self.inner.path()
     }
 
     /// The server's close code and reason, once it has closed the connection
     /// or the stream has ended without a close frame.
     #[cfg(test)]
     fn close_frame(&self) -> Option<(Option<u16>, String)> {
-        let closed = self.connection.closed()?;
-        Some(match closed.kind() {
-            Kind::Closed { code, reason } => (code, reason.to_owned()),
-            _ => (None, String::new()),
-        })
+        self.inner.close_frame()
     }
 }
 
@@ -327,26 +168,7 @@ impl Stream for UsdmWs {
     type Item = Result<Update, UsdmWsError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        loop {
-            let message = match self.connection.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok(message))) => message,
-                Poll::Ready(Some(Err(err))) => return Poll::Ready(Some(Err(err.into()))),
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => return Poll::Pending,
-            };
-            // The connection yields Text and Binary only; a Binary frame is
-            // not part of Binance's protocol (D12).
-            let Message::Text(text) = message else {
-                continue;
-            };
-            match Update::from_json(&text) {
-                Ok(update) => return Poll::Ready(Some(Ok(update))),
-                // An answer nobody is waiting for, such as one to a request
-                // whose caller gave up.
-                Err(_) if Answer::parse(&text).is_some() => continue,
-                Err(err) => return Poll::Ready(Some(Err(err))),
-            }
-        }
+        Pin::new(&mut self.inner).poll_next(cx)
     }
 }
 
