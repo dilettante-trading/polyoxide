@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

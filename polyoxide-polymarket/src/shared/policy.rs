@@ -7,8 +7,8 @@ use std::time::Duration;
 use polyoxide_core::hooks::{
     AttemptInfo, Decision, DefaultRetryPolicy, Outcome, ResponseMeta, RetryPolicy,
 };
+use polyoxide_core::http::StatusCode;
 use polyoxide_core::rate_limit::RetryConfig;
-use polyoxide_core::reqwest::StatusCode;
 
 /// Polymarket's one retry policy: core's [`DefaultRetryPolicy`], plus
 /// `425 Too Early`.
@@ -69,7 +69,7 @@ impl RetryPolicy for PolymarketRetryPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polyoxide_core::reqwest;
+    use polyoxide_core::http;
     use polyoxide_core::ApiError;
 
     // ── Polymarket's retry decision and the retry delay ──────────
@@ -85,7 +85,7 @@ mod tests {
     fn retries(config: &RetryConfig, status: StatusCode, attempt: u32) -> bool {
         use polyoxide_core::hooks::{Outcome, ResponseMeta};
 
-        let headers = reqwest::header::HeaderMap::new();
+        let headers = http::header::HeaderMap::new();
         let response = ResponseMeta {
             status,
             headers: &headers,
@@ -178,9 +178,9 @@ mod tests {
     fn retries_a_429(config: &RetryConfig, attempt: u32) -> bool {
         use polyoxide_core::hooks::{Outcome, ResponseMeta, RetryPolicy};
 
-        let headers = reqwest::header::HeaderMap::new();
+        let headers = http::header::HeaderMap::new();
         let response = ResponseMeta {
-            status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+            status: http::StatusCode::TOO_MANY_REQUESTS,
             headers: &headers,
         };
         matches!(

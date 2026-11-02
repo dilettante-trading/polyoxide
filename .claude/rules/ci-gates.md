@@ -185,7 +185,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 35 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 44 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -206,7 +206,10 @@ stage does not hold, printing each one's key to copy there.
   `mock_request` items `a_post_sends_its_body_serialised_once`,
   `a_request_s_costs_reach_the_throttle`, `a_request_parts_timeout_bounds_its_attempt` and
   `a_request_parts_timeout_outlasts_the_client_s`; binance's `usdm::error` `tests::response`,
-  `failure_tags_usdm`'s `raw` and the `weight_probe` example's `used_after`.
+  `failure_tags_usdm`'s `raw` and the `weight_probe` example's `used_after`; polymarket's
+  `clob::error`'s, `data::error`'s, `gamma::error`'s, `perps::error`'s and `relay::error`'s
+  `tests::response`, `data::v2::error`'s `tests::parts`, `shared::policy`'s `tests::retries` and
+  `tests::retries_a_429`, and `send_loop`'s `a_429_with_no_retry_left_is_fail_with_its_hold`.
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

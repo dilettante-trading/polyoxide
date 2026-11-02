@@ -53,7 +53,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::RateLimiter;
 use polyoxide_polymarket::shared;
 use polyoxide_test_support::soak::{self, verdict::tolerant as verdict, Pacer};

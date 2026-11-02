@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Server, ServerGuard};
-use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue};
-use polyoxide_core::reqwest::{Method, StatusCode};
+use polyoxide_core::http::header::{HeaderMap, HeaderValue};
+use polyoxide_core::http::{Method, StatusCode};
 use polyoxide_core::{
     ApiError, AttemptInfo, Charge, HttpClient, HttpClientBuilder, LayerCharge, Refused,
     RequestMeta, RequestParts, ResponseMeta, RetryConfig, Throttle,

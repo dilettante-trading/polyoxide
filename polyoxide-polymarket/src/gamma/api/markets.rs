@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use polyoxide_core::reqwest::header::{HeaderValue, CONTENT_TYPE};
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::header::{HeaderValue, CONTENT_TYPE};
+use polyoxide_core::http::Method;
 use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestParts};
 
 use crate::gamma::{

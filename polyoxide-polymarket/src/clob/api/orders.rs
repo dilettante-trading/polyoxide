@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::shared::{signer_cost, TradingRequest};
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
 use serde::{Deserialize, Serialize};
 

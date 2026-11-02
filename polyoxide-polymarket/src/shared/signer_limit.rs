@@ -16,7 +16,7 @@
 use polyoxide_core::capacity::CapacityBucket;
 use polyoxide_core::hold::Hold;
 use polyoxide_core::hooks::{LayerId, Refused};
-use polyoxide_core::reqwest;
+use polyoxide_core::http;
 
 use super::{SIGNER_CANCEL, SIGNER_ORDER};
 
@@ -210,7 +210,7 @@ impl RateLimitStatus {
     /// Returns an all-`None` value rather than an error when the headers are
     /// absent, so callers need not distinguish "not a trading request" from
     /// "trading request with no telemetry".
-    pub fn from_headers(headers: &reqwest::header::HeaderMap) -> Self {
+    pub fn from_headers(headers: &http::header::HeaderMap) -> Self {
         let get = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
 
         Self {
@@ -391,7 +391,7 @@ impl SignerLimiter {
     ///
     /// Responses carrying none of the headers are ignored, so non-trading
     /// requests cannot clear the telemetry.
-    pub fn observe(&self, headers: &reqwest::header::HeaderMap) {
+    pub fn observe(&self, headers: &http::header::HeaderMap) {
         let status = RateLimitStatus::from_headers(headers);
         if status.is_empty() {
             return;
@@ -466,7 +466,7 @@ impl SignerLimiter {
 #[cfg(test)]
 mod limiter_tests {
     use super::*;
-    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use http::header::{HeaderMap, HeaderName, HeaderValue};
     use std::time::Duration;
 
     fn tier_header(tier: &str) -> HeaderMap {
@@ -597,7 +597,7 @@ mod limiter_tests {
 #[cfg(test)]
 mod status_tests {
     use super::*;
-    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use http::header::{HeaderMap, HeaderName, HeaderValue};
 
     fn headers(pairs: &[(&str, &str)]) -> HeaderMap {
         let mut map = HeaderMap::new();

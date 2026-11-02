@@ -18,7 +18,7 @@ use alloy::primitives::{address, keccak256, Address, Bytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{
     ApiError, Authenticator, ClientConfig, DynAuthenticator, HttpClient, RequestParts,
 };
@@ -1379,15 +1379,15 @@ impl RelayClient {
     /// The `Idempotency-Key` header map, with the key trimmed; a blank key is refused.
     fn idempotency_headers(
         idempotency_key: &str,
-    ) -> Result<polyoxide_core::reqwest::header::HeaderMap, RelayError> {
+    ) -> Result<polyoxide_core::http::header::HeaderMap, RelayError> {
         let idempotency_key = idempotency_key.trim();
         if idempotency_key.is_empty() {
             return Err(RelayError::validation("idempotency key must not be empty"));
         }
-        let mut headers = polyoxide_core::reqwest::header::HeaderMap::new();
+        let mut headers = polyoxide_core::http::header::HeaderMap::new();
         headers.insert(
             "Idempotency-Key",
-            polyoxide_core::reqwest::header::HeaderValue::from_str(idempotency_key)
+            polyoxide_core::http::header::HeaderValue::from_str(idempotency_key)
                 .map_err(|e| RelayError::validation(format!("invalid idempotency key: {e}")))?,
         );
         Ok(headers)
@@ -1786,7 +1786,7 @@ impl RelayClient {
         self.post_json(
             endpoint,
             body,
-            polyoxide_core::reqwest::header::HeaderMap::new(),
+            polyoxide_core::http::header::HeaderMap::new(),
             true,
             None,
         )
@@ -1805,7 +1805,7 @@ impl RelayClient {
         &self,
         endpoint: &str,
         body: &B,
-        extra_headers: polyoxide_core::reqwest::header::HeaderMap,
+        extra_headers: polyoxide_core::http::header::HeaderMap,
         allow_relayer_api_key: bool,
         timeout: Option<Duration>,
     ) -> Result<T, RelayError> {
@@ -1865,7 +1865,7 @@ impl Authenticator for RelayGetAuth<'_> {
 /// every attempt.
 struct RelayPostAuth<'a> {
     auth: &'a AuthConfig,
-    extra_headers: &'a polyoxide_core::reqwest::header::HeaderMap,
+    extra_headers: &'a polyoxide_core::http::header::HeaderMap,
 }
 
 impl Authenticator for RelayPostAuth<'_> {
@@ -1878,8 +1878,8 @@ impl Authenticator for RelayPostAuth<'_> {
             headers.insert(name.clone(), value.clone());
         }
         headers.insert(
-            polyoxide_core::reqwest::header::CONTENT_TYPE,
-            polyoxide_core::reqwest::header::HeaderValue::from_static("application/json"),
+            polyoxide_core::http::header::CONTENT_TYPE,
+            polyoxide_core::http::header::HeaderValue::from_static("application/json"),
         );
         parts.headers.extend(headers);
         Ok(())

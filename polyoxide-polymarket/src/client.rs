@@ -184,8 +184,8 @@ impl PolymarketBuilder {
 mod tests {
     use super::*;
     use crate::clob::Credentials;
-    use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
-    use polyoxide_core::reqwest::StatusCode;
+    use polyoxide_core::http::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+    use polyoxide_core::http::StatusCode;
     use polyoxide_core::{ApiError, ErrorResponse};
 
     // Anvil's first well-known key: any valid key builds the client.

@@ -1,7 +1,7 @@
 use crate::shared::{
     self, PolymarketRetryPolicy, RateLimitStatus, SignerLimiter, Tier, TradingRequest,
 };
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{ClientConfig, DynAuthenticator, HttpClient, Request};
 
 use crate::clob::{

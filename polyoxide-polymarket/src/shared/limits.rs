@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "clob")]
+use polyoxide_core::http::Method;
+#[cfg(feature = "clob")]
 use polyoxide_core::rate_limit::Matching;
 use polyoxide_core::rate_limit::{RateLimiter, WindowQuotaTable};
-#[cfg(feature = "clob")]
-use polyoxide_core::reqwest::Method;
 use polyoxide_rt::Runtime;
 
 #[cfg(any(
@@ -311,7 +311,7 @@ pub fn perps_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
 mod tests {
     use std::time::Duration;
 
-    use polyoxide_core::reqwest::Method;
+    use polyoxide_core::http::Method;
     use polyoxide_core::{ApiError, HttpClientBuilder, RequestParts};
 
     /// Notes when it signs: just after the throttle let the attempt go.
@@ -446,7 +446,7 @@ mod runtime_tests {
         ));
 
         throttle.hold(Duration::from_millis(60));
-        let method = polyoxide_core::reqwest::Method::GET;
+        let method = polyoxide_core::http::Method::GET;
         throttle
             .acquire(&RequestMeta {
                 method: &method,

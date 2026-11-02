@@ -303,3 +303,57 @@ file = "polyoxide-binance/tests/failure_tags_usdm.rs"
 item = "raw"
 row = "R22"
 sha256 = "6c45de9ddf27866576688e6b904bc750d9ddee4ea40f49fbe153ca05132c7102"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "15df3e7f56e253ba67afa8fe7137292a19c2bf0e4465eaaf51a0e089527bf521"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "adb3f5f9de89c296b5fc57afaffbe545b468be8840c15e2c24a20ec50c615882"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/v2/error.rs"
+item = "tests::parts"
+row = "R22"
+sha256 = "cb4080877ff97e41920de87b0c0fea4bcbd4310f1348beea4e3c2b5903352101"
+
+[[drift]]
+file = "polyoxide-polymarket/src/gamma/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "e95e0ca7b67d938b97cc1e8ca709a7cbb72e76d9e67f4e243e90b7b8d6ba7de6"
+
+[[drift]]
+file = "polyoxide-polymarket/src/perps/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "d5a466512abbd534dbfb77b44adca87e88820a6cef6e8d5f612a0dbe31574aa6"
+
+[[drift]]
+file = "polyoxide-polymarket/src/relay/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "772db09f794672dfff6f6eb745e72fc720c1cb6028d0fd4239a25130d5a24c35"
+
+[[drift]]
+file = "polyoxide-polymarket/src/shared/policy.rs"
+item = "tests::retries_a_429"
+row = "R22"
+sha256 = "0aed6510685c73bd2fbee458c6e60470faefaf2114031aa90c87fc262ef0c251"
+
+[[drift]]
+file = "polyoxide-polymarket/src/shared/policy.rs"
+item = "tests::retries"
+row = "R22"
+sha256 = "a4ab0773bac0df362c5ba5d662ed7c82aeb60de861788acd421d8945f68adad1"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/send_loop.rs"
+item = "a_429_with_no_retry_left_is_fail_with_its_hold"
+row = "R22"
+sha256 = "e8ddce0c273b51ae5226bd38408c66ae05d095eff6b9fb4d82ec32cc1d5ca529"

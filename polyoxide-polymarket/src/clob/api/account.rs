@@ -4,7 +4,7 @@ use alloy::primitives::Address;
 use std::sync::Arc;
 
 use crate::shared::{SessionSignerScope, Tier};
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

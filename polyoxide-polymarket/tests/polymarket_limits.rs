@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{EffectiveQuota, Matching, RateLimiter, WindowQuotaTable};
 use polyoxide_polymarket::shared;
 
