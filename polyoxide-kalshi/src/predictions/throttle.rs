@@ -687,7 +687,7 @@ mod confirmation_tests {
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::Method;
+    use polyoxide_core::http::Method;
     use polyoxide_core::{Cost, LayerId};
     use tokio::time::Instant;
 
