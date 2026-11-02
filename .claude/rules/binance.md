@@ -45,7 +45,9 @@ crate has its own `usdm::WeightBudget` (`src/usdm/weight.rs`) instead of core's 
 The budget is the client's `Throttle` on core's send loop: each route builder (`GetKlines`,
 `GetTime` and the rest, over a private `Routed<T>`) hands core's `Request` its weight as a `Cost`
 on `usdm::weight::WEIGHT_LAYER` or `FUNDING_LAYER`, and every `Usdm` built with one budget shares
-its hold. Pass one with `UsdmBuilder::weight_budget`.
+its hold. Pass one with `UsdmBuilder::weight_budget`. The budget keeps time on its hold's runtime
+(its cooldown, its funding pace and its wait for the next minute sleep on it): the builder makes
+one with `WeightBudget::new_on` the client's runtime, and a budget passed in keeps its own.
 
 The weight table, `Route::cost`, is measured, not copied: Binance's page is one off at the 100 and
 500 `klines` edges, and does not say that omitting `limit` costs 5 on `klines` and 1 on `depth`.
