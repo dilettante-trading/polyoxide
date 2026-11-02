@@ -122,6 +122,7 @@ pub(crate) fn retry_after_secs(value: Option<&str>) -> Option<Duration> {
     value.and_then(|value| polyoxide_venue::parse_retry_after(value, MAX_COOLDOWN))
 }
 
+/// Clips `text` to 512 bytes, as a message or a logged body carries it.
 pub(crate) fn clip(text: &str) -> String {
     truncate_for_log(text).into_owned()
 }

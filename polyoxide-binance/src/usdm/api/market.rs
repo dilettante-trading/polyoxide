@@ -159,7 +159,16 @@ impl GetKlines {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Vec<Kline>, UsdmError> {
         self.request.send().await
     }
@@ -189,7 +198,16 @@ impl GetFundingRate {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Vec<FundingRate>, UsdmError> {
         self.request.send().await
     }
@@ -218,7 +236,16 @@ impl GetAggTrades {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Vec<AggTrade>, UsdmError> {
         self.request.send().await
     }
@@ -246,7 +273,16 @@ impl GetDepth {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Depth, UsdmError> {
         self.request.send().await
     }

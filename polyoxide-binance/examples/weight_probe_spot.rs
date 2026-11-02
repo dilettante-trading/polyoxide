@@ -128,8 +128,10 @@ async fn used_after(client: &polyoxide_core::reqwest::Client, path: &str) -> u32
 }
 
 async fn wait_for_a_fresh_minute() {
-    // Three seconds past the boundary: the server's count was seen to fall to
-    // 1 only within 3 s of it, and the local clock is not the server's.
+    // Three seconds past the boundary: the margin is inherited from the
+    // USDⓈ-M probe, where the count fell to 1 only within 3 s of it. Spot's
+    // window (`OBSERVED.md`, `## Spot`) showed it at 1 at 07:59:00.0, but the
+    // local clock is not the server's, so the margin stays.
     if let Some(wait) = minute::wait_needed(3_000..=20_000, 3_000, minute::ms_into_minute()) {
         eprintln!(
             "waiting {} s for a fresh minute",

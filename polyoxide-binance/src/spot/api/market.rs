@@ -158,9 +158,9 @@ pub struct GetDepth {
 }
 
 impl GetDepth {
-    /// Levels per side, sent as given. Any value is accepted, and one past
-    /// 5000 is truncated to the maximum. Sets the weight: up to 100 costs 5,
-    /// up to 500 costs 25, up to 1000 costs 50, more costs 250.
+    /// Levels per side, sent as given. Any value is accepted, and a limit past
+    /// 5000 returns 5000 levels. Sets the weight: up to 100 costs 5, up to 500
+    /// costs 25, up to 1000 costs 50, more costs 250.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self
             .request
@@ -174,7 +174,16 @@ impl GetDepth {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Depth, SpotError> {
         self.request.send().await
     }
@@ -198,7 +207,16 @@ impl GetTrades {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Vec<Trade>, SpotError> {
         self.request.send().await
     }
@@ -228,7 +246,16 @@ impl GetAggTrades {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Vec<AggTrade>, SpotError> {
         self.request.send().await
     }
@@ -256,7 +283,16 @@ impl GetKlines {
         self.request.cost()
     }
 
-    /// Execute the request.
+    /// Waits for the budget, sends, and decodes the response.
+    ///
+    /// A `429` holds every request on the budget, then this request is
+    /// retried on the client's schedule; with no retry left and no
+    /// `Retry-After`, the hold runs to the next UTC minute. A `418` holds
+    /// every request for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap
+    /// the call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<Vec<Kline>, SpotError> {
         self.request.send().await
     }

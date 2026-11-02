@@ -2,7 +2,8 @@
 
 Rust client for Binance spot public market data (`api.binance.com`), the `spot` module of
 `polyoxide-binance`: liveness, the exchange listing with its symbols and filters, and the market
-routes that follow in the `market()` namespace. No credentials are needed.
+routes in the `market()` namespace: order book depth, trades, aggregate trades, klines, the
+average price and the tickers. No credentials are needed.
 
 Every request is charged against a `WeightBudget`, because Binance limits each IP by request
 *weight*, which varies with the route and its parameters, rather than by request count. The
@@ -25,7 +26,10 @@ polyoxide-binance = "0.44"
 ## Usage
 
 ```no_run
-use polyoxide_binance::spot::{types::Symbol, Spot};
+use polyoxide_binance::spot::{
+    types::{Interval, Symbol},
+    Spot,
+};
 
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let spot = Spot::new()?;
@@ -38,6 +42,17 @@ let info = spot.exchange().exchange_info().symbol(&btc).send().await?;
 for symbol in &info.symbols {
     println!("{} is {}", symbol.symbol, symbol.status);
 }
+
+let book = spot.market().depth(&btc).limit(10).send().await?;
+println!("{} bids, {} asks", book.bids.len(), book.asks.len());
+
+let candles = spot
+    .market()
+    .klines(&btc, Interval::Hour1)
+    .limit(24)
+    .send()
+    .await?;
+println!("{} hourly candles", candles.len());
 # Ok(())
 # }
 ```
@@ -60,3 +75,27 @@ Each client may have `max_concurrent` requests in flight (default 4), and the bu
 absorbs in-flight weight only while it stays under 600: at the default, one client has at most
 320 in flight on a route at its default (4 × the heaviest, `tickers_24h`'s 80). Four `depth`
 calls with a `limit` above 1000 (250 each) pass it.
+
+## Through the venue-neutral traits
+
+`Spot` implements `polyoxide-venue`'s `MarketData`, `Instruments`, `Trades` and `Candles`, keyed
+`binance.spot:<SYMBOL>` (`spot::key`), so code written against those traits reads spot as it
+reads any other venue. Spot has no funding, so it implements no `Funding`. What only Binance
+publishes rides in `spot::venue`'s `<Record>Ext` types (`InstrumentExt`, `BookExt`, `TradeExt`
+and `CandleExt`); a quote has none.
+
+```no_run
+use std::sync::Arc;
+
+use polyoxide_binance::spot::{self, types::Symbol, Spot};
+use polyoxide_venue::{DynMarketData, MarketData};
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let venue: Arc<DynMarketData<'static>> = DynMarketData::new_arc(Spot::new()?);
+let quote = venue.quote(&spot::key(&Symbol::new("BTCUSDT")?)).await?;
+println!("bid {:?} ask {:?}", quote.bid, quote.ask);
+# Ok(())
+# }
+```
+
+The `spot::venue` module's documentation lists each method's route and weight.
