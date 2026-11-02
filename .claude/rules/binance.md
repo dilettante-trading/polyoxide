@@ -13,9 +13,8 @@ paths:
 `polyoxide-binance`'s `usdm` module (feature `usdm`, on by default) reads public USDⓈ-M futures
 market data on `fapi.binance.com` (`usdm::Usdm::new()`; namespaces `usdm.health()`, `exchange()`,
 `market()`) for consumers that trade both venues. Binance is not a Polymarket host. The umbrella
-re-exports the crate as `polyoxide::binance` under its `binance`, `binance-usdm`,
-`binance-usdm-ws`, `binance-spot`, `binance-spot-ws` and `full` features, none of which its default,
-`polymarket`,
+re-exports the crate as `polyoxide::binance` under its `binance`, `binance-usdm`, `binance-usdm-ws`,
+`binance-spot`, `binance-spot-ws` and `full` features, none of which its default, `polymarket`,
 turns on. Its `spot` module (feature `spot`, on by default) reads public spot market data on
 `api.binance.com`; the `shared` and `spot` sections below hold the rules both modules share and
 spot's own.
@@ -241,7 +240,7 @@ as spot's `StreamSet`. `spot-ws` turns `spot` on.
   most 5 incoming messages a second on a connection, pings, pongs and requests included, and
   closes one past it with 1008 "Too many requests": a request every 250 ms was closed after 16 s,
   and one every 500 ms held for 45 s. So the client enforces all three first (the 1025th stream is
-  refused with nothing sent), and `docs/MUTANTS.md`'s socket-pace row holds the interval.
+  refused with nothing sent), and `docs/MUTANTS.md`'s row (m), the socket pace, holds the interval.
 - **`StreamName` is the only way to name a stream**, because Binance acknowledges every `SUBSCRIBE`,
   an unknown symbol, an unknown stream type and an uppercase symbol included, and an uppercase
   symbol delivers nothing. It refuses an uppercase ASCII letter in a symbol and an explicit

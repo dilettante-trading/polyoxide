@@ -24,11 +24,11 @@ paths:
   `Clob: Trading`.
 - Each passthrough names one type of its module through the path it opens, in a `const _` outside
   `cfg(test)`, so `cargo hack --each-feature` fails a re-export whose `cfg` leaves a feature out.
-- The prelude re-exports a selection of the enabled modules' clients, errors and stream types
-  under the umbrella's feature names, aliasing a stream's `Event` by its venue (`PerpsEvent`,
-  `SportsEvent`, `UsdmEvent`, `SpotEvent`, `PredictionsEvent`). One `const _` per prelude block pins it to its
-  feature, and one more pins the unified client (`polyoxide_polymarket::Polymarket`, also at
-  `polyoxide::polymarket::Polymarket`) to `polymarket`.
+- The prelude re-exports a selection of the enabled modules' clients, errors and stream types under
+  the umbrella's feature names, aliasing a stream's `Event` by its venue (`PerpsEvent`,
+  `SportsEvent`, `UsdmEvent`, `SpotEvent`, `PredictionsEvent`). One `const _` per prelude block pins
+  it to its feature, and one more pins the unified client (`polyoxide_polymarket::Polymarket`, also
+  at `polyoxide::polymarket::Polymarket`) to `polymarket`.
 - Kalshi's prelude names are `Predictions`, `PredictionsBuilder` and `PredictionsError`,
   `Credentials` as `KalshiCredentials` (a bare `Credentials` names the CLOB's), and, with
   `kalshi-predictions-ws`, `Event` as `PredictionsEvent`, `PredictionsWsBuilder`,

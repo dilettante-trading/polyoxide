@@ -5,8 +5,8 @@ paths:
 
 # The CLI (`polyoxide-cli`)
 
-It queries Polymarket's APIs and Binance's USDⓈ-M and spot market data, and depends on the component crates
-directly, never on the umbrella (CLAUDE.md's crate list names the features).
+It queries Polymarket's APIs and Binance's USDⓈ-M and spot market data, and depends on the component
+crates directly, never on the umbrella (CLAUDE.md's crate list names the features).
 
 ## The command tree
 
@@ -35,8 +35,7 @@ command. Each list argument also has a parse test that passes a comma list.
 
 `polymarket clob stream market` and `… user`, `polymarket rtds stream`, `polymarket sports stream`,
 `binance usdm stream` and `binance spot stream` each describe their socket as a
-`commands::stream::Feed` (what each
-event and each error means), and `stream::run` owns the rest:
+`commands::stream::Feed` (what each event and each error means), and `stream::run` owns the rest:
 
 - `-n`, counted in printed events and checked before each wait, so a feed that goes quiet after
   the last wanted event still ends; `-t`, where a timeout too large to add means none;
