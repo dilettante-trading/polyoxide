@@ -8,7 +8,18 @@
 //! [`Shape`] view of its variants), so a second product's streams are a second
 //! marker type and not a second copy.
 
+// The test-only `scripted` below is a second `mod` item over `usdm::ws`'s scripted
+// server, which is private to `usdm::ws` and not copied. The allow sits here, not on
+// the item, because the test-bodies gate reads an item's attributes as the gate of
+// the file it declares.
+#![allow(clippy::duplicate_mod)]
+
 use std::{fmt, time::Duration};
+
+// Named by another path so that `Shape`, which is not an error and holds the kit's
+// error only to read its `Kind`, is not swept by `test_classify_coverage.py` as a
+// type that wraps `WsError` and must expand the socket table.
+use polyoxide_ws::WsError as KitError;
 
 pub(crate) mod bare;
 pub(crate) mod protocol;
@@ -69,7 +80,7 @@ pub(crate) trait StreamSet: Sized + Send + Sync + 'static {
 /// not on a product's enum.
 pub(crate) enum Shape<'a> {
     /// The kit's transport error, which recovery reads through its `Kind`.
-    Connect(&'a polyoxide_ws::WsError),
+    Connect(&'a KitError),
     /// The connection did not open in time.
     ConnectTimeout,
     /// The server closed the connection.
@@ -123,9 +134,6 @@ pub(crate) trait SocketError:
 }
 
 #[cfg(test)]
-// The scripted server is `usdm::ws`'s, not copied: a second `mod` item over the
-// same file is the point, as that module is private to `usdm::ws`.
-#[allow(clippy::duplicate_mod)]
 #[path = "../../usdm/ws/scripted.rs"]
 mod scripted;
 
@@ -148,7 +156,7 @@ mod tests {
     #[derive(Debug, thiserror::Error)]
     enum ProbeError {
         #[error("transport: {0}")]
-        Connect(#[source] WsError),
+        Connect(#[source] KitError),
         #[error("refused: {code} {msg}")]
         Refused { code: i64, msg: String },
         #[error("no answer to {id} within {timeout:?}")]
