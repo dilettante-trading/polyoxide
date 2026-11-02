@@ -210,12 +210,13 @@ def wire_symbol(symbol):
 
 def trading_non_ascii(info):
     """The first `TRADING` symbol of an `exchangeInfo` answer with a non-ASCII character."""
-    row = first(
-        info["symbols"],
-        lambda s: s["status"] == "TRADING" and not s["symbol"].isascii(),
-        "TRADING symbol with a non-ASCII character",
+    for row in info["symbols"]:
+        if row["status"] == "TRADING" and not row["symbol"].isascii():
+            return row["symbol"]
+    sys.exit(
+        "no TRADING symbol with a non-ASCII character listed; "
+        "the non-ASCII stream fixture cannot be captured"
     )
-    return row["symbol"]
 
 
 def stream_list(non_ascii):
@@ -230,6 +231,12 @@ def trim(how, data, name):
             sys.exit(f"{name}: expected an array of at least two rows to keep two of")
         return data[:2]
     if how == "levels":
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("bids"), list)
+            or not isinstance(data.get("asks"), list)
+        ):
+            sys.exit(f"{name}: expected `bids` and `asks` arrays to keep three levels of")
         return {**data, "bids": data["bids"][:3], "asks": data["asks"][:3]}
     return data
 
