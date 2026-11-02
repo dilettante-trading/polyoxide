@@ -310,7 +310,7 @@ impl ListOrders {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn send_raw(self) -> Result<polyoxide_core::reqwest::Response, ClobError> {
+    pub async fn send_raw(self) -> Result<polyoxide_core::Response, ClobError> {
         self.request.send_raw().await
     }
 }

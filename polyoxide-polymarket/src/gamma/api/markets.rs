@@ -165,10 +165,7 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
         return Err(ApiError::from_response(response).await.into());
     }
 
-    let text = response
-        .text()
-        .await
-        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
+    let text = response.text().await?;
     serde_json::from_str(&text).map_err(|e| GammaError::Api(ApiError::from(e)))
 }
 

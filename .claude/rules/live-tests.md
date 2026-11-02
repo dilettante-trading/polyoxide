@@ -40,7 +40,7 @@ anywhere makes the failure `real`, and so does no tag at all. Nothing reads the 
 - The credential loaders (`load_env`, `optional_env`, `keychain`) count an empty value as absent
   and fail through `Missing::or_auth_gated()` as `auth-gated`.
 - `environmental(reason)` and `transient(reason)` tag what no error value carries.
-- Wrap a foreign error in the venue's own error first (`ApiError::Network`,
+- Wrap a foreign error in the venue's own error first (`ApiError::Transport`,
   `UsdmWsError::from(WsError::from(..))`, `RtdsError::from(WsError::from(..))`,
   `ClobWsError::from(WsError::from(..))`, `SportsError::Transport { source: WsError::from(..) }`),
   and a raw socket's close frame likewise, so it takes its tag from the socket table.

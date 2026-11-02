@@ -184,8 +184,8 @@ impl DataApiBuilder {
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 
-        // Sibling hosts reuse the same reqwest client, throttle (and so its
-        // hold), and concurrency permit pool — only the base URL differs.
+        // Sibling hosts reuse the same transport, throttle (and so its hold),
+        // and concurrency permit pool — only the base URL differs.
         let pnl_http_client = http_client.with_base_url(&self.pnl_base_url)?;
         let rankings_http_client = http_client.with_base_url(&self.rankings_base_url)?;
 

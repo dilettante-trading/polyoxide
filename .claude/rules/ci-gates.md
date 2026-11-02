@@ -185,7 +185,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 44 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 56 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -210,6 +210,20 @@ stage does not hold, printing each one's key to copy there.
   `clob::error`'s, `data::error`'s, `gamma::error`'s, `perps::error`'s and `relay::error`'s
   `tests::response`, `data::v2::error`'s `tests::parts`, `shared::policy`'s `tests::retries` and
   `tests::retries_a_429`, and `send_loop`'s `a_429_with_no_retry_left_is_fail_with_its_hold`.
+  The test bodies story 4 re-typed also cite R22, on the ground spec D12 gives (a row asserting an
+  `ApiError::Network` case no transport can produce goes with the variant, its decode case
+  re-pinned on `Response::json`): core's `config` test
+  `http_builder_applies_every_knob_that_is_set`, `error`'s `ReqwestErrors`, `reqwest_errors` and
+  `every_variant_classifies`, `health`'s `a_transport_failure_on_health_is_the_callers_error`
+  and `mock_request`'s `a_request_parts_timeout_bounds_its_attempt` (story 3's entry, its hash
+  replaced); polymarket's `send_loop`
+  `a_transport_error_is_not_retried_and_skips_observe_and_decide`, `mock_relay`'s
+  `relay_timeout_ms_bounds_a_plain_request` and `relay::error`'s `every_variant_classifies`;
+  test-support's `failure_tags` `network_timeout` and `network_connect`; and Binance's `live_usdm`
+  `raw` (Kalshi's live suite is newer than the baseline, so it takes no entry). Story 4 also fixes
+  core's `mock_request` `retries_on_429_then_succeeds`, which mockito answered from its success
+  mock first so it never retried: the 429 mock now goes first with `expect(1)`, the retry
+  happens, and the entry cites R22 too.
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

@@ -968,24 +968,28 @@ impl ClobBuilder {
         let gamma = if let Some(gamma) = self.gamma {
             gamma
         } else {
-            crate::gamma::Gamma::builder()
+            let mut builder = crate::gamma::Gamma::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
-                .runtime(runtime.clone())
-                .build()
-                .map_err(ClobError::Gamma)?
+                .runtime(runtime.clone());
+            if let Some(transport) = &self.config.http_transport {
+                builder = builder.http_transport(transport.clone());
+            }
+            builder.build().map_err(ClobError::Gamma)?
         };
 
         #[cfg(feature = "data")]
         let data = if let Some(data) = self.data {
             data
         } else {
-            crate::data::DataApi::builder()
+            let mut builder = crate::data::DataApi::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
-                .runtime(runtime)
-                .build()
-                .map_err(ClobError::Data)?
+                .runtime(runtime);
+            if let Some(transport) = &self.config.http_transport {
+                builder = builder.http_transport(transport.clone());
+            }
+            builder.build().map_err(ClobError::Data)?
         };
 
         Ok(Clob {
@@ -1038,6 +1042,82 @@ mod tests {
             clob.data.http_client.runtime(),
             &runtime
         ));
+    }
+
+    /// Keeps the URL of each request it is asked to send, and fails it, so
+    /// the test needs no response to build.
+    #[cfg(any(feature = "gamma", feature = "data"))]
+    #[derive(Debug, Default)]
+    struct Recorder(std::sync::Mutex<Vec<String>>);
+
+    #[cfg(any(feature = "gamma", feature = "data"))]
+    impl polyoxide_core::HttpTransport for Recorder {
+        fn send(
+            &self,
+            request: polyoxide_core::HttpRequest,
+        ) -> polyoxide_rt::BoxFuture<Result<polyoxide_core::Response, polyoxide_core::TransportError>>
+        {
+            self.0.lock().unwrap().push(request.url.to_string());
+            Box::pin(async {
+                Err(polyoxide_core::TransportError::new(
+                    polyoxide_core::TransportKind::Other,
+                    "recorded, not sent",
+                ))
+            })
+        }
+    }
+
+    #[cfg(feature = "gamma")]
+    #[tokio::test]
+    async fn the_builders_transport_reaches_the_gamma_client_it_builds() {
+        let recorder = std::sync::Arc::new(Recorder::default());
+        let clob = ClobBuilder::new()
+            .http_transport(recorder.clone())
+            .build()
+            .unwrap();
+
+        let err = clob
+            .gamma
+            .http_client
+            .get_bytes("/markets", &[])
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, polyoxide_core::ApiError::Transport(_)),
+            "{err:?}"
+        );
+        let seen = recorder.0.lock().unwrap().clone();
+        assert!(!seen.is_empty(), "the Gamma client sent nothing on it");
+        assert!(seen.iter().all(|url| url.ends_with("/markets")), "{seen:?}");
+    }
+
+    #[cfg(feature = "data")]
+    #[tokio::test]
+    async fn the_builders_transport_reaches_the_data_client_it_builds() {
+        let recorder = std::sync::Arc::new(Recorder::default());
+        let clob = ClobBuilder::new()
+            .http_transport(recorder.clone())
+            .build()
+            .unwrap();
+
+        let err = clob
+            .data
+            .http_client
+            .get_bytes("/positions", &[])
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, polyoxide_core::ApiError::Transport(_)),
+            "{err:?}"
+        );
+        let seen = recorder.0.lock().unwrap().clone();
+        assert!(!seen.is_empty(), "the Data client sent nothing on it");
+        assert!(
+            seen.iter().all(|url| url.ends_with("/positions")),
+            "{seen:?}"
+        );
     }
 
     #[test]

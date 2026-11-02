@@ -1,8 +1,8 @@
 //! Macros for reducing boilerplate in API client implementations
 
-/// Generates a client builder's six transport setters over a
-/// `ClientConfig` field: `base_url`, `timeout_ms`, `pool_size`,
-/// `with_retry_config`, `max_concurrent` and `runtime`.
+/// Generates a client builder's transport setters over a `ClientConfig`
+/// field: `base_url`, `timeout_ms`, `pool_size`, `with_retry_config`,
+/// `max_concurrent`, `runtime` and `http_transport`.
 ///
 /// `runtime` names `polyoxide_rt::Runtime`, which core does not re-export, so
 /// the invoking crate declares `polyoxide-rt` itself.
@@ -62,6 +62,16 @@ macro_rules! client_config_setters {
         /// request, so every send waits forever.
         pub fn max_concurrent(mut self, max: usize) -> Self {
             self.$config.max_concurrent = Some(max);
+            self
+        }
+
+        /// Send every attempt on `transport` instead of the target's default,
+        /// which is built from the timeout, the pool size and `gzip`.
+        pub fn http_transport(
+            mut self,
+            transport: ::std::sync::Arc<dyn $crate::HttpTransport>,
+        ) -> Self {
+            self.$config.http_transport = Some(transport);
             self
         }
 

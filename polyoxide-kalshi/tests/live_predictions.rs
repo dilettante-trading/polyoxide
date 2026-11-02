@@ -20,7 +20,7 @@ mod common;
 
 use std::time::Duration;
 
-use polyoxide_core::ApiError;
+use polyoxide_core::{ApiError, TransportError, TransportKind};
 use polyoxide_kalshi::predictions::{
     key::Ticker,
     request::{route_templates, template_matches, DEFAULT_COST},
@@ -224,24 +224,57 @@ async fn live_the_route_table_agrees_with_the_endpoint_costs() {
     assert_eq!(checked, 19, "the route table holds nineteen routes");
 }
 
+/// A raw reqwest failure as core's transport error, so it fails by the class core gives it: a
+/// refused connection or a timeout is `Network`, hence transient.
+fn transport(err: polyoxide_core::reqwest::Error) -> ApiError {
+    let kind = if err.is_timeout() {
+        TransportKind::Timeout
+    } else if err.is_connect() {
+        TransportKind::Connect
+    } else if err.is_builder() {
+        TransportKind::Request
+    } else {
+        TransportKind::Other
+    };
+    ApiError::Transport(TransportError::new(kind, err))
+}
+
+/// A raw reqwest response as core's [`polyoxide_core::Response`], so a refusal is read as core
+/// reads one and fails by its status's class.
+fn core_response(response: polyoxide_core::reqwest::Response) -> polyoxide_core::Response {
+    let status = response.status();
+    let headers = response.headers().clone();
+    let url = response.url().clone();
+    polyoxide_core::Response::new(
+        status,
+        headers,
+        url,
+        Box::pin(async move {
+            response
+                .bytes()
+                .await
+                .map_err(|err| TransportError::new(TransportKind::Body, err))
+        }),
+    )
+}
+
 /// Fetches a route's raw JSON, outside the client, for the key comparison.
 async fn raw(http: &polyoxide_core::reqwest::Client, path: &str) -> String {
     let response = http
         .get(format!("{PRODUCTION}{path}"))
         .send()
         .await
-        .map_err(ApiError::Network)
+        .map_err(transport)
         .or_fail(path);
     // A refusal fails as core classifies its status, so its tag says what the nightly does with
     // it: a 429 or a 5xx is transient.
     if !response.status().is_success() {
-        fail(path, &ApiError::from_response(response).await);
+        fail(
+            path,
+            &ApiError::from_response(core_response(response)).await,
+        );
     }
-    response
-        .text()
-        .await
-        .map_err(ApiError::Network)
-        .or_fail(path)
+    response.text().await.map_err(transport).or_fail(path)
 }
 
 fn json(path: &str, text: &str) -> Value {
@@ -289,7 +322,7 @@ async fn live_responses_carry_no_unmodelled_keys() {
     let http = polyoxide_core::reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
-        .map_err(ApiError::Network)
+        .map_err(transport)
         .or_fail("a reqwest client");
     let mut unmodelled = Vec::new();
     let mut check = |found: Vec<String>| unmodelled.extend(found);
@@ -558,7 +591,7 @@ async fn live_catalog_responses_carry_no_unmodelled_keys() {
     let http = polyoxide_core::reqwest::Client::builder()
         .timeout(Duration::from_secs(60))
         .build()
-        .map_err(ApiError::Network)
+        .map_err(transport)
         .or_fail("a reqwest client");
     let mut unmodelled = Vec::new();
     let mut check = |found: Vec<String>| unmodelled.extend(found);

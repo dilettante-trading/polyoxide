@@ -144,6 +144,42 @@ impl ReqwestTransport {
     pub fn new(client: reqwest::Client) -> Self {
         Self { client }
     }
+
+    /// The default native transport, built from a client builder's settings:
+    /// its timeout, its idle connections per host and its `gzip` choice
+    /// (unset keeps reqwest's default, so every client asks for gzip), with a
+    /// ten second connect timeout and no redirects.
+    pub(crate) fn from_settings(
+        timeout: Duration,
+        pool_size: usize,
+        gzip: Option<bool>,
+    ) -> Result<Self, TransportError> {
+        let mut builder = reqwest::Client::builder();
+        if let Some(enabled) = gzip {
+            builder = builder.gzip(enabled);
+        }
+        let client = builder
+            .timeout(timeout)
+            .connect_timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .pool_max_idle_per_host(pool_size)
+            .build()
+            .map_err(map_error)?;
+        Ok(Self::new(client))
+    }
+}
+
+/// The default transport, built from a client builder's settings. The browser
+/// story gates this and `ReqwestTransport` to the native targets and adds the
+/// wasm32 twin, over `fetch`.
+pub(crate) fn default_transport(
+    timeout: Duration,
+    pool_size: usize,
+    gzip: Option<bool>,
+) -> Result<std::sync::Arc<dyn HttpTransport>, TransportError> {
+    Ok(std::sync::Arc::new(ReqwestTransport::from_settings(
+        timeout, pool_size, gzip,
+    )?))
 }
 
 impl HttpTransport for ReqwestTransport {
@@ -419,5 +455,34 @@ mod tests {
 
         assert_eq!(err.kind(), TransportKind::Request, "{err:?}");
         assert_eq!(err.class(), Class::InvalidRequest);
+    }
+
+    #[tokio::test]
+    async fn the_default_transport_follows_no_redirect() {
+        let mut server = mockito::Server::new_async().await;
+        let _moved = server
+            .mock("GET", "/moved")
+            .with_status(302)
+            .with_header("location", "/elsewhere")
+            .create_async()
+            .await;
+        let elsewhere = server
+            .mock("GET", "/elsewhere")
+            .with_status(200)
+            .expect(0)
+            .create_async()
+            .await;
+        let http = crate::HttpClientBuilder::new(server.url()).build().unwrap();
+
+        let err = http
+            .send(crate::RequestParts::new(Method::GET, "/moved"), &[], None)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&err, ApiError::Response(r) if r.status == StatusCode::FOUND),
+            "{err:?}"
+        );
+        elsewhere.assert_async().await;
     }
 }

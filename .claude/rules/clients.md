@@ -17,13 +17,16 @@ paths:
   `Predictions::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
 - Each venue builder holds a `polyoxide_core::ClientConfig` (base URL, timeout, pool size, retry
   config, concurrency, runtime, and the client's default concurrency: relay 2; gamma, data, perps,
-  Binance and Kalshi 4; clob 8) and gets its six transport setters, `base_url`, `timeout_ms`,
+  Binance and Kalshi 4; clob 8) and gets its transport setters, `base_url`, `timeout_ms`,
   `pool_size`, `with_retry_config`, `max_concurrent` and `runtime`, from
   `polyoxide_core::client_config_setters!`; `runtime` names `polyoxide_rt::Runtime`, which core
   does not re-export, so the venue crate declares `polyoxide-rt` itself. Its `build` resolves the
   runtime once with `ClientConfig::runtime_or_default()`, starts from
   `ClientConfig::http_builder()` and gives it `HttpClientBuilder::runtime`, and adds the throttle
   (built on the same runtime) and retry policy the venue installs; the config sets no `gzip`.
+- `http_transport(..)`, from the same macro, injects the `Arc<dyn HttpTransport>` every attempt is
+  sent on; with none set, `build` makes `ReqwestTransport` (`send-loop.md`), and `pool_size` and
+  the client's `gzip` feed only that native default.
 - A venue's own knobs stay on its builder:
   - data: `pnl_base_url`, `rankings_base_url`;
   - perps: `with_rate_limiter`;

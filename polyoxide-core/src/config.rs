@@ -8,10 +8,10 @@ use crate::client::{HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS};
 use crate::rate_limit::RetryConfig;
 
 /// The transport settings a client builder holds: the base URL, the timeout,
-/// the connection pool, the retry schedule, the concurrency budget and the
-/// runtime.
+/// the connection pool, the retry schedule, the concurrency budget, the
+/// runtime and the transport.
 ///
-/// A venue's builder holds one, generates its six setters with
+/// A venue's builder holds one, generates its setters with
 /// [`client_config_setters!`](crate::client_config_setters), and builds its
 /// [`HttpClient`](crate::HttpClient) from [`http_builder`](Self::http_builder),
 /// adding the throttle and the retry policy it installs itself, the throttle
@@ -30,6 +30,10 @@ pub struct ClientConfig {
     pub retry_config: Option<RetryConfig>,
     /// In-flight requests allowed; `None` keeps the client's default.
     pub max_concurrent: Option<usize>,
+    /// The transport every attempt is sent on; `None` keeps the target's
+    /// default, which is built from the timeout, the pool size and the
+    /// client's `gzip` (`ReqwestTransport` on the native targets).
+    pub http_transport: Option<std::sync::Arc<dyn crate::transport::HttpTransport>>,
     /// The runtime every wait, clock read and spawn of the client goes
     /// through; `None` takes [`polyoxide_rt::default_runtime`].
     pub runtime: Option<Arc<dyn Runtime>>,
@@ -47,6 +51,7 @@ impl ClientConfig {
             pool_size: DEFAULT_POOL_SIZE,
             retry_config: None,
             max_concurrent: None,
+            http_transport: None,
             runtime: None,
             default_max_concurrent,
         }
@@ -63,6 +68,10 @@ impl ClientConfig {
             .with_max_concurrent(self.max_concurrent.unwrap_or(self.default_max_concurrent));
         let builder = match &self.runtime {
             Some(runtime) => builder.runtime(Arc::clone(runtime)),
+            None => builder,
+        };
+        let builder = match &self.http_transport {
+            Some(transport) => builder.http_transport(std::sync::Arc::clone(transport)),
             None => builder,
         };
         match &self.retry_config {
@@ -140,7 +149,7 @@ mod tests {
         let started = std::time::Instant::now();
         let err = http.get_bytes("/", &[]).await.unwrap_err();
         assert!(
-            matches!(&err, ApiError::Network(e) if e.is_timeout()),
+            matches!(&err, ApiError::Transport(e) if e.kind() == crate::TransportKind::Timeout),
             "expected a timeout, got {err:?}"
         );
         assert!(started.elapsed() < Duration::from_secs(5));
@@ -239,5 +248,40 @@ mod tests {
         assert_eq!(config.timeout_ms, 30_000);
         assert_eq!(config.pool_size, 10);
         assert!(config.retry_config.is_none());
+    }
+
+    /// A transport that fails every attempt, so a request that reaches it
+    /// proves the setter's value is the one the client sends on.
+    #[derive(Debug)]
+    struct Refusing;
+
+    impl crate::HttpTransport for Refusing {
+        fn send(
+            &self,
+            _request: crate::HttpRequest,
+        ) -> polyoxide_rt::BoxFuture<Result<crate::Response, crate::TransportError>> {
+            Box::pin(async {
+                Err(crate::TransportError::new(
+                    crate::TransportKind::Other,
+                    "refused by the test",
+                ))
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn an_injected_transport_is_the_one_the_client_sends_on() {
+        let knobs = Knobs {
+            config: ClientConfig::new("https://example.com", 4),
+        }
+        .http_transport(std::sync::Arc::new(Refusing));
+        assert!(knobs.config.http_transport.is_some());
+
+        let http = knobs.config.http_builder().build().unwrap();
+        let err = http.get_bytes("/", &[]).await.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Transport error: other: refused by the test"
+        );
     }
 }

@@ -290,7 +290,7 @@ impl RelayClient {
         parts: RequestParts,
         auth: Option<&DynAuthenticator<'_>>,
         log_failure: Option<&str>,
-    ) -> Result<polyoxide_core::reqwest::Response, RelayError> {
+    ) -> Result<polyoxide_core::Response, RelayError> {
         self.http_client
             .send(parts, &[], auth)
             .await
@@ -320,7 +320,7 @@ impl RelayClient {
     }
 
     /// GET `url` with no auth.
-    async fn get(&self, url: &Url) -> Result<polyoxide_core::reqwest::Response, RelayError> {
+    async fn get(&self, url: &Url) -> Result<polyoxide_core::Response, RelayError> {
         self.send(Self::parts(Method::GET, url), None, None).await
     }
 
@@ -349,7 +349,7 @@ impl RelayClient {
         url: &Url,
         allow_builder: bool,
         allow_relayer_api_key: bool,
-    ) -> Result<polyoxide_core::reqwest::Response, RelayError> {
+    ) -> Result<polyoxide_core::Response, RelayError> {
         let auth = self.auth()?;
         if !allow_builder && matches!(auth, AuthConfig::Builder(_)) {
             return Err(RelayError::validation(format!(
@@ -405,7 +405,7 @@ impl RelayClient {
             ))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<NonceResponse>().await.map_err(ApiError::from)?;
+        let data = resp.json::<NonceResponse>().await?;
         Ok(data.nonce)
     }
 
@@ -422,7 +422,7 @@ impl RelayClient {
         let resp = self.get(&url).await?;
         resp.json::<RelayerTransaction>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// List the most recent relayer transactions owned by the authenticated user.
@@ -443,7 +443,7 @@ impl RelayClient {
         let resp = self.get_authed("/transactions", &url, true, true).await?;
         resp.json::<Vec<RelayerTransaction>>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// List all relayer API keys owned by the authenticated address.
@@ -464,7 +464,7 @@ impl RelayClient {
             .await?;
         resp.json::<Vec<RelayerApiKey>>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// Check whether a Safe wallet has been deployed on-chain.
@@ -475,10 +475,7 @@ impl RelayClient {
             .join(&format!("deployed?address={}", safe_address))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp
-            .json::<DeployedResponse>()
-            .await
-            .map_err(ApiError::from)?;
+        let data = resp.json::<DeployedResponse>().await?;
         Ok(data.deployed)
     }
 
@@ -501,11 +498,7 @@ impl RelayClient {
             ))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        Ok(resp
-            .json::<DeployedResponse>()
-            .await
-            .map_err(ApiError::from)?
-            .deployed)
+        Ok(resp.json::<DeployedResponse>().await?.deployed)
     }
 
     /// Fetch the next nonce for `owner`'s wallet of `wallet_type`
@@ -528,11 +521,7 @@ impl RelayClient {
             ))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        Ok(resp
-            .json::<ExecuteParams>()
-            .await
-            .map_err(ApiError::from)?
-            .nonce)
+        Ok(resp.json::<ExecuteParams>().await?.nonce)
     }
 
     /// Poll a submitted transaction (`GET /v1/account/transactions/{id}`).
@@ -556,7 +545,7 @@ impl RelayClient {
         let resp = self.get(&url).await?;
         resp.json::<GaslessTransaction>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// Find which account wallet `owner` has deployed.
@@ -649,7 +638,7 @@ impl RelayClient {
             .join(&format!("relay-payload?address={}&type=PROXY", address))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<RelayPayload>().await.map_err(ApiError::from)?;
+        let data = resp.json::<RelayPayload>().await?;
         let relay_address: Address = data
             .address
             .parse()
@@ -1836,7 +1825,7 @@ impl RelayClient {
                 Some(endpoint),
             )
             .await?;
-        let response_text = resp.text().await.map_err(ApiError::from)?;
+        let response_text = resp.text().await?;
         polyoxide_core::decode_json(&path, &response_text).map_err(|e| ApiError::from(e).into())
     }
 }

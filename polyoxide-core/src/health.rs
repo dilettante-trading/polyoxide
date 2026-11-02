@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use http::Method;
 use polyoxide_rt::{Instant, Runtime};
-use reqwest::Response;
 
 use crate::client::HttpClient;
 use crate::error::ApiError;
 use crate::hooks::{Authenticator, Cost, DynAuthenticator, RequestParts};
 use crate::request::RequestError;
+use crate::response::Response;
 
 /// A successful [`HttpClient::health`] ping.
 #[derive(Debug)]

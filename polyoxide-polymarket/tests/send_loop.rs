@@ -409,7 +409,7 @@ async fn a_transport_error_is_not_retried_and_skips_observe_and_decide() {
         .unwrap();
 
     let err = http.send(rows(), &[], None).await.unwrap_err();
-    assert!(matches!(err, ApiError::Network(_)), "{err:?}");
+    assert!(matches!(err, ApiError::Transport(_)), "{err:?}");
     assert_eq!(err.class(), Class::Network);
     assert_eq!(
         throttle.log.entries(),

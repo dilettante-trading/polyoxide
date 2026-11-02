@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::Method;
-use reqwest::Response;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::client::HttpClient;
 use crate::hooks::{Cost, DynAuthenticator, RequestParts};
+use crate::response::Response;
 use crate::ApiError;
 
 /// Query parameter builder
@@ -171,10 +171,7 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
         let path = self.path.clone();
         let response = self.send_raw().await?;
 
-        let text = response
-            .text()
-            .await
-            .map_err(|e| E::from(ApiError::from(e)))?;
+        let text = response.text().await.map_err(E::from)?;
 
         crate::decode_json(&path, &text).map_err(|e| E::from(ApiError::from(e)))
     }

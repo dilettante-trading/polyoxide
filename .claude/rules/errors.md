@@ -37,7 +37,7 @@ paths:
   `From<serde_json::Error>` (core's `impl_api_error_conversions!` is gone).
 - `RequestError` is a marker for any `From<ApiError> + Debug` type.
 - `RelayError::Api` wraps `ApiError` (DRIFT R7): a relayer failure is classed by its status; a
-  transport, URL or JSON failure is `Api(Network | Url | Serialization)`; a refusal made before
+  transport, URL or JSON failure is `Api(Transport | Url | Serialization)`; a refusal made before
   sending (validation, missing auth, a header that could not be built) is `Api(Validation)`
   through `RelayError::validation`, as clob's is.
 
@@ -62,9 +62,15 @@ inner and auxiliary types included: `V2Error`, `VenueError`, `BurstCapacityExcee
   a ping's 2xx whose body says it is not ok), with a `429`'s `Retry-After` as its wait and every
   status's `Retry-After` as `retry_after()`. `ApiError::Validation` and `Sign` are
   `InvalidRequest`.
+- `ApiError::Transport(TransportError)` is classed by its kind: `Request`, a request that could not
+  be built, is `InvalidRequest`, and `Connect`, `Timeout`, `Body` and `Other` are `Network`.
+  `TransportError` is built by `TransportError::new(kind, source)`, so a custom transport can
+  make one, and is in core's `const _` assertion. `ApiError::Network` and `classify_reqwest` are
+  gone.
 - A failure of clob's Gamma dependency is `ClobError::Gamma`, classed as the Gamma error; a Data
-  client clob could not build is `ClobError::Data`, classed as the Data error. A reqwest error
-  that broke off mid-body is `Network`, though reqwest labels it a decode error.
+  client clob could not build is `ClobError::Data`, classed as the Data error. A body that
+  broke off mid-read is a `TransportKind::Body` failure, `Network`, though reqwest labels it a
+  decode error.
 - Each crate's `lib.rs` lists its error types in a `const _` assertion, gated like the types
   (`polyoxide-venue`'s names the trait `crate::Classify`), so a missing impl fails the build.
   `.github/scripts/tests/test_classify_coverage.py` fails when a public error type is missing from

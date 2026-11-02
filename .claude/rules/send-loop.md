@@ -97,6 +97,31 @@ The loop retries only what the client's policy decides; callers decide with
 - Binance's `UsdmRetryPolicy` retries a `429` and never a `425` (`binance.md`).
 - No policy retries 5xx or 408 (AD-17).
 
+## The transport
+
+`HttpClient` sends every attempt through a private `Arc<dyn HttpTransport>`
+(`polyoxide-core/src/transport.rs`). The loop builds an `HttpRequest`: the base URL joined with
+the path and the query form-urlencoded onto it as reqwest's `.query()` did, the method, the
+signed headers, the body, and a `timeout` that is always set (the request's own, else the
+client's) and bounds the whole exchange, body included. The transport answers with a `Response`,
+an owned head and a lazy body read by `bytes()`, `text()` and `json()`, each into `ApiError`. The
+loop decides on the head, releases the permit, then reads an error body.
+
+- `ClientConfig::http_transport`, the `http_transport(..)` setter of `client_config_setters!` and
+  `HttpClientBuilder::http_transport(..)` inject one. With none set, `build` makes
+  `ReqwestTransport` from the builder's timeout, pool size and `gzip` (unset), a 10 s connect
+  timeout and no redirects. `pool_size` and `gzip` feed only that native default.
+- A transport that cannot produce a response is `ApiError::Transport(TransportError)`, neither
+  observed nor retried. `TransportError::kind()` is `Connect`, `Timeout`, `Body`, `Request` or
+  `Other`; only `Request` is `InvalidRequest`, so a body that broke off mid-read is `Network`.
+  `ReqwestTransport` maps a reqwest error through one private function: no foreign-error `From`
+  impl exists (`errors.md`).
+- `Pong::response`, `Request::send_raw` and clob's `ListOrders::send_raw` return core's
+  `Response`, and `ErrorResponse::read`, `ApiError::from_response` and `retry_after_header` take
+  its head.
+- `polyoxide-core/tests/transport_injection.rs` drives a retry, a hold, the permit rule and a
+  transport failure through a recording transport.
+
 ## reqwest, gzip and the header pins
 
 - Core is the only member that declares reqwest (AD-18): it enables `json`, `rustls-tls` and
@@ -104,9 +129,10 @@ The loop retries only what the client's policy decides; callers decide with
   which every other member's src, tests and examples name its client types (`Client`, `Response`,
   `RequestBuilder`). The request vocabulary, `Method`, `StatusCode`, `HeaderMap`, `HeaderValue`
   and `header::*`, they name through `polyoxide_core::http`, core's re-export of the `http` crate:
-  the very types reqwest re-exports, so a path change only. No crate but core sends
-  through `HttpClient`'s reqwest client. `test_dependency_fences.py` fails on any other member's
-  direct dependency, so no crate can change reqwest's features for the rest.
+  the very types reqwest re-exports, so a path change only. Nothing but `ReqwestTransport` sends
+  through reqwest: `HttpClient` holds a transport (`## The transport`).
+  `test_dependency_fences.py` fails on any other member's direct dependency, so no crate can
+  change reqwest's features for the rest.
 - `HttpClientBuilder::gzip` is unset by default, which leaves reqwest's default: every client asks
   for gzip (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped). Never call `.gzip(...)` on a client
   builder or give `ClientConfig` a gzip knob: 0.37.0 forced it off and took compression away from

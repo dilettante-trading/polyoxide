@@ -14,15 +14,11 @@ use crate::hooks::{
     Throttle,
 };
 use crate::rate_limit::{RateLimiter, RetryConfig};
+use crate::transport::{default_transport, HttpTransport};
 
 /// Extract the `Retry-After` header value as a string, if present and valid UTF-8.
-pub fn retry_after_header(response: &reqwest::Response) -> Option<String> {
-    response
-        .headers()
-        .get(RETRY_AFTER)?
-        .to_str()
-        .ok()
-        .map(String::from)
+pub fn retry_after_header(headers: &http::HeaderMap) -> Option<String> {
+    headers.get(RETRY_AFTER)?.to_str().ok().map(String::from)
 }
 
 /// Default request timeout in milliseconds
@@ -33,12 +29,15 @@ pub const DEFAULT_POOL_SIZE: usize = 10;
 /// Shared HTTP client with base URL, throttle, retry policy and retry config.
 ///
 /// This is the common structure used by all API clients to hold the
-/// configured reqwest client, base URL, and the hooks its send loop,
-/// [`send`](Self::send), runs on every request.
+/// transport every attempt is sent on, the base URL, and the hooks its send
+/// loop, [`send`](Self::send), runs on every request.
 #[derive(Clone)]
 pub struct HttpClient {
-    /// The underlying reqwest HTTP client
-    pub client: reqwest::Client,
+    /// The transport every attempt is sent on, shared with every
+    /// [`with_base_url`](Self::with_base_url) sibling.
+    pub(crate) transport: Arc<dyn HttpTransport>,
+    /// How long an attempt may take unless its request sets its own.
+    pub(crate) timeout: Duration,
     /// Base URL for API requests
     pub base_url: Url,
     pub(crate) throttle: Arc<DynThrottle<'static>>,
@@ -53,7 +52,7 @@ pub struct HttpClient {
 impl std::fmt::Debug for HttpClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpClient")
-            .field("client", &self.client)
+            .field("transport", &self.transport)
             .field("base_url", &self.base_url)
             .field("retry_config", &self.retry_config)
             .field("runtime", &self.runtime)
@@ -65,7 +64,7 @@ impl std::fmt::Debug for HttpClient {
 impl HttpClient {
     /// Clone this client, pointed at a different base URL.
     ///
-    /// The underlying reqwest client (and so its connection pool), throttle
+    /// The transport (and so its connection pool), throttle
     /// (and so its hold), retry policy, retry config, runtime, and concurrency limiter
     /// are all shared with the original. Use this to reach a sibling API host
     /// that should share the same transport configuration and request budget —
@@ -182,6 +181,7 @@ pub struct HttpClientBuilder {
     max_concurrent: Option<usize>,
     runtime: Option<Arc<dyn Runtime>>,
     gzip: Option<bool>,
+    http_transport: Option<Arc<dyn HttpTransport>>,
 }
 
 impl HttpClientBuilder {
@@ -197,6 +197,7 @@ impl HttpClientBuilder {
             max_concurrent: None,
             runtime: None,
             gzip: None,
+            http_transport: None,
         }
     }
 
@@ -280,23 +281,31 @@ impl HttpClientBuilder {
         self
     }
 
+    /// Send every attempt on `transport` instead of the target's default,
+    /// shared with every [`with_base_url`](HttpClient::with_base_url) sibling.
+    ///
+    /// The builder's timeout still travels with each request, as its
+    /// `HttpRequest::timeout`, but [`pool_size`](Self::pool_size) and
+    /// [`gzip`](Self::gzip) feed only the default `ReqwestTransport`: a
+    /// transport you inject owns its own connections and compression.
+    pub fn http_transport(mut self, transport: Arc<dyn HttpTransport>) -> Self {
+        self.http_transport = Some(transport);
+        self
+    }
+
     /// Build the HTTP client.
     pub fn build(self) -> Result<HttpClient, ApiError> {
-        let mut builder = reqwest::Client::builder();
-        if let Some(enabled) = self.gzip {
-            builder = builder.gzip(enabled);
-        }
-        let client = builder
-            .timeout(Duration::from_millis(self.timeout_ms))
-            .connect_timeout(Duration::from_secs(10))
-            .redirect(reqwest::redirect::Policy::none())
-            .pool_max_idle_per_host(self.pool_size)
-            .build()?;
+        let timeout = Duration::from_millis(self.timeout_ms);
+        let transport = match self.http_transport {
+            Some(transport) => transport,
+            None => default_transport(timeout, self.pool_size, self.gzip)?,
+        };
 
         let base_url = Url::parse(&self.base_url)?;
 
         Ok(HttpClient {
-            client,
+            transport,
+            timeout,
             base_url,
             throttle: self
                 .throttle

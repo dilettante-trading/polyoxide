@@ -42,21 +42,22 @@ fn test_request_with_retry(
 async fn retries_on_429_then_succeeds() {
     let mut server = Server::new_async().await;
 
-    // mockito matches in reverse creation order (LIFO), so create the success mock first
-    // and the 429 mock second. The 429 will be matched first, then removed, leaving the 200.
+    // mockito answers with the first matching mock still short of its expected hits, so the 429
+    // mock goes first with `expect(1)`: it answers once, and the success mock, made second,
+    // answers the retry.
+    let retry_mock = server
+        .mock("GET", "/retry-test")
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .expect(1)
+        .create_async()
+        .await;
+
     let success_mock = server
         .mock("GET", "/retry-test")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"value": "ok"}"#)
-        .create_async()
-        .await;
-
-    let retry_mock = server
-        .mock("GET", "/retry-test")
-        .with_status(429)
-        .with_header("retry-after", "0")
-        .expect_at_most(1)
         .create_async()
         .await;
 
@@ -579,7 +580,7 @@ async fn a_request_parts_timeout_bounds_its_attempt() {
     let err = http.send(parts, &[], None).await.unwrap_err();
     let elapsed = start.elapsed();
     assert!(
-        matches!(&err, ApiError::Network(e) if e.is_timeout()),
+        matches!(&err, ApiError::Transport(e) if e.kind() == polyoxide_core::TransportKind::Timeout),
         "{err:?}"
     );
     assert!(
