@@ -14,6 +14,9 @@
 //! `docs/specs/binance/OBSERVED.md`, under `## Spot`.
 
 pub mod error;
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod fixtures;
 pub mod stream;
 
 use std::{fmt, time::Duration};

@@ -351,4 +351,54 @@ mod tests {
         assert_eq!(err.retry_after(), None);
         assert!(!err.is_retriable());
     }
+
+    #[test]
+    fn every_captured_envelope_names_a_stream_this_crate_builds_and_echoes_it() {
+        use crate::spot::ws::fixtures;
+
+        let btc = Symbol::new("BTCUSDT").unwrap();
+        // Each fixture, with the name its capture subscribed to.
+        let expected = [
+            (fixtures::AGG_TRADE, "btcusdt@aggTrade"),
+            (fixtures::TRADE, "btcusdt@trade"),
+            (fixtures::KLINE, "btcusdt@kline_1m"),
+            (fixtures::MINI_TICKER, "btcusdt@miniTicker"),
+            (fixtures::ALL_MINI_TICKERS, "!miniTicker@arr"),
+            (fixtures::TICKER, "btcusdt@ticker"),
+            (fixtures::BOOK_TICKER, "btcusdt@bookTicker"),
+            (fixtures::PARTIAL_DEPTH, "btcusdt@depth5"),
+            (fixtures::PARTIAL_DEPTH_100MS, "btcusdt@depth20@100ms"),
+            (fixtures::AVG_PRICE, "btcusdt@avgPrice"),
+        ];
+        for (frame, wire) in expected {
+            let envelope: serde_json::Value = serde_json::from_str(frame).unwrap();
+            assert_eq!(envelope["stream"], wire);
+            let name: StreamName = wire.parse().unwrap();
+            assert_eq!(name.to_string(), wire);
+        }
+        let parsed: StreamName = "btcusdt@depth20@100ms".parse().unwrap();
+        assert_eq!(
+            parsed,
+            StreamName::PartialDepth(btc, DepthLevels::Twenty, DepthSpeed::Ms100)
+        );
+
+        // The non-ASCII symbol's name is echoed as sent, and parses back to the
+        // name that renders it.
+        let envelope: serde_json::Value =
+            serde_json::from_str(fixtures::NON_ASCII_MINI_TICKER).unwrap();
+        let echoed = envelope["stream"].as_str().unwrap();
+        assert!(!echoed.is_ascii(), "{echoed}");
+        let name: StreamName = echoed.parse().unwrap();
+        assert!(matches!(&name, StreamName::MiniTicker(s) if !s.as_str().is_ascii()));
+        assert_eq!(name.to_string(), echoed);
+
+        // And every file in `ALL` is an envelope whose name parses.
+        assert_eq!(fixtures::ALL.len(), 11);
+        for (stem, frame) in fixtures::ALL {
+            let envelope: serde_json::Value = serde_json::from_str(frame).unwrap();
+            let echoed = envelope["stream"].as_str().unwrap();
+            let name: StreamName = echoed.parse().unwrap_or_else(|e| panic!("{stem}: {e}"));
+            assert_eq!(name.to_string(), echoed, "{stem}");
+        }
+    }
 }
