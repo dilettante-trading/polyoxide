@@ -142,12 +142,19 @@ async fn book_returns_every_level_of_the_native_depth_best_first() {
 async fn instrument_reads_its_pair_from_exchange_info() {
     let mut server = Server::new_async().await;
     // The host answers `?symbol=` with that one row; the fixture holds several,
-    // so the read has to pick the right one out.
+    // so the read has to pick the right one out. BTCUSDT is the fixture's first
+    // row, so the rows are rotated to put it elsewhere: a read that took the
+    // first row would then return another pair.
+    let mut body: Value = serde_json::from_str(&fixture("exchange_info")).unwrap();
+    let rows = body["symbols"].as_array_mut().unwrap();
+    assert!(rows.len() > 1, "a fixture of several rows");
+    rows.rotate_left(1);
+    assert_ne!(rows[0]["symbol"], "BTCUSDT", "BTCUSDT is not the first row");
     let mock = route(
         &mut server,
         "/api/v3/exchangeInfo",
         "symbol=BTCUSDT",
-        &fixture("exchange_info"),
+        &body.to_string(),
         2,
     )
     .await;
