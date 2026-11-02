@@ -14,10 +14,12 @@
 //! `docs/specs/binance/OBSERVED.md`, under `## Spot`.
 
 pub mod error;
+pub mod stream;
 
 use std::{fmt, time::Duration};
 
 pub use error::{SpotWsError, StopCause};
+pub use stream::{DepthLevels, DepthSpeed, InvalidStreamName, StreamName};
 
 /// The production stream host. The client appends `/stream`.
 pub const SPOT_WS_BASE: &str = "wss://stream.binance.com:9443";

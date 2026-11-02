@@ -56,6 +56,8 @@ const _: fn() = || {
     is::<spot::types::InvalidSymbol>();
     #[cfg(feature = "spot-ws")]
     is::<spot::ws::SpotWsError>();
+    #[cfg(feature = "spot-ws")]
+    is::<spot::ws::InvalidStreamName>();
 };
 
 // Every product implements its class's bundle; one that drops a defining
