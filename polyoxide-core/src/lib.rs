@@ -6,6 +6,9 @@
 //! its HTTP clients on, and names no venue:
 //! - Shared error types and error handling
 //! - HTTP client configuration
+//! - The transport seam, [`HttpTransport`], with the [`Response`] it answers
+//!   with and the [`TransportError`] it fails with, so the send loop names no
+//!   HTTP library
 //! - Request builder utilities
 //! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
 //!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`]), and one health
@@ -54,7 +57,9 @@ pub mod hooks;
 mod query;
 pub mod rate_limit;
 pub mod request;
+pub mod response;
 pub mod send;
+pub mod transport;
 
 #[cfg(feature = "keychain")]
 pub mod keychain;
@@ -112,7 +117,10 @@ pub use rate_limit::{
     BucketId, EffectiveQuota, Matching, QuotaRow, RateLimiter, RetryConfig, WindowQuotaTable,
 };
 pub use request::{QueryBuilder, Request, RequestError};
+pub use response::Response;
 pub use send::decode_json;
+pub use transport::ReqwestTransport;
+pub use transport::{HttpRequest, HttpTransport, TransportError, TransportKind};
 
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainError;
@@ -124,6 +132,7 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<ApiError>();
     is::<Refused>();
+    is::<TransportError>();
     #[cfg(feature = "keychain")]
     is::<KeychainError>();
 };

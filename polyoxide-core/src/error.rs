@@ -6,6 +6,7 @@ use polyoxide_venue::{class_for_status, parse_retry_after, Class, Classify};
 use thiserror::Error;
 
 use crate::hooks::Refused;
+use crate::transport::TransportError;
 
 /// An unsuccessful response, read whole: what [`ApiError::Response`] carries.
 ///
@@ -101,6 +102,11 @@ pub enum ApiError {
     /// Network error
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
+
+    /// The transport failed: no response arrived, or its body could not be
+    /// read. Its class is its kind's.
+    #[error("Transport error: {0}")]
+    Transport(#[from] TransportError),
 
     /// JSON serialization/deserialization error
     #[error("Serialization error: {0}")]
@@ -202,6 +208,7 @@ impl Classify for ApiError {
             }
             Self::Validation(_) => Class::InvalidRequest,
             Self::Network(err) => classify_reqwest(err),
+            Self::Transport(err) => err.class(),
             Self::Serialization(_) => Class::Decode,
             Self::Url(_) => Class::InvalidRequest,
             Self::Refused(refused) => refused.class(),
