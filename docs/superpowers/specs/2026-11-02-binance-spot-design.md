@@ -12,8 +12,8 @@ spec binds.
 **Plans:** two, run with the supervised option (§6). Plan 1,
 `docs/plans/2026-11-02-binance-spot-rest.md`: the shared REST plumbing, `ProductClass::Spot`,
 spot REST, `spot::venue` and the umbrella's `binance-spot`. Plan 2,
-`docs/plans/<date>-binance-spot-ws.md`: the shared socket plumbing, `spot-ws`, the CLI command and
-`binance-spot-ws`, written after the WebSocket probe (§10) settles spot's socket limits.
+`docs/plans/2026-11-02-binance-spot-ws.md`: the shared socket plumbing, `spot-ws`, the CLI command
+and `binance-spot-ws`, written after the WebSocket probe (§10) settled spot's socket limits.
 
 ## 1. Goal and scope
 
@@ -260,8 +260,10 @@ extension: `ticker/bookTicker` carries nothing beyond the record's fields.
 
 ### 5.9 Streams (`spot-ws`, plan 2)
 
-`SpotWs` (one connection) and `SpotWsBuilder`/`SupervisedSpotWs`, on `shared::ws` with one path.
-`DEFAULT_WS_URL = "wss://stream.binance.com:9443/stream"`, settable.
+`SpotWs` (one connection) and `SpotWsBuilder`/`SupervisedSpotWs`, on `shared::ws` with one path,
+`/stream`. `SPOT_WS_BASE = "wss://stream.binance.com:9443"` is the host, as `USDM_WS_BASE` is, and
+`base_url` sets another; the client appends `/stream`, so a test server's base works as it does
+for `usdm`. `SpotWs::connect(streams)` and `connect_to(base_url, streams)` take no path.
 
 | `StreamName` | Wire name | `Payload` |
 |---|---|---|
@@ -276,10 +278,13 @@ extension: `ticker/bookTicker` carries nothing beyond the record's fields.
 | `AvgPrice(s)` | `<s>@avgPrice` | `AvgPrice(AvgPriceEvent)` |
 
 An unrecognised frame is `Payload::Unknown`. Spot has one path, so `spot::ws::StreamPath` has
-one variant, and `Event::Disconnected` and `Reconnected` keep their `{ path }` field: the shared
-code and a consumer folding outages treat both products alike. `StreamName` is the only way to
-name a stream; `PartialDepthEvent` and `BookTickerEvent` carry the symbol parsed from the
-envelope's `stream`.
+one variant, `Stream` (`as_str` `"stream"`), and `Event::Disconnected` and `Reconnected` keep
+their `{ path }` field: the shared code and a consumer folding outages treat both products alike.
+`StreamName` is the only way to name a stream. A partial-depth frame carries no symbol, so
+`PartialDepthEvent::symbol` is parsed from the envelope's `stream` and not serialised back; a
+`bookTicker` frame carries its symbol as `s` and no event type (`OBSERVED.md`, `### Frames`). The
+keys Binance documents as "Ignore", `M` on trades and aggregate trades and `B` on the kline, are
+not modelled, as `usdm`'s kline `B` is not. The payload types' fields are plan 2's names contract.
 
 The client enforces spot's rules first: at most 1024 streams per connection, requests paced at
 one per 500 ms (2 a second). The WebSocket probe's request every 250 ms was closed after 16 s
@@ -288,22 +293,47 @@ with 1008 "Too many requests", and one every 500 ms held for 45 s with pings and
 requests when one slips, with the automatic pong and the wall-clock ping five in all, and since
 one request can carry all 1024 names a replay costs little at that pace. A request carries at
 most 1024 names, the connection's cap (`usdm`'s is 200): the probe's one `SUBSCRIBE` of 1024
-names, 23,598 bytes, was acknowledged and held. Every `Event::Disconnected { path }` is followed by
+names, 23,598 bytes, was acknowledged and held. `spot::ws` exposes them as
+`MAX_STREAMS_PER_CONNECTION = 1024`, `MAX_NAMES_PER_REQUEST = 1024` and
+`MIN_REQUEST_INTERVAL = 500 ms`. The builder's defaults are `usdm`'s: a ping every 20 s (the
+server's own cadence, measured), stale after 30 s, backoff from 500 ms to 60 s, a 10 s connect
+timeout and rotation at 23 h 50 min. Every `Event::Disconnected { path }` is followed by
 `Event::Reconnected { path }` while the client runs, from the shared code. A path that stops on
 an error ends the stream, and `close()` and later membership calls answer
-`SpotWsError::Stopped { cause }`, as `usdm`'s do.
+`SpotWsError::Stopped { cause }`, as `usdm`'s do. `SpotWsError` has `UsdmWsError`'s variants, docs
+and `Classify` rows but `WrongPath`, which one path cannot produce, and `spot::ws::StopCause` is
+its own, with `usdm`'s fields and `of(&SpotWsError)`.
 
 `shared::ws` holds what `usdm::ws` has that is not USDⓈ-M's: the `Protocol` (wall-clock pings
 while the queue is full, staleness counting every frame, reconnect with a paced replay bounded by
 `stale_after`, rotation at 23 h 50 min, a change recorded before it is sent), the router and its
 forwarding queue of 1024, the `StopCause` machinery and the client-side limits, generic over a
 product's stream set (its stream name type and wire spelling, each name's path, the paths, the
-frame decode, the pacing interval and the cap on names per request). Plan 2 fixes its shape, and
-`supervision_usdm*` and `wire_agreement_usdm_ws` are its regression guard, unchanged.
+frame decode, the pacing interval and the cap on names per request). Its shape:
 
-The offline tests drive the kit's scripted server with spot's answer (`spot/ws/scripted.rs`,
-included by the integration suites with `#[path]`). `test-server` with `spot-ws` exposes
-`spot::ws::fixtures`.
+- a crate-private `StreamSet` trait that each product implements on a marker type: its stream
+  name, path, update, error and event types; its paths, URL, decode, pacing interval and names
+  per request; and how its events carry an update, an outage and a return;
+- a `SocketError` trait its error implements: constructors for the errors the shared code makes
+  (a refusal, no answer, a malformed answer, too many streams, a stop with its cause) and a
+  `Shape` view of the variant, which the recovery and the router match on instead of the
+  product's enum;
+- generic internals: the request correlation, the bare connection, `BinanceProtocol<S>` (the
+  kit `Protocol`), the router, the membership commands, the forwarding and the stop.
+
+Each product's public types (`UsdmWs`, `UsdmWsBuilder`, `SupervisedUsdmWs`, `MembershipHandle`,
+`Event`, `DisconnectReason`, its error and `StopCause`) stay its own structs and enums, wrapping
+or feeding the generic code, so `usdm`'s public paths, names, signatures and docs' meaning do not
+change. The private items `usdm`'s unit tests use keep their names and signatures:
+`UsdmProtocol` and `Change` become aliases of the generic types, and `UsdmWs::open`,
+`UsdmWs::close_frame`, `Answer` and the builder's `base_url` and `timing` fields stay.
+`supervision_usdm*` and `wire_agreement_usdm_ws` are its regression guard, unchanged, with
+`usdm`'s unit tests.
+
+The offline tests drive the kit's scripted server with Binance's answer. `src/usdm/ws/scripted.rs`
+names nothing of either product, so it serves spot too: `spot::ws`'s unit tests and the spot
+suites include it with `#[path]`. Moving it would lose a test-context file and copying it would
+keep two. `test-server` with `spot-ws` exposes `spot::ws::fixtures`.
 
 ### 5.10 Features and registration
 
@@ -332,12 +362,19 @@ and `binance = ["binance-usdm", "binance-spot"]` (plan 1); `binance-spot-ws = ["
 `polyoxide/tests/parse_key.rs`. `SpotMarket` is at `polyoxide_venue`'s root beside the other
 bundles, so at `polyoxide::venue`; the prelude gains `Spot`, `SpotBuilder`, `SpotError` and
 `WeightBudget as SpotWeightBudget` under `binance-spot` (usdm's `WeightBudget` keeps the bare
-name), and the passthrough check gains `const _: fn(crate::binance::spot::Spot) = drop;`.
+name), and the passthrough check gains `const _: fn(crate::binance::spot::Spot) = drop;`. Under
+`binance-spot-ws` (plan 2) the prelude gains `Event as SpotEvent`, `StreamName as SpotStreamName`,
+`SpotWs`, `SpotWsBuilder` and `SpotWsError` (usdm's `StreamName` keeps the bare name), and the
+passthrough checks gain `SpotWs` at `crate::binance::spot::ws` and at the prelude.
 
 ### 5.12 CLI (plan 2)
 
 `polyoxide binance spot stream`, the counterpart of `binance usdm stream`: the supervised tier,
 a `commands::stream::Feed`, the same flags, and `--format json` printing each frame's envelope.
+Its kinds are `agg-trade`, `trade`, `kline-<interval>`, `mini-ticker`, `ticker`, `book-ticker`,
+`avg-price`, and `depth5`, `depth10` and `depth20`, each every 100 ms; `--all-mini-tickers`
+streams `!miniTicker@arr`, in the place of `usdm`'s `--all-tickers` and `--all-mark-prices`.
+`pretty` prints a line per update and per array row, as `usdm`'s does.
 `polyoxide-cli` builds `polyoxide-binance` with `usdm-ws` and `spot-ws`. `tests/ws_binance.rs`
 gains spot cases on `spot::ws::fixtures`.
 
@@ -424,6 +461,10 @@ Polymarket's crypto up-or-down markets resolve on.
   interval that keeps a connection under 5 messages per second. The WebSocket probe settles each
   before plan 2 is written. It measures the over-limit answer with one deliberate burst on one
   connection and stops at the first disconnect, never repeating it: repeated excess bans the IP,
-  which the live suites and other sessions on this host share (owner, 2026-11-02).
+  which the live suites and other sessions on this host share (owner, 2026-11-02). Settled
+  2026-11-02 (`OBSERVED.md`, `### Stream limits`): no cap on names per request below 1024; an
+  unknown or uppercase name is acknowledged and delivers nothing; the over-limit answer is a close
+  with 1008 "Too many requests", seen at a 250 ms pace, so the burst was not run; `!ticker@arr`
+  delivers nothing; the server pings every 20 s, and a 500 ms pace with a ping every 20 s held.
 - **The 418, 451 and 403 bodies** on spot are not seen from this IP; classification uses the
   status alone, as on `usdm`.
