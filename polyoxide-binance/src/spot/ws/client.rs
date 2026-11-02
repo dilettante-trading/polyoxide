@@ -127,6 +127,8 @@ impl SpotWs {
     }
 
     /// Send a protocol ping and wait for the pong, returning the round trip.
+    /// The ping is sent outside the request pacing, and counts toward Binance's
+    /// limit of 5 incoming messages a second on a connection.
     pub async fn ping(&mut self) -> Result<Duration, SpotWsError> {
         self.bare.ping().await
     }

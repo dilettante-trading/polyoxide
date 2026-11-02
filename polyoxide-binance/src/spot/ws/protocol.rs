@@ -130,13 +130,10 @@ mod tests {
     #[test]
     fn the_stream_set_is_one_path_with_the_measured_limits() {
         assert_eq!(<SpotStreams as StreamSet>::PATHS, [StreamPath::Stream]);
-        assert_eq!(
-            <SpotStreams as StreamSet>::MAX_NAMES_PER_REQUEST,
-            MAX_NAMES_PER_REQUEST
-        );
+        assert_eq!(<SpotStreams as StreamSet>::MAX_NAMES_PER_REQUEST, 1024);
         assert_eq!(
             <SpotStreams as StreamSet>::MIN_REQUEST_INTERVAL,
-            MIN_REQUEST_INTERVAL
+            Duration::from_millis(500)
         );
     }
 
