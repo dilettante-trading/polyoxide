@@ -1,0 +1,29 @@
+[
+ {
+  "id": 6811078995,
+  "price": "78163.03000000",
+  "qty": "0.00200000",
+  "quoteQty": "156.32606000",
+  "time": 1793606251337,
+  "isBuyerMaker": false,
+  "isBestMatch": true
+ },
+ {
+  "id": 6811078996,
+  "price": "78163.03000000",
+  "qty": "0.01900000",
+  "quoteQty": "1485.09757000",
+  "time": 1793606251337,
+  "isBuyerMaker": false,
+  "isBestMatch": true
+ },
+ {
+  "id": 6811078997,
+  "price": "78163.03000000",
+  "qty": "0.01100000",
+  "quoteQty": "859.79333000",
+  "time": 1793606251338,
+  "isBuyerMaker": false,
+  "isBestMatch": true
+ }
+]

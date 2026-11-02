@@ -1,0 +1,23 @@
+[
+ {
+  "symbol": "BTCUSDT",
+  "bidPrice": "78160.00000000",
+  "bidQty": "2.82109000",
+  "askPrice": "78160.01000000",
+  "askQty": "4.63287000"
+ },
+ {
+  "symbol": "ETHUSDT",
+  "bidPrice": "2286.80000000",
+  "bidQty": "26.47700000",
+  "askPrice": "2286.81000000",
+  "askQty": "53.73080000"
+ },
+ {
+  "symbol": "币安人生USDT",
+  "bidPrice": "0.52960000",
+  "bidQty": "35.60000000",
+  "askPrice": "0.52990000",
+  "askQty": "379.00000000"
+ }
+]
