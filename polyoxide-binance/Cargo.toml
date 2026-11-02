@@ -92,16 +92,32 @@ required-features = ["usdm"]
 # `required-features` keeps a plain `cargo test --all-targets` from building
 # them without it.
 [[test]]
+name = "ban_log_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "ban_log_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "error_classes_spot"
+required-features = ["spot"]
 
 [[test]]
 name = "error_classes_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "failure_tags_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "failure_tags_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "headers_spot"
+required-features = ["spot"]
 
 [[test]]
 name = "headers_usdm"
