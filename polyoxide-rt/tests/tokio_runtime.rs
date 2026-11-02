@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use polyoxide_rt::{
-    default_runtime, spawn, timeout, BoxFuture, Instant, Runtime, SystemTime, TokioRuntime,
-    UNIX_EPOCH,
+    default_runtime, interval, spawn, timeout, BoxFuture, Instant, MissedTick, Runtime, SystemTime,
+    TokioRuntime, UNIX_EPOCH,
 };
 
 /// The paused clock wakes a timer on its millisecond, so a measured wait is its
@@ -266,4 +266,143 @@ async fn timeout_sleeps_on_the_runtime_it_is_given() {
     let output = timeout(&rt, Duration::from_secs(3), std::future::pending::<()>()).await;
     assert_eq!(output, None);
     assert_eq!(*rt.slept.lock().unwrap(), vec![Duration::from_secs(3)]);
+}
+
+const PERIOD: Duration = Duration::from_secs(10);
+
+fn shared() -> Arc<dyn Runtime> {
+    Arc::new(TokioRuntime)
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_first_tick_is_at_once() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    assert_eq!(ticks.tick().await, start);
+    assert!(rt.now() - start < TICK, "the first tick waited");
+}
+
+#[tokio::test(start_paused = true)]
+async fn ticks_come_one_period_apart() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    assert_eq!(ticks.tick().await, start);
+    assert_eq!(ticks.tick().await, start + PERIOD);
+    assert_eq!(ticks.tick().await, start + 2 * PERIOD);
+    assert_near(rt.now() - start, 2 * PERIOD);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_late_interval_bursts_by_default() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    ticks.tick().await;
+    rt.sleep(Duration::from_secs(35)).await;
+    let late = rt.now();
+
+    // The ticks due at 10, 20 and 30 seconds all fire at once.
+    assert_eq!(ticks.tick().await, start + PERIOD);
+    assert_eq!(ticks.tick().await, start + 2 * PERIOD);
+    assert_eq!(ticks.tick().await, start + 3 * PERIOD);
+    assert!(
+        rt.now() - late < TICK,
+        "the missed ticks did not fire at once"
+    );
+
+    assert_eq!(ticks.tick().await, start + 4 * PERIOD);
+    assert_near(rt.now() - start, 4 * PERIOD);
+}
+
+#[tokio::test(start_paused = true)]
+async fn delay_starts_the_next_period_after_the_late_tick() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    ticks.set_missed_tick(MissedTick::Delay);
+    ticks.tick().await;
+    rt.sleep(Duration::from_secs(35)).await;
+    let late = rt.now();
+
+    assert_eq!(ticks.tick().await, start + PERIOD);
+    assert!(rt.now() - late < TICK, "the late tick waited");
+
+    // The next one is a period after the late tick, not on the old grid.
+    let next = ticks.tick().await;
+    assert_near(next - late, PERIOD);
+    assert_near(rt.now() - late, PERIOD);
+}
+
+#[tokio::test(start_paused = true)]
+async fn skip_keeps_the_original_grid() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    ticks.set_missed_tick(MissedTick::Skip);
+    ticks.tick().await;
+    rt.sleep(Duration::from_secs(35)).await;
+    let late = rt.now();
+
+    assert_eq!(ticks.tick().await, start + PERIOD);
+    assert!(rt.now() - late < TICK, "the late tick waited");
+
+    // The ticks due at 20 and 30 seconds are skipped; the next is at 40.
+    assert_eq!(ticks.tick().await, start + 4 * PERIOD);
+    assert_near(rt.now() - start, 4 * PERIOD);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_tick_a_few_milliseconds_late_is_on_time() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    ticks.set_missed_tick(MissedTick::Delay);
+    ticks.tick().await;
+    rt.sleep(Duration::from_millis(10_003)).await;
+
+    // Scheduling jitter does not move the grid, even for `Delay`.
+    assert_eq!(ticks.tick().await, start + PERIOD);
+    assert_eq!(ticks.tick().await, start + 2 * PERIOD);
+}
+
+#[tokio::test(start_paused = true)]
+async fn reset_starts_a_new_period_from_now() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    ticks.tick().await;
+    rt.sleep(Duration::from_secs(4)).await;
+    ticks.reset();
+
+    ticks.tick().await;
+    assert_near(rt.now() - start, Duration::from_secs(14));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_cancelled_tick_loses_nothing() {
+    let rt = shared();
+    let start = rt.now();
+    let mut ticks = interval(Arc::clone(&rt), PERIOD);
+    ticks.tick().await;
+
+    let cancelled = tokio::time::timeout(Duration::from_secs(4), ticks.tick()).await;
+    assert!(cancelled.is_err(), "the tick came before its period");
+
+    assert_eq!(ticks.tick().await, start + PERIOD);
+    assert_near(rt.now() - start, PERIOD);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_interval_reports_its_period_and_defaults_to_burst() {
+    let ticks = interval(shared(), Duration::from_secs(3));
+    assert_eq!(ticks.period(), Duration::from_secs(3));
+    assert_eq!(MissedTick::default(), MissedTick::Burst);
+}
+
+#[test]
+#[should_panic(expected = "interval period must be non-zero")]
+fn a_zero_period_panics() {
+    let _ticks = interval(shared(), Duration::ZERO);
 }
