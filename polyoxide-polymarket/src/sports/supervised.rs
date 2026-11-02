@@ -139,15 +139,6 @@ impl SportsWsBuilder {
         self
     }
 
-    /// Whether the transport this feed will dial sees the server's protocol
-    /// pings (`Capabilities::sees_server_pings`): a browser's does not (D9).
-    fn sees_server_pings(&self) -> bool {
-        match &self.socket_transport {
-            Some(transport) => transport.capabilities().sees_server_pings,
-            None => default_socket_transport().capabilities().sees_server_pings,
-        }
-    }
-
     polyoxide_ws::transport_setters! {
         /// The runtime the feed's staleness timer and reconnect waits run on.
         /// By default the target's.
@@ -164,19 +155,21 @@ impl SportsWsBuilder {
     /// or 5xx, or a malformed URL. That one is yielded as
     /// [`SportsError::Connect`] and ends the stream.
     pub async fn connect(mut self) -> Result<SupervisedSportsWs, SportsError> {
-        // D9: a transport that hides the server's pings leaves a quiet feed
-        // nothing to count, since no data arrives when nothing is live, and
-        // no text ping is known to be answered (`docs/specs/sports/OBSERVED.md`).
-        // The limit is off there, as `Duration::MAX` means never stale, and a
-        // lost connection ends through its close event.
-        if !self.sees_server_pings() {
-            self.stale_after = Duration::MAX;
-        }
         let runtime = self.runtime.clone().unwrap_or_else(default_runtime);
         let transport = self
             .socket_transport
             .clone()
             .unwrap_or_else(default_socket_transport);
+        // D9: a transport that hides the server's pings (`Capabilities::
+        // sees_server_pings`; a browser's does) leaves a quiet feed nothing to
+        // count, since no data arrives when nothing is live, and no text ping
+        // is known to be answered (`docs/specs/sports/OBSERVED.md`). The limit
+        // is off there, as `Duration::MAX` means never stale, and a lost
+        // connection ends through its close event. The transport read is the
+        // one dialled.
+        if !transport.capabilities().sees_server_pings {
+            self.stale_after = Duration::MAX;
+        }
         let connection = open_with(
             self.url.clone(),
             self.connect_timeout,

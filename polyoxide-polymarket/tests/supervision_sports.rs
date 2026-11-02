@@ -503,7 +503,17 @@ async fn a_transport_that_shows_the_servers_pings_still_goes_stale_d9() {
 
 #[tokio::test]
 async fn a_close_still_ends_a_feed_whose_staleness_is_off_d9() {
-    let server = ScriptedServer::start(vec![Script::close_at_once(), Script::hold()]).await;
+    // The close arrives after STALE, on a connection whose pings the transport
+    // hides: with staleness on, the feed would go `Stale` first.
+    let server = ScriptedServer::start(vec![
+        Script {
+            ping_every: Some(STALE / 3),
+            drop_after: Some(STALE * 3),
+            ..Script::hold()
+        },
+        Script::hold(),
+    ])
+    .await;
     let mut feed = builder(&server)
         .socket_transport(browser_like())
         .connect()

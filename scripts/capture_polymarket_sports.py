@@ -35,8 +35,10 @@ reopened once and the capture runs on for the time lost, the pings with it, and
 never more of them than an undropped run sends; a second drop ends it with
 exit code 2, and the story stops and goes to the owner. Data frames in every
 minute mean a game was live: the silence is then a live feed's, not a quiet
-hour's, so the summary says "game live throughout" in place of a rule, and the
-story stops and goes to the owner there too.
+hour's, so the summary says "game live throughout" in place of a rule, the
+script exits with code 3, and the story stops and goes to the owner there too.
+Exit codes of `--cadence`: 0 a rule was reached, 2 a second drop, 3 a game live
+throughout.
 """
 
 import asyncio
@@ -295,9 +297,21 @@ def cadence_summary(seconds: float, cadence: float) -> list[str]:
     return lines
 
 
+def cadence_exit_code() -> int:
+    """The exit code of a cadence capture: 2 when a second drop ended it, 3 when
+    a game was live throughout (no rule follows; D17 stops there as it does at a
+    second drop), else 0."""
+    if len(CAPTURE.drops) > 1:
+        return 2
+    times = [t for t, _ in CAPTURE.frames]
+    if live_throughout(times, CAPTURE.segments):
+        return 3
+    return 0
+
+
 def cadence_main(args: list[str], cadence_minutes: float) -> int:
-    """Run the D9 capture and print its summary; the exit code is 2 when a
-    second drop ended it."""
+    """Run the D9 capture and print its summary; the exit code is
+    `cadence_exit_code`'s."""
     seconds = int(args[0]) if args else 1800
     cadence = cadence_minutes * 60
     try:
@@ -305,7 +319,7 @@ def cadence_main(args: list[str], cadence_minutes: float) -> int:
     except KeyboardInterrupt:
         CAPTURE.ended_by = f"Ctrl-C at {CAPTURE.elapsed()} s"
     print("\n".join(cadence_summary(seconds, cadence)))
-    return 2 if len(CAPTURE.drops) > 1 else 0
+    return cadence_exit_code()
 
 
 def json_type(value: object) -> str:

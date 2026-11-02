@@ -99,8 +99,8 @@ unauthenticated connection for 1800 s with no drop. It sent the text `ping` at
 600.01 s and 1200.01 s and nothing else. A game was live throughout, so the
 capture could not answer the question it was run for:
 
-- Data frames: 1695 in 1800 s, so some arrived in every minute; no binary
-  frames. The longest stretch with no data frame was 10.6 s, a live feed's gap.
+- Data frames: 1695 in 1800 s; no binary frames. The longest stretch with no
+  data frame was 10.6 s, a live feed's gap, so some arrived in every minute.
 - Protocol pings arrived every 15 s as before: 119 of them, from 15.37 s to
   1785.37 s, 14.8 to 15.2 s apart.
 - Text `ping` at 600.01 s: no answer within 10 s. At 1200.01 s: the same. The

@@ -161,9 +161,10 @@ pub trait Protocol: Send + Sized + 'static {
     /// It overrides this for either of two reasons: to shape the transport's
     /// error, or to read the transport's
     /// [`capabilities`](SocketTransport::capabilities) before it dials, since
-    /// this is the one hook that is handed the transport. A protocol that keeps
-    /// a connection alive with a frame of its own where the transport cannot
-    /// send a protocol ping notes here which kind it has. An error is a failed
+    /// this is the one hook that is handed the transport. A protocol that sends
+    /// a frame of its own to keep a connection alive, because the transport
+    /// cannot send a protocol ping, reads `capabilities()` here to learn
+    /// whether it needs to. An error is a failed
     /// attempt, which [`recover`](Self::recover) decides on.
     fn connect(
         &mut self,
