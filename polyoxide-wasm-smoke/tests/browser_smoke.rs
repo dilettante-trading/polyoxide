@@ -233,3 +233,111 @@ mod runtime {
         );
     }
 }
+
+mod fetch {
+    use std::{sync::Arc, time::Duration};
+
+    use polyoxide_core::{
+        http::{header::RETRY_AFTER, StatusCode},
+        ApiError, FetchTransport, HttpClientBuilder, Request, RetryConfig, TransportKind,
+    };
+    use polyoxide_rt::{BrowserRuntime, Runtime};
+    use serde_json::Value;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    const BASE: &str = env!("POLYOXIDE_SMOKE_HTTP");
+    // The slow route's server is its own: the browser may run these tests concurrently, and a
+    // sleeping slow route must not hold up another test's request.
+    const SLOW_BASE: &str = env!("POLYOXIDE_SMOKE_SLOW");
+
+    /// A request through an `HttpClient` on the fetch transport and the browser runtime, with no
+    /// retries, so a 429 is the first answer and a timeout the only wait. `HttpRequest` has no
+    /// public constructor, so the transport is driven the way a venue crate drives it: through a
+    /// client built with `http_transport(..)`.
+    fn request_to(base: &str, path: &str, timeout_ms: u64) -> Request<Value, ApiError> {
+        let client = HttpClientBuilder::new(base)
+            .runtime(Arc::new(BrowserRuntime))
+            .http_transport(Arc::new(FetchTransport::new()))
+            .with_retry_config(RetryConfig {
+                max_retries: 0,
+                initial_backoff_ms: 1,
+                max_backoff_ms: 1,
+            })
+            .timeout_ms(timeout_ms)
+            .build()
+            .expect("a client on the fetch transport");
+        Request::new(client, path)
+    }
+
+    fn request(path: &str, timeout_ms: u64) -> Request<Value, ApiError> {
+        request_to(BASE, path, timeout_ms)
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_200_arrives_whole_through_fetch() {
+        let response = request("/ok", 10_000)
+            .send_raw()
+            .await
+            .expect("a 200 through fetch");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.expect("a body"), r#"{"ok":true}"#);
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_200_decodes_as_json() {
+        let value = request("/ok", 10_000).send().await.expect("a decoded 200");
+        assert_eq!(value["ok"], true);
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_slow_route_times_out_as_a_transport_timeout() {
+        let start = BrowserRuntime.now();
+        let err = request_to(SLOW_BASE, "/slow", 300)
+            .send_raw()
+            .await
+            .err()
+            .expect("the slow route must time out");
+        match err {
+            ApiError::Transport(err) => assert_eq!(err.kind(), TransportKind::Timeout, "{err}"),
+            other => panic!("expected a transport timeout, got {other:?}"),
+        }
+        let elapsed = BrowserRuntime.now().saturating_duration_since(start);
+        assert!(
+            elapsed < Duration::from_millis(1400),
+            "the timeout fired after {elapsed:?}, not before the server's 1500 ms answer"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_429_that_exposes_retry_after_carries_it_into_the_error_response() {
+        let err = request("/limited-exposed", 10_000)
+            .send_raw()
+            .await
+            .err()
+            .expect("a 429 is an error");
+        let ApiError::Response(response) = err else {
+            panic!("expected an error response, got {err:?}");
+        };
+        assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.message, "slow down");
+        assert!(response.headers.get(RETRY_AFTER).is_some());
+        assert_eq!(response.retry_after, Some(Duration::from_secs(7)));
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_429_that_hides_retry_after_shows_none_to_the_browser() {
+        let err = request("/limited-hidden", 10_000)
+            .send_raw()
+            .await
+            .err()
+            .expect("a 429 is an error");
+        let ApiError::Response(response) = err else {
+            panic!("expected an error response, got {err:?}");
+        };
+        assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.message, "slow down");
+        // The server sent it, but a browser reads only what Access-Control-Expose-Headers names.
+        assert!(response.headers.get(RETRY_AFTER).is_none());
+        assert_eq!(response.retry_after, None);
+    }
+}
