@@ -14,7 +14,9 @@
 //! - [`interval`] ticks at once and then every period, and an [`Interval`]
 //!   takes a [`MissedTick`] to say what to do about ticks it was late for.
 //! - `TokioRuntime` is the native runtime, on tokio's own clock so a paused
-//!   clock drives it, and [`default_runtime`] returns it off wasm32.
+//!   clock drives it, and [`default_runtime`] returns it off wasm32. On wasm32
+//!   `BrowserRuntime` is the default: `spawn_local`, `setTimeout` and
+//!   `performance.now`.
 //! - [`Instant`], [`SystemTime`] and [`UNIX_EPOCH`] are `web-time`'s: std's own
 //!   types on native.
 //!
@@ -45,6 +47,7 @@
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
+mod browser;
 mod runtime;
 mod task;
 mod time;
@@ -53,7 +56,6 @@ mod tokio;
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 
 pub use runtime::Runtime;
 pub use task::{spawn, Task};
@@ -62,15 +64,22 @@ pub use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use self::tokio::TokioRuntime;
+#[cfg(target_arch = "wasm32")]
+pub use browser::BrowserRuntime;
 
 /// An owned, sendable future: what a [`Runtime`] spawns and sleeps on.
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
-/// The runtime a client uses when none is injected: `TokioRuntime`.
-///
-/// Only its native arm exists so far; the wasm32 arm arrives with the browser
-/// runtime.
+/// The runtime a client uses when none is injected: `TokioRuntime` on a host
+/// target and `BrowserRuntime` on `wasm32`.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn default_runtime() -> Arc<dyn Runtime> {
-    Arc::new(TokioRuntime)
+pub fn default_runtime() -> std::sync::Arc<dyn Runtime> {
+    std::sync::Arc::new(TokioRuntime)
+}
+
+/// The runtime a client uses when none is injected: `TokioRuntime` on a host
+/// target and `BrowserRuntime` on `wasm32`.
+#[cfg(target_arch = "wasm32")]
+pub fn default_runtime() -> std::sync::Arc<dyn Runtime> {
+    std::sync::Arc::new(BrowserRuntime)
 }
