@@ -20,11 +20,14 @@ struct ReadmeDoctests;
 #[doc = include_str!("usdm/README.md")]
 struct UsdmReadmeDoctests;
 
-#[cfg(feature = "usdm")]
+#[cfg(any(feature = "usdm", feature = "spot"))]
 mod shared;
 
 #[cfg(feature = "usdm")]
 pub mod usdm;
+
+#[cfg(feature = "spot")]
+pub mod spot;
 
 // Every public error type implements `Classify`; one without it fails the
 // build here. `.github/scripts/tests/test_classify_coverage.py` fails when a

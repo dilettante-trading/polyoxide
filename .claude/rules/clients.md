@@ -5,6 +5,7 @@ paths:
   - "polyoxide-*/src/**/client.rs"
   - "polyoxide-binance/src/usdm/{mod,request}.rs"
   - "polyoxide-binance/src/shared/request.rs"
+  - "polyoxide-binance/src/spot/mod.rs"
   - "polyoxide-kalshi/src/predictions/{mod,request,tickers}.rs"
   - "**/tests/query_setters_*.rs"
 ---
