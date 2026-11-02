@@ -87,6 +87,14 @@ path = "examples/weight_probe.rs"
 test = true
 required-features = ["usdm"]
 
+# The spot module's probe. Its own example, not a `--product` of the one above:
+# that example is `test = true`, so the test-bodies gate counts every item in it.
+[[example]]
+name = "weight_probe_spot"
+path = "examples/weight_probe_spot.rs"
+test = true
+required-features = ["spot"]
+
 # The usdm and spot modules' suites. The socket suites import the captured
 # frames, which only `test-server` exposes outside the unit tests;
 # `required-features` keeps a plain `cargo test --all-targets` from building
