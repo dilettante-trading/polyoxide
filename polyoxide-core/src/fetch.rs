@@ -84,11 +84,12 @@ mod web {
     ///
     /// The request's timeout is set per request, held to `i32::MAX`
     /// milliseconds, and bounds the whole exchange, body included; a failure
-    /// at or after that deadline is a `Timeout` whichever stage it struck. The browser negotiates compression itself and follows
-    /// redirects. Each exchange sits in a `SendWrapper`, since its JS handles
-    /// are `!Send`: the `Send` bound of `HttpTransport` holds, and the handles
-    /// stay on the one thread a browser build has (a build with atomics is
-    /// unsupported).
+    /// within 2 ms of that deadline (`CLOCK_SLACK`) or after it is a `Timeout`
+    /// whichever stage it struck. The browser negotiates compression itself
+    /// and follows redirects. Each exchange sits in a `SendWrapper`, since its
+    /// JS handles are `!Send`: the `Send` bound of `HttpTransport` holds, and
+    /// the handles stay on the one thread a browser build has (a build with
+    /// atomics is unsupported).
     #[derive(Debug, Clone, Default)]
     #[non_exhaustive]
     pub struct FetchTransport {}

@@ -6,10 +6,11 @@
 # gate CI holds the native build to. With getrandom 0.3.4 locked, its `wasm_js`
 # feature alone selects the browser backend; the `--cfg getrandom_backend` flag
 # is kept (spec D1) for consumers that resolve an older 0.3.x, so this script
-# sets RUSTFLAGS itself, replacing any inherited value (a host `target-cpu`, say, would override a config
-# file's and break the target); CARGO_ENCODED_RUSTFLAGS outranks RUSTFLAGS, so
-# it goes too. With `--target`, cargo does not pass RUSTFLAGS to build scripts,
-# so the host build cache is untouched.
+# sets RUSTFLAGS itself, replacing any inherited value (a host `target-cpu`,
+# say, would override a config file's and break the target);
+# CARGO_ENCODED_RUSTFLAGS outranks RUSTFLAGS, so it goes too. With `--target`,
+# cargo does not pass RUSTFLAGS to build scripts, so the host build cache is
+# untouched.
 #
 # Native-only and out of the set: polyoxide-kalshi, the relay, rtds, the
 # polyoxide umbrella, polyoxide-cli, polyoxide-py and every `keychain` feature.

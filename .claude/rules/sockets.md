@@ -161,7 +161,7 @@ refused before dialling, and sending a ping, pong or raw frame is refused, each 
 `a raw frame` followed by `is not supported by the browser transport`. A refused upgrade shows no
 status to a page, so it arrives as a lost connection, never `Kind::Refused`.
 
-What the transport decides (`dial_plan`, `close_code`, `close_reason`, `outgoing`) is plain Rust
+What the transport decides (`dial_plan`, `close_code`, `close_reason`, `outgoing`, `send_state`) is plain Rust
 built on every target, so the host's tests pin it; only the `web_sys` code is `wasm32`'s.
 `connect_over`, `TungsteniteTransport`, `ensure_crypto_provider` and the scripted test server are
 host-only, and the `test-server` feature turns on nothing on `wasm32`.

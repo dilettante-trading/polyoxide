@@ -160,10 +160,10 @@ timeout set per request, which bounds the whole exchange, body included. A `fetc
 `Connect` (a network failure and a CORS refusal look alike to a page), a failed body read is `Body`,
 a timeout is `Timeout` wherever it struck, and a request the browser would not build is `Request`.
 Reqwest's wasm client flags only a timeout before the response head (a body read cut short by the
-same timer comes back as a decode error), so the transport counts a failure at or after the
-request's own deadline as a timeout too (`timed_out`), and holds the timeout to `i32::MAX`
-milliseconds (`clamped`), the most that client converts without panicking. `kind_of`, `timed_out`
-and `clamped` hold the rules and the host's tests pin them. The pool size and the gzip setting feed
+same timer comes back as a decode error), so the transport counts a failure within 2 ms of the
+request's own deadline or after it (`CLOCK_SLACK`) as a timeout too (`timed_out`), and holds the
+timeout to `i32::MAX` milliseconds (`clamped`), the most that client converts without panicking.
+`kind_of`, `timed_out` and `clamped` hold the rules and the host's tests pin them. The pool size and the gzip setting feed
 only the host default: the browser negotiates compression itself, follows redirects, and shows a
 page only the response headers the server exposes, so a `Retry-After` is unreadable unless it is.
 The header pins of the `headers_<module>` suites hold the host default only. The exchange sits in a
