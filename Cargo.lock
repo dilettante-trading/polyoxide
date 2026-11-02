@@ -4255,6 +4255,8 @@ dependencies = [
  "polyoxide-core",
  "polyoxide-polymarket",
  "polyoxide-rt",
+ "polyoxide-test-support",
+ "polyoxide-venue",
  "polyoxide-ws",
  "serde_json",
  "tokio",

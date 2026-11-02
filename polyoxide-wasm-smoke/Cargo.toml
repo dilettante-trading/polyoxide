@@ -14,6 +14,15 @@ publish = false
 [dependencies]
 tungstenite = { version = "0.26", default-features = false }
 
+[features]
+# The nightly's live checks (tests/browser_live.rs). They call real hosts, so they are off by
+# default, and run through scripts/wasm_live.sh.
+live = []
+
+[[test]]
+name = "browser_live"
+required-features = ["live"]
+
 # The server is native only, and its socket is the kit's scripted test server.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mockito = { workspace = true }
@@ -33,6 +42,8 @@ polyoxide-core = { workspace = true }
 # `clob` alone: the signing path, which the browser reaches through a `SendWrapper`.
 polyoxide-polymarket = { workspace = true, features = ["clob"] }
 polyoxide-rt = { workspace = true }
+polyoxide-test-support = { path = "../polyoxide-test-support" }
+polyoxide-venue = { workspace = true }
 polyoxide-ws = { workspace = true }
 serde_json = { workspace = true }
 wasm-bindgen-test = "0.3"
