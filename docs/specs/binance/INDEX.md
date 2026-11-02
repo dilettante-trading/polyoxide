@@ -62,7 +62,7 @@ The weight table is `Route::cost` in `polyoxide-binance/src/usdm/weight.rs`, pin
 | `/api/v3/ping` | `spot.health().ping()` | 1 |
 | `/api/v3/time` | `spot.health().time()` | 1 |
 | `/api/v3/exchangeInfo` | `spot.exchange().exchange_info()`, with `.symbol(&s)` or without | 20 either way |
-| `/api/v3/depth` | `spot.market().depth(&s)` | 5 without `limit` and for 1 to 100; 25 for 101 to 500; 50 for 501 to 1000; 250 above 1000 (documented, not measured) |
+| `/api/v3/depth` | `spot.market().depth(&s)` | 5 without `limit` and for 1 to 100; 25 for 101 to 500; 50 for 501 to 1000; 250 above 1000 (each band measured) |
 | `/api/v3/trades` | `spot.market().trades(&s)` | 25, with or without `limit` |
 | `/api/v3/aggTrades` | `spot.market().agg_trades(&s)` | 4, with or without `limit` |
 | `/api/v3/klines` | `spot.market().klines(&s, interval)` | 2, with or without `limit` |

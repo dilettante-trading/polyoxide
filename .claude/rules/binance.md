@@ -51,7 +51,7 @@ builds each product without the other, so every item in it compiles under either
   `venue_class`. A product's one `From<ApiError>` maps `Decoded` one to one onto its error enum and
   logs the `418` body at WARN itself, so the WARN's target is `polyoxide_binance::<module>::error`.
 - `shared::request`: `Routed<T, R, E>`, the `Priced` trait a route table implements, and the
-  `route_builder!` macro every route builder is written with.
+  `route_builder!` macro that writes every route builder with no setters of its own.
 - `shared::symbol`: `Symbol` and `InvalidSymbol`. Nothing else is shared: response types,
   `Interval` and `Filter` stay per product, so one product's wire change never reaches the other.
 - **A product keeps** its `WeightBudget`, its `<Module>RetryPolicy`, its `<Module>Error`, its
@@ -134,25 +134,26 @@ fourteen methods over eleven routes, with no credentials. It is the first produc
   so. Pass a budget with `SpotBuilder::weight_budget`; every `Spot` built with one shares its hold.
 - **The weight table**, `spot::weight::Route::cost`, is measured over distinct URLs, not copied,
   and pinned by its `documented_weights` test: `ping` and `time` 1, `exchangeInfo` 20, `depth` 5
-  without `limit` and for 1 to 100, 25 for 101 to 500, 50 for 501 to 1000 and 250 above (the last
-  band documented, not measured), `trades` 25, `aggTrades` 4, `klines`, `avgPrice` and the
+  without `limit` and for 1 to 100, 25 for 101 to 500, 50 for 501 to 1000 and 250 above (each band
+  measured, `OBSERVED.md`'s `## Spot`), `trades` 25, `aggTrades` 4, `klines`, `avgPrice` and the
   one-symbol tickers 2, `ticker/24hr` without a symbol 80, `ticker/price` and `ticker/bookTicker`
   without one 4. `weight_probe_spot` re-measures it (`cargo run -p polyoxide-binance --example weight_probe_spot`, no
   `--product` argument; `weight_probe` is unchanged and measures USDⓈ-M).
-  `GetDepth::limit` is a hand-written setter because it also re-prices the route (`clients.md`).
+  `GetDepth::limit` is a hand-written setter because it also re-prices the route (`clients.md`);
+  `docs/MUTANTS.md`'s row (l) holds the re-pricing.
 - **A `limit` past a route's maximum is truncated by the venue, not refused**, and is sent as the
   caller gave it; the cost does not change but for `depth`'s bands. Only `Symbol` is validated by
   the client.
 - **In flight.** One `Spot` at the default 4 concurrent requests has at most 320 weight in flight
   on a route at its default (4 × `tickers_24h`'s 80), under the reserve of 600; four `depth`
   calls above 1000 levels (1000) pass it. The builder's docs say so.
-- **The retry policy** is `UsdmRetryPolicy`'s, below: the private `SpotRetryPolicy`
+- **The retry policy** is `UsdmRetryPolicy`'s, above: the private `SpotRetryPolicy`
   (`src/spot/policy.rs`) decides through `shared::policy::decide`, and `SpotError` has
   `UsdmError`'s variants, `code()` and `Classify`. A `418` logs its body at WARN under
   `polyoxide_binance::spot::error`.
 - `Interval` is exhaustive (`1s` through `1M`) and separate from `usdm`'s. `Symbol` is `usdm`'s
   (`shared`), so it accepts `_` though spot lists no such symbol; the venue answers an unknown
-  symbol `400` with `-1121`. `Filter` is an open enum. Klines and book levels decode through
+  symbol `400` with `-1121`. `Filter` keeps an unknown `filterType` whole in `Filter::Other`. Klines and book levels decode through
   `polyoxide_venue::positional` in visitors that tolerate extra elements. Response rows carry
   symbols as `String`.
 - **`spot::venue`:** `MarketData`, `Instruments`, `Trades` and `Candles` on `Spot`, with
