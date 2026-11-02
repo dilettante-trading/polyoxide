@@ -2,7 +2,7 @@
 
 The synthetic trees cover each banned path, each skip and the opt-out. The real-tree tests
 run the gate on the workspace, which must be clean, and prove it reads every scanned crate
-and that the two wall-clock reads in tree are exempt by their opt-outs.
+and that the two wall-clock reads in tree are the only opt-outs.
 """
 
 from __future__ import annotations
@@ -49,15 +49,53 @@ def found(root: Path, **options) -> list[tuple[str, int, str]]:
 @pytest.mark.parametrize(("code", "banned"), [
     ("tokio::spawn(async {});", "tokio::spawn"),
     ("tokio::task::spawn(work());", "tokio::task::spawn"),
+    ("tokio::task::spawn_blocking(work);", "tokio::task::spawn"),
+    ("tokio::task::spawn_local(work());", "tokio::task::spawn"),
     ("tokio::time::sleep(wait).await;", "tokio::time::"),
     ("use tokio::time::{sleep, Instant};", "tokio::time::"),
     ("let started = Instant::now();", "Instant::now("),
     ("let started = std::time::Instant::now();", "Instant::now("),
     ("let at = web_time::SystemTime::now ();", "SystemTime::now("),
+    ("let at = cell.get_or_init(Instant::now);", "Instant::now("),
+    ("let at = clock(std::time::SystemTime::now);", "SystemTime::now("),
 ])
 def test_each_banned_path_is_a_hit(tmp_path: Path, code: str, banned: str) -> None:
     root = tree(tmp_path, {CORE: f"fn f() {{\n    {code}\n}}\n"})
     assert found(root) == [(CORE, 2, banned)]
+
+
+@pytest.mark.parametrize(("code", "hits"), [
+    ("use tokio::{spawn, time::sleep};", [(2, "tokio::spawn"), (2, "tokio::time::")]),
+    ("use tokio::{\n    sync::mpsc,\n    time::{sleep, Instant},\n};", [(4, "tokio::time::")]),
+    ("use tokio::{\n    spawn,\n    sync::mpsc,\n};", [(3, "tokio::spawn")]),
+    ("use tokio::task;\nfn f() { task::spawn(x); }", [(2, "tokio::task::spawn")]),
+    ("use tokio::task::{spawn_blocking, JoinSet};", [(2, "tokio::task::spawn")]),
+    ("use tokio::task::{self, JoinSet};", [(2, "tokio::task::spawn")]),
+    ("use tokio::task as t;", [(2, "tokio::task::spawn")]),
+    ("use tokio::task::*;", [(2, "tokio::task::spawn")]),
+    ("use tokio::time;\nfn f() { time::sleep(d); }", [(2, "tokio::time::")]),
+    ("use tokio::{sync, time::{self as clock}};", [(2, "tokio::time::")]),
+    ("pub(crate) use tokio::spawn as go;", [(2, "tokio::spawn")]),
+    ("use ::tokio::{spawn};", [(2, "tokio::spawn")]),
+    ("use tokio::*;", [(2, "tokio::spawn")]),
+])
+def test_a_use_tree_rooted_at_tokio_is_read_leaf_by_leaf(
+        tmp_path: Path, code: str, hits: list[tuple[int, str]]) -> None:
+    root = tree(tmp_path, {CORE: f"// top\n{code}\n"})
+    assert found(root) == [(CORE, line, banned) for line, banned in hits]
+
+
+@pytest.mark.parametrize("code", [
+    "use tokio::sync::{mpsc, Mutex};",
+    "use tokio::{net::TcpStream, sync::mpsc};",
+    "use tokio::task::JoinSet;",
+    "use tokio::{sync, task::JoinHandle};",
+    "use tokio_util::time::DelayQueue;",
+    "use polyoxide_rt::{spawn, time};",
+    "use std::time::{Duration, Instant};",
+])
+def test_a_use_tree_that_names_no_banned_path_is_clean(tmp_path: Path, code: str) -> None:
+    assert found(tree(tmp_path, {CORE: f"{code}\n"})) == []
 
 
 @pytest.mark.parametrize("crate", gate.CRATES)
@@ -130,14 +168,18 @@ def test_a_cfg_test_module_is_skipped_and_the_code_after_it_is_not(tmp_path: Pat
 
 @pytest.mark.parametrize(("predicate", "skipped"), [
     ("test", True),
-    ('any(test, feature = "scripted")', True),
     ('all(test, feature = "x")', True),
+    ('all(feature = "x", test)', True),
+    ('all(any(test, test), unix)', True),
+    ('any(test, feature = "scripted")', False),
+    ('any(test, feature = "test-server")', False),
+    ('all(any(test, unix), feature = "x")', False),
     ("not(test)", False),
     ('feature = "test-server"', False),
     ('any(not(test), feature = "x")', False),
     ('target_arch = "wasm32"', False),
 ])
-def test_only_a_cfg_naming_test_outside_not_skips_a_module(
+def test_only_a_cfg_that_holds_in_tests_alone_skips_a_module(
         tmp_path: Path, predicate: str, skipped: bool) -> None:
     text = f"#[cfg({predicate})]\nmod m {{\n    fn f() {{ tokio::spawn(work()); }}\n}}\n"
     expected = [] if skipped else [(CORE, 3, "tokio::spawn")]
@@ -156,6 +198,46 @@ def test_a_cfg_test_use_and_fn_are_skipped_and_the_next_item_is_not(tmp_path: Pa
         "use tokio::time::sleep;\n"
     )
     assert found(tree(tmp_path, {CORE: text})) == [(CORE, 8, "tokio::time::")]
+
+
+@pytest.mark.parametrize(("text", "hit"), [
+    ("enum C {\n    A,\n    #[cfg(test)]\n    B(u8),\n}\n"
+     "impl C {\n    fn f() { let _ = Instant::now(); }\n}\n", (7, "Instant::now(")),
+    ("enum C {\n    A,\n    #[cfg(test)]\n    B(u8)\n}\n"
+     "impl C {\n    fn f() { let _ = Instant::now(); }\n}\n", (7, "Instant::now(")),
+    ("struct S {\n    #[cfg(test)]\n    a: u8,\n    b: u8,\n}\n"
+     "fn g() { tokio::spawn(x); }\n", (6, "tokio::spawn")),
+    ("struct S {\n    b: u8,\n    #[cfg(test)]\n    a: HashMap<K, V>\n}\n"
+     "fn g() { tokio::spawn(x); }\n", (6, "tokio::spawn")),
+    ("fn f(c: C) -> u64 {\n    match c {\n        #[cfg(test)]\n"
+     "        C::A(ms) => ms,\n        C::B => 0,\n    }\n}\n"
+     "fn g() { tokio::spawn(x); }\n", (8, "tokio::spawn")),
+    ("fn f(c: C) -> u64 {\n    match c {\n        C::B => 0,\n        #[cfg(test)]\n"
+     "        C::A(ms) => ms\n    }\n}\n"
+     "fn g() { tokio::spawn(x); }\n", (8, "tokio::spawn")),
+    ("fn f(#[cfg(test)] a: u8, b: u8) {\n    tokio::spawn(x);\n}\n", (2, "tokio::spawn")),
+    ("fn f(b: u8, #[cfg(test)] a: u8) {\n    tokio::spawn(x);\n}\n", (2, "tokio::spawn")),
+    ("let s = S {\n    #[cfg(test)]\n    a: 1,\n    b: 2,\n};\n"
+     "fn g() { tokio::spawn(x); }\n", (6, "tokio::spawn")),
+])
+def test_a_cfg_test_on_a_variant_field_arm_or_parameter_skips_only_that_element(
+        tmp_path: Path, text: str, hit: tuple[int, str]) -> None:
+    assert found(tree(tmp_path, {CORE: text})) == [(CORE, *hit)]
+
+
+def test_a_cfg_test_item_with_commas_in_its_generics_is_skipped_whole(tmp_path: Path) -> None:
+    text = (
+        "#[cfg(test)]\n"
+        "fn helper<A, B>(a: A, b: B) -> Map<A, B> where A: X, B: Y {\n"
+        "    tokio::spawn(work());\n"
+        "}\n"
+        "#[cfg(test)]\n"
+        "pub(crate) impl<A, B> Foo<A, B> for Bar {\n"
+        "    fn f() { tokio::spawn(work()); }\n"
+        "}\n"
+        "fn after() { tokio::spawn(work()); }\n"
+    )
+    assert found(tree(tmp_path, {CORE: text})) == [(CORE, 9, "tokio::spawn")]
 
 
 def test_the_file_a_cfg_test_mod_declares_is_skipped_beside_lib_and_mod_rs(
@@ -178,6 +260,23 @@ def test_the_file_a_plain_file_declares_is_in_its_own_directory(tmp_path: Path) 
         "polyoxide-core/src/tests.rs": BAD,
     })
     assert found(root) == [("polyoxide-core/src/tests.rs", 1, "tokio::spawn")]
+
+
+def test_a_mod_declared_inside_an_inline_mod_is_that_mods_file(tmp_path: Path) -> None:
+    root = tree(tmp_path, {
+        "polyoxide-core/src/lib.rs": "mod a {\n    #[cfg(test)]\n    mod tests;\n    mod live;\n}\n"
+                                     "mod b {\n    mod c {\n        #[cfg(test)]\n"
+                                     "        mod tests;\n    }\n}\n",
+        "polyoxide-core/src/a/tests.rs": BAD,
+        "polyoxide-core/src/a/tests/inner.rs": BAD,
+        "polyoxide-core/src/tests.rs": BAD,
+        "polyoxide-core/src/b/c/tests.rs": BAD,
+        "polyoxide-core/src/b/tests.rs": BAD,
+        "polyoxide-core/src/a/live.rs": BAD,
+    })
+    assert found(root) == [("polyoxide-core/src/a/live.rs", 1, "tokio::spawn"),
+                           ("polyoxide-core/src/b/tests.rs", 1, "tokio::spawn"),
+                           ("polyoxide-core/src/tests.rs", 1, "tokio::spawn")]
 
 
 def test_an_inner_cfg_test_before_the_first_item_skips_the_file_and_its_module(
@@ -255,6 +354,6 @@ def test_the_real_tree_is_read_in_every_scanned_crate() -> None:
 
 
 def test_the_real_trees_wall_clock_reads_are_exempt_by_their_opt_outs() -> None:
-    unexempted = {(path, banned) for path, _, banned in found(REPO, opt_out=False)}
-    assert {("polyoxide-venue/src/time.rs", "SystemTime::now("),
-            ("polyoxide-polymarket/src/shared/auth.rs", "SystemTime::now(")} <= unexempted
+    unexempted = [(path, banned) for path, _, banned in found(REPO, opt_out=False)]
+    assert unexempted == [("polyoxide-polymarket/src/shared/auth.rs", "SystemTime::now("),
+                          ("polyoxide-venue/src/time.rs", "SystemTime::now(")]

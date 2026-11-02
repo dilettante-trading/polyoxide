@@ -13,10 +13,10 @@ one connection under an `action`/`subscriptions` envelope, unlike the CLOB chann
 channel per connection. Its guide is `src/rtds/mod.rs`'s module docs; it has no README
 (`test_module_readmes.py`'s `WITHOUT_README`).
 
-- The feature builds `polyoxide-venue`, which depends on nothing by default (its `decimal`
-  feature, which perps, Binance and, through `market`, clob enable, adds rust_decimal and serde
-  for `positional`), and the socket kit, and no core, `reqwest` or `alloy`;
-  `test_dep_allowlists.py` holds `@rtds` to that. So a
+- The feature builds `polyoxide-venue`, which depends on nothing by default (on wasm32, only
+  `web-time`, for the wall clock; its `decimal` feature, which perps, Binance and, through
+  `market`, clob enable, adds rust_decimal and serde for `positional`), and the socket kit, and no
+  core, `reqwest` or `alloy`; `test_dep_allowlists.py` holds `@rtds` to that. So a
   credential-free price feed does not pull in `alloy`:
   `polyoxide-polymarket --no-default-features --features clob-ws` builds 254 crates against core's
   126 (unique names in `cargo tree -e normal`).

@@ -128,10 +128,14 @@ suites' `mod perps`, `mod binance` and their kin, excepted by `polyoxide-polymar
 `<path>:<line>: <banned path>`) holds every timer, monotonic clock read and spawn in the
 `src/**/*.rs` of `polyoxide-venue`, `-core`, `-ws`, `-polymarket`, `-binance` and `-kalshi` to the
 injected `polyoxide_rt::Runtime`, so a browser build can supply its own. It fails on
-`tokio::spawn`, `tokio::task::spawn`, any `tokio::time` path, `Instant::now(` and
-`SystemTime::now(`, and not clippy, whose `disallowed-methods` would also fire in every test and
-example, which use tokio legitimately. It skips an item under a `cfg` that names `test` outside a
-`not(..)`, the file a `mod x;` under one declares, `polyoxide-ws/src/test_server/` and every
+`tokio::spawn`, any `tokio::task::spawn*` (`spawn_blocking` and `spawn_local` too), any
+`tokio::time` path, and `Instant::now` and `SystemTime::now`, called or passed as a function
+value, and not clippy, whose `disallowed-methods` would also fire in every test and example,
+which use tokio legitimately. It reads a `use` tree rooted at `tokio` leaf by leaf, so
+`use tokio::{spawn, time::sleep};`, `use tokio::task;` and an `as` alias are hits. It skips an item
+under a `cfg` that holds only in tests (`test`, or `all(..)` with `test` among its operands; an
+`any(test, feature = "..")` is production code and is read), the file a `mod x;` under one
+declares (inside an inline `mod y { .. }`, `y/x.rs`), `polyoxide-ws/src/test_server/` and every
 `scripted.rs`; `polyoxide-rt` implements the runtime and is not scanned. A line ending
 `// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is: the two in tree are the
 wall-clock reads, `UnixMillis::now` and `shared::auth::current_timestamp`, which are never

@@ -14,10 +14,10 @@ paths:
 
 # Market keys, records and the venue traits
 
-`polyoxide-venue` depends on nothing by default (on wasm32, only `web-time`, for the wall clock) and has no HTTP, socket or signing dependency;
-its `decimal` feature, which perps, Binance and, through `market`, clob enable, adds rust_decimal
-and serde for `positional`. Each venue's implementation of these traits is described in its own
-rules file.
+`polyoxide-venue` depends on nothing by default (on wasm32, only `web-time`, for the wall clock)
+and has no HTTP, socket or signing dependency; its `decimal` feature, which perps, Binance and,
+through `market`, clob enable, adds rust_decimal and serde for `positional`. Each venue's
+implementation of these traits is described in its own rules file.
 
 ## Market keys (feature `keys`)
 

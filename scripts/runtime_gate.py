@@ -9,15 +9,24 @@ crates. Clippy's `disallowed-methods` cannot: it would fire in every test and ex
 which use tokio legitimately. It reads each file's code (comments and the contents of string
 literals are not code) for
 
-  - `tokio::spawn` and `tokio::task::spawn`;
+  - `tokio::spawn` and any `tokio::task::spawn*` (`spawn_blocking`, `spawn_local`);
   - any `tokio::time` path (`tokio::time::sleep`, `use tokio::time::{..}`);
-  - `Instant::now(` and `SystemTime::now(`, however qualified.
+  - `Instant::now` and `SystemTime::now`, however qualified, called or passed as a function
+    value;
+  - a `use` tree rooted at `tokio`, read leaf by leaf, whatever its grouping or `as` aliases:
+    a leaf `spawn`, `task` (the module, whose `task::spawn` would follow), `task::spawn*`,
+    `time` or `time::*` is a hit (`use tokio::{spawn, time::sleep};`, `use tokio::task;`).
 
 It skips what is not production code:
 
-  - an item under an attribute whose `cfg` names `test` outside a `not(..)` (`#[cfg(test)]`,
-    `#[cfg(any(test, feature = ".."))]`), and, for a `mod x;` declaration, the file it
-    declares (`x.rs` or `x/mod.rs` beside the declaring file) and every file under it;
+  - an item under an attribute whose `cfg` holds only in tests: `test`, or `all(..)` with an
+    operand that does (`#[cfg(test)]`, `#[cfg(all(test, feature = ".."))]`); `any(test, ..)`
+    and every other predicate that can be true without `test` is production code and is read.
+    The item ends at its first `{..}` group or `;`, at a `,` outside brackets when it is a
+    variant, field, parameter or match arm, or just before the bracket that closes the
+    list it sits in. For a `mod x;` declaration the skip also covers the file it declares
+    (`x.rs` or `x/mod.rs` in the module's directory, which an enclosing inline `mod y { .. }`
+    extends to `y/`) and every file under it;
   - a file whose first item is `#![cfg(test)]`, and every file under its module;
   - `polyoxide-ws/src/test_server/` and every file named `scripted.rs`.
 
@@ -52,15 +61,24 @@ TEST_SERVER = "polyoxide-ws/src/test_server"
 FIXTURE = "scripted.rs"
 # Each banned path, as it is printed, and the code that spells it.
 BANNED = (
-    ("tokio::spawn", re.compile(r"\btokio\s*::\s*spawn\b")),
-    ("tokio::task::spawn", re.compile(r"\btokio\s*::\s*task\s*::\s*spawn\b")),
+    ("tokio::spawn", re.compile(r"\btokio\s*::\s*spawn\w*")),
+    ("tokio::task::spawn", re.compile(r"\btokio\s*::\s*task\s*::\s*spawn\w*")),
     ("tokio::time::", re.compile(r"\btokio\s*::\s*time\b")),
-    ("Instant::now(", re.compile(r"\bInstant\s*::\s*now\s*\(")),
-    ("SystemTime::now(", re.compile(r"\bSystemTime\s*::\s*now\s*\(")),
+    ("Instant::now(", re.compile(r"\bInstant\s*::\s*now\b")),
+    ("SystemTime::now(", re.compile(r"\bSystemTime\s*::\s*now\b")),
 )
 OPT_OUT = re.compile(r"^\s*runtime-gate:\s*\S")
 CFG = re.compile(r"#\s*(!?)\s*\[\s*cfg\s*\(")
 MOD_NAME = re.compile(r"\bmod\s+(\w+)\s*$")
+INLINE_MOD = re.compile(r"\bmod\s+(\w+)\s*\{")
+USE = re.compile(r"\buse\b")
+USE_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|::|[{},*]")
+# What starts an item, as against a variant, field, parameter or match arm: an item's header
+# may hold commas outside brackets (`fn f<A, B>() where A: X, B: Y`).
+ITEM_START = re.compile(
+    r"(?:\s|#\[[^\]]*\])*(?:pub\s*(?:\([^)]*\))?\s*)?"
+    r"(?:fn|impl|struct|enum|trait|mod|use|type|const|static|unsafe|async|extern|union"
+    r"|macro_rules)\b")
 INNER_ATTRIBUTES = re.compile(r"(?:\s*#!\[[^\]]*\])*\s*")
 # The files whose module directory is their own directory.
 ROOT_FILES = frozenset({"mod.rs", "lib.rs", "main.rs"})
@@ -79,24 +97,43 @@ class Source:
 
     code: str  # the code, test items blanked, offsets and lines as in the file
     comments: list[str]  # the `//` comment text of each line
-    test_modules: tuple[str, ...]  # `mod x;` declarations under a test `cfg`
+    # `mod x;` declarations under a test `cfg`, each as the names of the inline modules it
+    # sits in, outermost first, then `x`
+    test_modules: tuple[tuple[str, ...], ...]
     test_file: bool  # `#![cfg(test)]` before the first item
 
 
-def names_test(predicate: str) -> bool:
-    """Whether a `cfg` predicate names `test` outside every `not(..)`."""
-    nots: list[bool] = []
-    previous = ""
-    for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*|[()]", predicate):
-        if token == "(":
-            nots.append(previous == "not")
-        elif token == ")":
-            if nots:
-                nots.pop()
-        elif token == "test" and not any(nots):
-            return True
-        previous = token
-    return False
+def only_in_tests(predicate: str) -> bool:
+    """Whether a `cfg` predicate holds only when `test` does: `test`, an `all(..)` with an
+    operand that does, an `any(..)` whose every operand does. A string's contents are
+    blanked in the code view, so `feature = ".."` is an operand that does not."""
+    tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*|[(),=]", predicate)
+    at = 0
+
+    def operand() -> bool:
+        nonlocal at
+        name = tokens[at]
+        at += 1
+        if at < len(tokens) and tokens[at] == "=":
+            at += 1
+            return False
+        if at < len(tokens) and tokens[at] == "(":
+            at += 1
+            args: list[bool] = []
+            while tokens[at] != ")":
+                args.append(operand())
+                if tokens[at] == ",":
+                    at += 1
+            at += 1
+            if name == "all":
+                return any(args)
+            return name == "any" and bool(args) and all(args)
+        return name == "test"
+
+    try:
+        return operand()
+    except IndexError:
+        return False
 
 
 def _close(code: str, start: int) -> int:
@@ -113,8 +150,14 @@ def _close(code: str, start: int) -> int:
 
 
 def _item(code: str, start: int) -> tuple[int, str, str]:
-    """Where the item that starts at `start` ends, its header, and the character that
-    ends the header (`{`, `;` or empty at the end of the file)."""
+    """Where the thing an attribute decorates, which starts at `start`, ends; its header; and
+    the character that ends the header (`{`, `;`, or empty at a `,`, at the bracket that
+    closes the list it sits in, and at the end of the file).
+
+    An item ends at its first `{..}` group or `;`. A variant, field, parameter or match arm
+    also ends at a `,` outside brackets, and every kind at an unmatched `)`, `]` or `}`: an
+    early stop leaves a little of the element read, which is the safe direction."""
+    in_list = not ITEM_START.match(code, start)
     i = start
     while i < len(code):
         if code[i] in "([":
@@ -123,9 +166,80 @@ def _item(code: str, start: int) -> tuple[int, str, str]:
             return _close(code, i), code[start:i], "{"
         elif code[i] == ";":
             return i + 1, code[start:i], ";"
+        elif code[i] in ")]}":
+            return i, code[start:i], ""
+        elif code[i] == "," and in_list:
+            return i + 1, code[start:i], ""
         else:
             i += 1
     return len(code), code[start:], ""
+
+
+def _inline_modules(code: str, at: int) -> tuple[str, ...]:
+    """The names of the inline `mod y { .. }` blocks around offset `at`, outermost first."""
+    around = []
+    for match in INLINE_MOD.finditer(code):
+        if match.end() <= at < _close(code, match.end() - 1):
+            around.append(match[1])
+    return tuple(around)
+
+
+def _use_leaves(code: str, start: int) -> list[tuple[tuple[str, ...], int]]:
+    """Each leaf path of the `use` tree that follows `start`, with its offset in `code`. A
+    `self` leaf is its prefix; `as` aliases are dropped; a glob is the path `.., "*"`."""
+    end = code.find(";", start)
+    tokens = [(m[0], start + m.start()) for m in USE_TOKEN.finditer(code[start:end])] \
+        if end >= 0 else []
+    leaves: list[tuple[tuple[str, ...], int]] = []
+
+    def tree(at: int, prefix: tuple[str, ...]) -> int:
+        while at < len(tokens) and tokens[at][0] == "::":
+            at += 1
+        if at >= len(tokens):
+            return at
+        text, offset = tokens[at]
+        if text == "*":
+            leaves.append((prefix + ("*",), offset))
+            return at + 1
+        if text == "{":
+            at += 1
+            while at < len(tokens) and tokens[at][0] != "}":
+                at = tree(at, prefix)
+                if at < len(tokens) and tokens[at][0] == ",":
+                    at += 1
+            return at + 1
+        if text in ",}":
+            return at + 1
+        path = prefix if text == "self" else prefix + (text,)
+        at += 1
+        if at < len(tokens) and tokens[at][0] == "::":
+            return tree(at + 1, path)
+        if at < len(tokens) and tokens[at][0] == "as":
+            at += 2
+        leaves.append((path, offset))
+        return at
+
+    tree(0, ())
+    return leaves
+
+
+def use_hits(code: str) -> list[tuple[int, str]]:
+    """The offset and banned path of each leaf of a `use` tree rooted at `tokio` that is one
+    of the banned paths (the plain regexes read a path only when it is written whole)."""
+    hits = []
+    for match in USE.finditer(code):
+        for path, offset in _use_leaves(code, match.end()):
+            if path[:1] != ("tokio",):
+                continue
+            rest = path[1:]
+            if rest[:1] == ("*",) or (rest and rest[0].startswith("spawn")):
+                hits.append((offset, "tokio::spawn"))
+            elif rest[:1] == ("task",) and (len(rest) == 1 or rest[1] == "*"
+                                            or rest[1].startswith("spawn")):
+                hits.append((offset, "tokio::task::spawn"))
+            elif rest[:1] == ("time",):
+                hits.append((offset, "tokio::time::"))
+    return hits
 
 
 def read(text: str) -> Source:
@@ -133,11 +247,11 @@ def read(text: str) -> Source:
     code = gen_registry.view(text, kinds, gen_registry.CODE)
     comments = gen_registry.view(text, kinds, gen_registry.LINE_COMMENT).split("\n")
     spans: list[tuple[int, int]] = []
-    modules: list[str] = []
+    modules: list[tuple[str, ...]] = []
     test_file = False
     for match in CFG.finditer(code):
         close = _close(code, match.end() - 1)
-        if not names_test(code[match.end():close - 1]):
+        if not only_in_tests(code[match.end():close - 1]):
             continue
         if match[1]:
             test_file = test_file or bool(INNER_ATTRIBUTES.fullmatch(code[:match.start()]))
@@ -149,7 +263,7 @@ def read(text: str) -> Source:
         spans.append((match.start(), end))
         declared = MOD_NAME.search(header)
         if stop == ";" and declared:
-            modules.append(declared[1])
+            modules.append(_inline_modules(code, match.start()) + (declared[1],))
     chars = list(code)
     for start, end in spans:
         for i in range(start, end):
@@ -175,21 +289,23 @@ def scan(root: Path = REPO, opt_out: bool = True) -> list[Hit]:
         if source.test_file:
             skipped_files.add(file)
             skipped_dirs.add(module_dir)
-        for name in source.test_modules:
-            skipped_files.add(module_dir / f"{name}.rs")
-            skipped_dirs.add(module_dir / name)
+        for names in source.test_modules:
+            where = module_dir.joinpath(*names[:-1])
+            skipped_files.add(where / f"{names[-1]}.rs")
+            skipped_dirs.add(where / names[-1])
     hits: set[Hit] = set()
     for file, source in sources.items():
         path = file.relative_to(root).as_posix()
         if (file in skipped_files or skipped_dirs & set(file.parents)
                 or path.startswith(TEST_SERVER + "/") or file.name == FIXTURE):
             continue
-        for banned, pattern in BANNED:
-            for match in pattern.finditer(source.code):
-                line = source.code.count("\n", 0, match.start())
-                if opt_out and OPT_OUT.match(source.comments[line]):
-                    continue
-                hits.add(Hit(path, line + 1, banned))
+        found = [(match.start(), banned) for banned, pattern in BANNED
+                 for match in pattern.finditer(source.code)]
+        for offset, banned in found + use_hits(source.code):
+            line = source.code.count("\n", 0, offset)
+            if opt_out and OPT_OUT.match(source.comments[line]):
+                continue
+            hits.add(Hit(path, line + 1, banned))
     return sorted(hits)
 
 

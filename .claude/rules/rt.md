@@ -37,12 +37,14 @@ paths:
 The runtime is injected; the wall clock is not. A timestamp a venue reads is the real time
 whichever executor runs the client, so `UnixMillis::now` and `shared::auth::current_timestamp`
 read `SystemTime::now()` from `std` on every target but wasm32, where `polyoxide-venue` takes
-`web_time`'s, and `polyoxide-polymarket` reads `polyoxide_rt::SystemTime`, which is `web_time`'s type
-(`std`'s on every target but wasm32). Both lines end `// runtime-gate: the wall clock is never injected`.
+`web_time`'s, and `polyoxide-polymarket` reads `polyoxide_rt::SystemTime`, which is `web_time`'s
+type (`std`'s on every target but wasm32). Both lines end
+`// runtime-gate: the wall clock is never injected`.
 
-`scripts/runtime_gate.py` fails on any other `Instant::now(` or `SystemTime::now(`, on
-`tokio::spawn`, `tokio::task::spawn` and on any `tokio::time` path in the production code of the
-crates that use this one (`ci-gates.md`); `polyoxide-rt` implements the runtime and is the one
-crate it does not scan. A timer or a spawn there goes through the `Runtime` the client was built
-with: `runtime.sleep`, `runtime.now`, `polyoxide_rt::spawn`, `polyoxide_rt::timeout` and
-`polyoxide_rt::interval`.
+`scripts/runtime_gate.py` fails on any other `Instant::now` or `SystemTime::now`, called or passed
+as a function value, on `tokio::spawn`, on any `tokio::task::spawn*` (`spawn_blocking` and
+`spawn_local` too) and on any `tokio::time` path, however imported (`use tokio::{spawn, ..}` and
+`use tokio::task;` are hits), in the production code of the crates that use this one
+(`ci-gates.md`); `polyoxide-rt` implements the runtime and is the one crate it does not scan. A
+timer or a spawn there goes through the `Runtime` the client was built with: `runtime.sleep`,
+`runtime.now`, `polyoxide_rt::spawn`, `polyoxide_rt::timeout` and `polyoxide_rt::interval`.
