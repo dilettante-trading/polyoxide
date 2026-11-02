@@ -357,9 +357,10 @@ Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly 
   probed that sets `Access-Control-Expose-Headers`: `Retry-After, x-pmp-pod`. A browser reads both;
   the nightly job reads `x-pmp-pod` from `GET /v1/info/ping`.
 - Its `Access-Control-Allow-Headers` is `content-type, authorization, polymarket-proxy,
-  polymarket-secret, traceparent, tracestate, x-gc-*`, measured on `GET /v1/info/ping`: a browser
-  request with any other header fails its preflight, so the perps header auth cannot be sent from
-  a page whose origin the host does not allow it to.
+  polymarket-secret, traceparent, tracestate, x-gc-*`, measured on `GET /v1/info/ping`. Both of the
+  perps auth headers (`POLYMARKET-PROXY` and `POLYMARKET-SECRET`, the spec's security schemes) are
+  on that list and the allowed origin is `*`, so a page can send them; a browser request with any
+  other header fails its preflight.
 - `ws.perpetuals.polymarket.com/v1/ws` upgrades (101). The browser sends no protocol pings, so
   the JSON `post/ping` is its keepalive; the nightly job sends it and holds the socket until the
   first data frame or 20 s.
