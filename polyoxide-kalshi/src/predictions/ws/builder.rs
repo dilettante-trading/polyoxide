@@ -1,9 +1,10 @@
 //! The builder: Kalshi's socket timings and endpoint, handed to the kit's `Supervisor`
 //! with `PredictionsProtocol`.
 
-use std::{collections::BTreeSet, time::Duration};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
-use polyoxide_ws::{Supervisor, Timing};
+use polyoxide_rt::{default_runtime, Runtime};
+use polyoxide_ws::{default_socket_transport, SocketTransport, Supervisor, Timing};
 
 use crate::predictions::{
     key::Ticker,
@@ -20,6 +21,8 @@ pub struct PredictionsWsBuilder {
     url: String,
     timing: Timing,
     channels: BTreeSet<Channel>,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for PredictionsWsBuilder {
@@ -44,6 +47,8 @@ impl PredictionsWsBuilder {
             url: PRODUCTION_WS.to_owned(),
             timing,
             channels: BTreeSet::from([Channel::OrderbookDelta]),
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -90,6 +95,14 @@ impl PredictionsWsBuilder {
         connect_timeout;
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the supervision task, its pings and a re-snapshot's
+        /// clock run on. By default the target's.
+        runtime;
+        /// How each attempt dials. By default the target's.
+        socket_transport;
+    }
+
     /// Connect, sign the handshake, subscribe to `tickers` on every channel chosen and start
     /// supervising. With no tickers the connection opens and subscribes nothing, on any
     /// channel; the first
@@ -109,9 +122,16 @@ impl PredictionsWsBuilder {
             });
         }
         let membership: BTreeSet<Ticker> = tickers.into_iter().collect();
+        let runtime = self.runtime.unwrap_or_else(default_runtime);
         let protocol = PredictionsProtocol::new(self.url, credentials)
-            .configured(self.channels, self.timing.stale_after);
+            .configured(self.channels, self.timing.stale_after)
+            .runtime(Arc::clone(&runtime));
         Supervisor::new(protocol, self.timing)
+            .runtime(runtime)
+            .socket_transport(
+                self.socket_transport
+                    .unwrap_or_else(default_socket_transport),
+            )
             .connect(membership)
             .await
     }
