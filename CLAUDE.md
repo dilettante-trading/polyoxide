@@ -149,6 +149,7 @@ Two workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
 - `.github/workflows/nightly-behavioral.yml` runs the live suites, one job per crate and suite, and runs again on Saturday and Sunday at 18:30 UTC for the sports feed. A `real` failure files or updates the `nightly-behavioral` issue:
   <!-- generated:begin claude-nightly -->
   - `live-polyoxide-binance-usdm` (15 min): `live_usdm` with `--features usdm`, `live_usdm_ws` with `--features usdm-ws`
+  - `live-polyoxide-binance-spot` (15 min): `live_spot` with `--features spot`
   - `live-polyoxide-kalshi-predictions` (15 min): `live_predictions` with `--features predictions`, `live_predictions_account` with `--features predictions`, `live_predictions_venue` with `--features predictions`, `live_predictions_ws` with `--features predictions-ws`; secrets `KALSHI_DEMO_API_KEY_ID`, `KALSHI_DEMO_PRIVATE_KEY`
   - `live-polyoxide-polymarket-clob` (15 min): `live_clob` with `--features clob,gamma`, `live_clob_trading` with `--features clob-ws,data,gamma`, `live_clob_ws` with `--features clob-ws`; secrets `POLYMARKET_API_KEY`, `POLYMARKET_API_PASSPHRASE`, `POLYMARKET_API_SECRET`, `POLYMARKET_BUILDER_CODE`, `POLYMARKET_PRIVATE_KEY`
   - `live-polyoxide-polymarket-clob-session-keys` (40 min): `live_clob_session_keys` with `--features clob,relay,gamma`; secrets `BUILDER_API_KEY`, `BUILDER_PASS_PHRASE`, `BUILDER_SECRET`, `POLYMARKET_DW_OWNER_PRIVATE_KEY`, `POLYMARKET_DW_SESSION_PRIVATE_KEY`, `POLYMARKET_DW_WALLET`

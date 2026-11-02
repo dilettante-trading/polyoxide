@@ -132,6 +132,10 @@ name = "headers_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "live_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "live_usdm"
 required-features = ["usdm"]
 
@@ -215,6 +219,12 @@ secrets = []
 suite = "usdm"
 timeout = 15
 features = ["usdm-ws"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_spot]
+suite = "spot"
+timeout = 15
+features = ["spot"]
 secrets = []
 
 # The foundation crates' protected test names that still name Binance (S2 may

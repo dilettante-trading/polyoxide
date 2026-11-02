@@ -59,6 +59,18 @@ jobs:
           suite: usdm
           flags: "--no-default-features --features usdm,usdm-ws --test live_usdm --test live_usdm_ws"
 
+  live-polyoxide-binance-spot:
+    name: Live tests (polyoxide-binance, spot)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-binance
+          suite: spot
+          flags: "--no-default-features --features spot --test live_spot"
+
   live-polyoxide-kalshi-predictions:
     name: Live tests (polyoxide-kalshi, predictions)
     runs-on: ubuntu-latest
@@ -220,6 +232,7 @@ jobs:
     # generated:begin nightly-aggregate-needs
     needs:
       - live-polyoxide-binance-usdm
+      - live-polyoxide-binance-spot
       - live-polyoxide-kalshi-predictions
       - live-polyoxide-polymarket-clob
       - live-polyoxide-polymarket-clob-session-keys
