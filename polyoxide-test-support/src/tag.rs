@@ -183,6 +183,27 @@ thread_local! {
 
 static HOOK: Once = Once::new();
 
+/// Print one line where the nightly's runner reads it: stderr, or on wasm32 the
+/// browser console, since std's stderr prints nothing there and wasm-bindgen-test
+/// captures `console.error` into the failing test's output.
+fn emit(line: &str) {
+    #[cfg(not(target_arch = "wasm32"))]
+    eprintln!("{line}");
+    #[cfg(target_arch = "wasm32")]
+    console::error(line);
+}
+
+#[cfg(target_arch = "wasm32")]
+mod console {
+    use wasm_bindgen::prelude::wasm_bindgen;
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = console)]
+        pub fn error(message: &str);
+    }
+}
+
 /// Stores `tag` for the hook, then panics with `message` at the caller's line.
 #[track_caller]
 pub(crate) fn raise(tag: Tag, message: fmt::Arguments<'_>) -> ! {
@@ -197,9 +218,9 @@ fn install_hook() {
         panic::set_hook(Box::new(move |info| {
             // `try_with`, since a hook that panicked would abort the process.
             if let Some(tag) = PENDING.try_with(Cell::take).ok().flatten() {
-                // `eprintln!` rather than a raw stderr write, so the line joins
-                // the test's captured output, ahead of the report below.
-                eprintln!("{PREFIX}{tag}");
+                // `emit` rather than a raw stderr write, so the line joins the
+                // test's captured output, ahead of the report below.
+                emit(&format!("{PREFIX}{tag}"));
             }
             previous(info);
         }));

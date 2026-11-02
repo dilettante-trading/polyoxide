@@ -14,20 +14,28 @@ publish = false
 # Only `polyoxide-core` and `polyoxide-venue` from the workspace, never a venue
 # crate: a test builds its own client from the strings the loaders return.
 [dependencies]
-polyoxide-core = { workspace = true, features = ["keychain"] }
 polyoxide-venue = { workspace = true }
-dotenvy = "0.15"
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
-# `registration!`: the ids a crate declares in its own `Cargo.toml`.
-toml = "0.8"
 # `query`: the query keys a builder sends, read off a mock server.
 mockito = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 # `soak`: the observer that counts the retry loops' warnings.
 tracing-subscriber = { workspace = true, optional = true }
+
+# Everything but the tags reads a file, the keychain or a native clock, so it builds off wasm32
+# only: a browser test links the tags alone (spec D14).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+polyoxide-core = { workspace = true, features = ["keychain"] }
+dotenvy = "0.15"
+tokio = { workspace = true, features = ["time"] }
+# `registration!`: the ids a crate declares in its own `Cargo.toml`.
+toml = "0.8"
+
+# The tag line goes to the browser console, where wasm-bindgen-test captures it.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
 
 [features]
 # What the agreement suites need to fire a builder at a mock server.
