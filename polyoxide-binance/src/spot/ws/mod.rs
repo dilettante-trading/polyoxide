@@ -69,7 +69,7 @@ pub const SPOT_WS_BASE: &str = "wss://stream.binance.com:9443";
 
 /// Streams one connection may carry. Binance documents 1024 and 1024 were
 /// measured held (2026-11-02); the client never sends a 1025th.
-pub const MAX_STREAMS_PER_CONNECTION: usize = 1024;
+pub const MAX_STREAMS_PER_CONNECTION: usize = crate::shared::ws::MAX_STREAMS_PER_CONNECTION;
 
 /// Stream names per `SUBSCRIBE` or `UNSUBSCRIBE`. Binance documents no limit;
 /// one request of 1024 names (23,598 bytes) was acknowledged and held, as were

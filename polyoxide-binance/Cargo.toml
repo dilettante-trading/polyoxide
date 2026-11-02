@@ -70,9 +70,9 @@ url = { workspace = true, optional = true }
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
-# The shared scripted WebSocket server the `usdm-ws` suites run on, with
-# Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo strips it on
-# publish.
+# The shared scripted WebSocket server the `usdm-ws` and `spot-ws` suites run
+# on, with Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo
+# strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 futures-util = "0.3"
 mockito = { workspace = true }
