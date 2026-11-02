@@ -7,6 +7,7 @@ members = [
   "polyoxide-kalshi",
   "polyoxide-polymarket",
   "polyoxide-py",
+  "polyoxide-rt",
   "polyoxide-test-support",
   "polyoxide-venue",
   "polyoxide-ws",
@@ -29,6 +30,7 @@ polyoxide-binance = { path = "polyoxide-binance", version = "0.44.0", default-fe
 # Its defaults are `clob`, `gamma` and `data`; each member names the modules
 # it builds, so none builds the signing stack by accident.
 polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.44.0", default-features = false }
+polyoxide-rt = { path = "polyoxide-rt", version = "0.44.0" }
 polyoxide-venue = { path = "polyoxide-venue", version = "0.44.0" }
 polyoxide-ws = { path = "polyoxide-ws", version = "0.44.0" }
 tokio = { version = "1.41" }
@@ -58,6 +60,9 @@ governor = { version = "0.8", features = ["std"] }
 # The hook traits of core's send loop are dyn-compatible through it (AD-8).
 dynosaur = "0.3.1"
 fastrand = "2"
+# The clock vocabulary of `polyoxide-rt`: std's own types on native, a browser-backed
+# `Instant` and `SystemTime` on wasm32.
+web-time = "1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust"] }
 mockito = "1.7"
 pyo3 = { version = "0.28", features = ["abi3-py39"] }

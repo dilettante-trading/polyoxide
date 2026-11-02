@@ -1,0 +1,23 @@
+[package]
+name = "polyoxide-rt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The runtime seam the polyoxide crates share: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them"
+keywords = ["async", "runtime", "timer", "wasm"]
+categories = ["asynchronous"]
+
+# Nothing in the workspace, so it publishes first and every crate can use it
+# (AD-2). Each task below adds the dependencies it first needs.
+[dependencies]
+web-time = { workspace = true }
+
+# Registration, read by scripts/gen_registry.py: the README line and the notes
+# CLAUDE.md's crate list carries. Run `python3 scripts/gen_registry.py --write`
+# after an edit.
+[package.metadata.polyoxide]
+readme = "The runtime seam: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them"
+notes = ["names no venue, which `scripts/venue_gate.py` holds"]

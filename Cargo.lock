@@ -4155,6 +4155,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-rt"
+version = "0.44.0"
+dependencies = [
+ "web-time",
+]
+
+[[package]]
 name = "polyoxide-test-support"
 version = "0.44.0"
 dependencies = [

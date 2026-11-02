@@ -91,9 +91,10 @@ Run the jobs a change touches before pushing (inside `nix develop`); `-D warning
 ## Workspace
 
 <!-- generated:begin claude-crate-count -->
-Ten crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
+Eleven crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
 <!-- generated:end claude-crate-count -->
 <!-- generated:begin claude-graph -->
+- `polyoxide-rt` — The runtime seam: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them; needs: nothing in the workspace; names no venue, which `scripts/venue_gate.py` holds
 - `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey`, the `KeySpace` a venue implements per product and the `ProductClass` it declares), the market-data traits and their class bundles, with the records they return and their typed `Extensions` (feature `market`), and the `Trading` trait with its order, fill, position and balance records and its `TradingEvents` stream (feature `trading`); needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency
 - `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; the send loop and its hooks, the HTTP client, window quotas, capacity buckets, holds, errors, macros and the keychain; it names no venue, which `scripts/venue_gate.py` holds
 - `polyoxide-ws` — The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`); needs: nothing in the workspace; depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls
@@ -178,7 +179,7 @@ Two workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
 
 `scripts/publish_order.py` computes the publishing order from `cargo metadata`.
 <!-- generated:begin claude-publish-order -->
-Today's order: `polyoxide-venue` → `polyoxide-core` → `polyoxide-ws` → `polyoxide-binance` → `polyoxide-kalshi` → `polyoxide-polymarket` → `polyoxide` → `polyoxide-cli`.
+Today's order: `polyoxide-rt` → `polyoxide-venue` → `polyoxide-core` → `polyoxide-ws` → `polyoxide-binance` → `polyoxide-kalshi` → `polyoxide-polymarket` → `polyoxide` → `polyoxide-cli`.
 <!-- generated:end claude-publish-order -->
 `polyoxide-py` is `publish = false`; its wheels go to PyPI from the release workflow.
 

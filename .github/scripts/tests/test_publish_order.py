@@ -933,8 +933,9 @@ def test_tag_sha_fails_loudly(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_real_workspace_order() -> None:
     order = names(publish_order.publish_order(publish_order.workspace_metadata()))
-    # polyoxide-venue depends on nothing, and core on venue alone.
-    assert order[:2] == ["polyoxide-venue", "polyoxide-core"]
+    # polyoxide-rt and polyoxide-venue depend on nothing, and ties break by name; core needs
+    # venue (and, from a later story, rt).
+    assert order[:3] == ["polyoxide-rt", "polyoxide-venue", "polyoxide-core"]
     assert order.index("polyoxide") > order.index("polyoxide-polymarket")
     assert "polyoxide-cli" in order
     assert "polyoxide-py" not in order

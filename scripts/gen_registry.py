@@ -121,7 +121,8 @@ CRATE_KEYS = {"readme", "venue", "products", "classes", "mirrors", "notes", "liv
 EXCEPTION_KEYS = {"path", "term", "reason"}
 # The crates that may name no venue beyond the exceptions each venue declares
 # (CAP-7), which scripts/venue_gate.py reads.
-FOUNDATION = ("polyoxide-venue", "polyoxide-core", "polyoxide-ws", "polyoxide-test-support")
+FOUNDATION = ("polyoxide-venue", "polyoxide-core", "polyoxide-ws", "polyoxide-rt",
+              "polyoxide-test-support")
 LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note"}
 MIRROR_KEYS = {"name", "section", "base_urls", "description", "crate_note", "exclude", "specs"}
 SPEC_KEYS = {"id", "kind", "url", "vendored", "covers", "note", "exclude"}
