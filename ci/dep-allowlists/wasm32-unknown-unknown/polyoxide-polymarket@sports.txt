@@ -1,0 +1,66 @@
+# The crates `cargo tree -p polyoxide-polymarket -e normal --no-default-features --target wasm32-unknown-unknown --features sports` builds,
+# sorted and unique, the crate itself left out. CI's scripts job fails on any
+# difference (.github/scripts/tests/test_dep_allowlists.py). Regenerate with
+# `uv run python -m tests.test_dep_allowlists --write` in .github/scripts, and
+# say in the commit why the tree changed.
+block-buffer
+bumpalo
+bytes
+cfg-if
+crypto-common
+data-encoding
+digest
+futures-channel
+futures-core
+futures-macro
+futures-sink
+futures-task
+futures-util
+generic-array
+getrandom
+gloo-timers
+http
+httparse
+itoa
+js-sys
+log
+memchr
+once_cell
+pin-project-lite
+polyoxide-rt
+polyoxide-venue
+polyoxide-ws
+ppv-lite86
+proc-macro2
+quote
+rand
+rand_chacha
+rand_core
+send_wrapper
+serde
+serde_core
+serde_derive
+serde_json
+sha1
+slab
+syn
+thiserror
+thiserror-impl
+tokio
+tokio-macros
+tracing
+tracing-attributes
+tracing-core
+tungstenite
+typenum
+unicode-ident
+utf-8
+wasm-bindgen
+wasm-bindgen-futures
+wasm-bindgen-macro
+wasm-bindgen-macro-support
+wasm-bindgen-shared
+web-sys
+web-time
+zerocopy
+zmij

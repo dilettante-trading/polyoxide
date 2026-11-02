@@ -89,6 +89,18 @@ on the PR that introduces it rather than halfway through a release.
     `keyring` only with `keychain`. `@polymarket-rtds` and `@polymarket-sports` are the
     socket-only tree, `@polymarket-perps` and `@kalshi-predictions` must hold `reqwest`, and
     `@kalshi-predictions-ws` holds the socket kit.
+- `test_dep_allowlists.py` also pins the browser build (spec D10): the files in
+  `ci/dep-allowlists/wasm32-unknown-unknown/`, named as the host's are, hold
+  `cargo tree -p <crate> -e normal --target wasm32-unknown-unknown` for spec D1's crates and
+  features, which the test's `WASM_SET` declares (it does not glob, so a missing file fails a test).
+  The host's files stay pinned to `x86_64-unknown-linux-gnu`. A browser file obeys the deny-lists
+  above, except that `polyoxide-core`, the HTTP stack itself, is not held to the socket-only one
+  (`UNFENCED`); no file may build `WASM_NEVER` (`tokio-tungstenite` and `rustls`, the host-only
+  transport), and each file named in `WASM_MUST_BUILD` must build the crates only the browser
+  build reaches (`gloo-timers`, `send_wrapper`, `web-sys` and the like), so a target that resolved
+  as the host's fails. A dependency that belongs to the host goes in its manifest's
+  `cfg(not(target_arch = "wasm32"))` table, never into a file here. `--write` regenerates both sets
+  and creates the browser set's files when absent; say why in the commit.
 - `test_module_readmes.py` fails when a venue crate's `src/<product>/README.md` is not included
   exactly once under `cfg(all(doctest, feature = "<product>"))`, when such an include names no
   file, or when a module directory has no README and no entry in its `WITHOUT_README` (only
