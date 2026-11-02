@@ -22,7 +22,8 @@ orders, positions and balances, and streams acknowledgements and fills as
 `TradingEvents`, which begins with a `Resync`; `Extensions::ensure_declared` is
 how a venue refuses an option it does not declare.
 
-By default it depends on nothing, so a credential-free socket client can use it
+By default it depends on nothing (on wasm32 it depends only on `web-time`, which
+reads the browser's wall clock), so a credential-free socket client can use it
 without building an HTTP or signing stack.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-venue/).
