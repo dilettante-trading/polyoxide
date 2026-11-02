@@ -1,11 +1,12 @@
 //! # polyoxide-binance
 //!
-//! Rust client library for Binance's APIs, one feature per module: `usdm`.
+//! Rust client library for Binance's APIs, one feature per module: `usdm` and `spot`.
 //!
 //! `usdm` (feature `usdm`, on by default) reads USDⓈ-M futures public market
 //! data (`fapi.binance.com`), and with `usdm-ws` its market streams
-//! (`fstream.binance.com`). No credentials are needed. The module's own docs
-//! carry its example.
+//! (`fstream.binance.com`). `spot` (feature `spot`, on by default) reads spot
+//! public market data (`api.binance.com`). No credentials are needed. Each
+//! module's own docs carry its example.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `doctest` keeps this out of normal builds and `cargo doc`.
