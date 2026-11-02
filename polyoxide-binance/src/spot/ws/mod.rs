@@ -13,21 +13,34 @@
 //! `MIN_REQUEST_INTERVAL`. The measurements are in
 //! `docs/specs/binance/OBSERVED.md`, under `## Spot`.
 
+// The test-only `scripted` below is a second `mod` item over `usdm::ws`'s scripted
+// server; the allow sits here, not on the item, because the test-bodies gate reads an
+// item's attributes as the gate of the file it declares.
+#![cfg_attr(test, allow(clippy::duplicate_mod))]
+
+pub mod client;
 pub mod error;
 pub mod event;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod fixtures;
+mod protocol;
+#[cfg(test)]
+#[path = "../../usdm/ws/scripted.rs"]
+mod scripted;
 pub mod stream;
+pub mod supervised;
 
 use std::{fmt, time::Duration};
 
+pub use client::SpotWs;
 pub use error::{SpotWsError, StopCause};
 pub use event::{
     AggTradeEvent, AvgPriceEvent, BookTickerEvent, KlineBar, KlineEvent, MiniTickerEvent,
     PartialDepthEvent, Payload, TickerEvent, TradeEvent, Update,
 };
 pub use stream::{DepthLevels, DepthSpeed, InvalidStreamName, StreamName};
+pub use supervised::{DisconnectReason, Event};
 
 /// The production stream host. The client appends `/stream`.
 pub const SPOT_WS_BASE: &str = "wss://stream.binance.com:9443";
@@ -68,8 +81,6 @@ impl StreamPath {
     }
 
     /// The combined-stream URL on `base`.
-    // Story 4's `SpotStreams::url` is the first caller; it removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn url(self, base: &str) -> String {
         format!("{}/{}", base.trim_end_matches('/'), self.as_str())
     }

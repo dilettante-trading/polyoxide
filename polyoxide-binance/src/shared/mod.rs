@@ -11,5 +11,5 @@ pub(crate) mod policy;
 pub(crate) mod request;
 pub(crate) mod symbol;
 pub(crate) mod weight;
-#[cfg(feature = "usdm-ws")]
+#[cfg(any(feature = "usdm-ws", feature = "spot-ws"))]
 pub(crate) mod ws;
