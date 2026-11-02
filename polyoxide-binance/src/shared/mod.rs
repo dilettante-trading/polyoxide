@@ -8,5 +8,6 @@
 
 pub(crate) mod error;
 pub(crate) mod policy;
+pub(crate) mod request;
 pub(crate) mod symbol;
 pub(crate) mod weight;

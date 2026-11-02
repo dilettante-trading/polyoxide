@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use polyoxide_core::{AttemptInfo, Charge, LayerId, Refused, RequestMeta, ResponseMeta, Throttle};
 
+use crate::shared::request::Priced;
 use crate::shared::weight::{Clock, Engine};
 use crate::usdm::types::DepthLimit;
 
@@ -151,6 +152,20 @@ impl Route {
                 DepthLimit::Thousand => 20,
             }),
         }
+    }
+}
+
+/// How `Routed` reads a route: through the inherent `path` and `cost`, which
+/// stay public.
+impl Priced for Route {
+    type Cost = Cost;
+
+    fn path(self) -> &'static str {
+        Route::path(self)
+    }
+
+    fn cost(self) -> Cost {
+        Route::cost(self)
     }
 }
 
