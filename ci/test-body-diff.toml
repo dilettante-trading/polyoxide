@@ -255,3 +255,9 @@ file = "polyoxide-polymarket/tests/spec_agreement_perps.rs"
 item = "every_enum_matches_the_spec"
 row = "R21"
 sha256 = "6103b1930eb27050c934d6b301ec99abc9ca274a2f52169f464ab7ab5e2271f4"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::an_expired_cooldown_stops_delaying"
+row = "R22"
+sha256 = "57e787141cf3df43f27cd6bc81a3e4db8e94a0a4119f00b9c69cbec6054ac926"

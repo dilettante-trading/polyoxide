@@ -1080,6 +1080,10 @@ mod cooldown_tests {
         let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
         rl.acquire("/closed-positions", None).await;
+        // The quota keeps the runtime's clock, so its own pacing shows in
+        // virtual time: let the general bucket and the row's both refill, so
+        // that only the cooldown could still delay the second acquire.
+        tokio::time::advance(Duration::from_secs(1)).await;
 
         let t = tokio::time::Instant::now();
         rl.acquire("/closed-positions", None).await;

@@ -6,7 +6,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use polyoxide_core::{ApiError, ClientConfig, HttpClientBuilder, RetryConfig};
+use polyoxide_core::{
+    ApiError, CapacityBucket, ClientConfig, Hold, HttpClientBuilder, LayerId, RetryConfig,
+    WindowQuotaTable,
+};
 use polyoxide_rt::{BoxFuture, Instant, Runtime, TokioRuntime};
 
 /// A runtime over tokio's that records its sleeps, in order, and counts its
@@ -180,5 +183,104 @@ async fn health_times_its_attempt_on_the_injected_runtime() {
         counting.reads() >= 2,
         "the stopwatch read the runtime's clock {} times",
         counting.reads()
+    );
+}
+
+#[tokio::test]
+async fn a_hold_reads_the_clock_and_sleeps_on_its_runtime() {
+    let counting = Arc::new(Counting::default());
+    let hold = Hold::unbounded_on(counting.clone());
+
+    hold.extend(Duration::from_millis(60));
+    hold.wait().await;
+
+    let slept = counting.sleeps();
+    assert!(
+        slept
+            .iter()
+            .any(|d| *d > Duration::ZERO && *d <= Duration::from_millis(60)),
+        "the wait for the hold did not sleep on the runtime: {slept:?}"
+    );
+    assert!(
+        counting.reads() > 0,
+        "the hold never read the runtime's clock"
+    );
+}
+
+#[tokio::test]
+async fn a_ceiling_clamps_what_the_runtime_sleeps() {
+    let counting = Arc::new(Counting::default());
+    let hold = Hold::with_ceiling_on(Duration::from_millis(40), counting.clone());
+
+    hold.extend(Duration::from_secs(3_600));
+    hold.wait().await;
+
+    let slept = counting.sleeps();
+    assert!(
+        !slept.is_empty() && slept.iter().all(|d| *d <= Duration::from_millis(40)),
+        "an hour's hold was not clamped to the 40 ms ceiling: {slept:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_bucket_refills_and_waits_on_its_holds_runtime() {
+    let counting = Arc::new(Counting::default());
+    let hold = Hold::unbounded_on(counting.clone());
+    let bucket = CapacityBucket::new(LayerId("test"), 1, 20, hold);
+
+    bucket.acquire(1, true).await.unwrap();
+    bucket.acquire(1, true).await.unwrap();
+
+    // One token refills in 50 ms at 20 a second.
+    let slept = counting.sleeps();
+    assert!(
+        slept
+            .iter()
+            .any(|d| *d > Duration::ZERO && *d <= Duration::from_millis(50)),
+        "the wait for a token did not sleep on the runtime: {slept:?}"
+    );
+    assert!(
+        counting.reads() > 0,
+        "the bucket never read the runtime's clock"
+    );
+}
+
+#[tokio::test]
+async fn a_window_quota_waits_on_its_runtime() {
+    let counting = Arc::new(Counting::default());
+    let mut table = WindowQuotaTable::new(11, Duration::from_secs(1));
+    table.with_runtime(counting.clone());
+    let limiter = table.build();
+
+    limiter.acquire("/rows", None).await;
+    limiter.acquire("/rows", None).await;
+
+    // The general bucket holds one token and paces the rest.
+    let interval = WindowQuotaTable::paced_interval(11, Duration::from_secs(1));
+    let slept = counting.sleeps();
+    assert!(
+        slept.iter().any(|d| *d > Duration::ZERO && *d <= interval),
+        "the second request did not wait for its bucket on the runtime: {slept:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_window_quota_paces_on_the_runtimes_clock() {
+    let mut table = WindowQuotaTable::new(11, Duration::from_secs(1));
+    table.with_runtime(tokio_runtime());
+    let limiter = table.build();
+
+    limiter.acquire("/rows", None).await;
+    let start = tokio::time::Instant::now();
+    limiter.acquire("/rows", None).await;
+
+    // On a paused clock the sleep is the only thing that moves time, so the
+    // second request waits one paced interval of virtual time, not the minutes
+    // a bucket on another clock spins through.
+    let interval = WindowQuotaTable::paced_interval(11, Duration::from_secs(1));
+    let waited = start.elapsed();
+    assert!(
+        waited >= interval && waited <= interval + Duration::from_millis(5),
+        "the second request waited {waited:?} of virtual time for an interval of {interval:?}"
     );
 }
