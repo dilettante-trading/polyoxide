@@ -19,8 +19,8 @@
 //!   `polymarket-rtds` and `polymarket-sports`. With `clob`, `gamma` and
 //!   `data` all on it holds the unified client, `polymarket::Polymarket`.
 //! - `polyoxide::binance` is `polyoxide-binance`, under `binance` (its
-//!   defaults: `usdm` and `spot`), `binance-usdm`, `binance-usdm-ws` or
-//!   `binance-spot`.
+//!   defaults: `usdm` and `spot`), `binance-usdm`, `binance-usdm-ws`,
+//!   `binance-spot` or `binance-spot-ws`.
 //! - `polyoxide::kalshi` is `polyoxide-kalshi`, under `kalshi` (its
 //!   defaults: `predictions`), `kalshi-predictions` or `kalshi-predictions-ws`.
 //! - `polyoxide::parse_key` reads a market key, `venue.product:id`, through
@@ -125,7 +125,8 @@ pub use polyoxide_polymarket as polymarket;
     feature = "binance",
     feature = "binance-usdm",
     feature = "binance-usdm-ws",
-    feature = "binance-spot"
+    feature = "binance-spot",
+    feature = "binance-spot-ws"
 ))]
 pub use polyoxide_binance as binance;
 
@@ -282,6 +283,13 @@ pub mod prelude {
         Spot, SpotBuilder, SpotError, WeightBudget as SpotWeightBudget,
     };
 
+    // Aliased as usdm's and the other venues' streams are: usdm's `StreamName`
+    // keeps the bare name, and a bare `Event` names no venue.
+    #[cfg(feature = "binance-spot-ws")]
+    pub use polyoxide_binance::spot::ws::{
+        Event as SpotEvent, SpotWs, SpotWsBuilder, SpotWsError, StreamName as SpotStreamName,
+    };
+
     // Aliased: a bare `Credentials` is the CLOB's.
     #[cfg(feature = "kalshi-predictions")]
     pub use polyoxide_kalshi::predictions::{
@@ -324,6 +332,8 @@ const _: fn(crate::binance::usdm::Usdm) = drop;
 const _: fn(crate::binance::usdm::ws::UsdmWs) = drop;
 #[cfg(feature = "binance-spot")]
 const _: fn(crate::binance::spot::Spot) = drop;
+#[cfg(feature = "binance-spot-ws")]
+const _: fn(crate::binance::spot::ws::SpotWs) = drop;
 #[cfg(feature = "kalshi-predictions")]
 const _: fn(crate::kalshi::predictions::Predictions) = drop;
 #[cfg(feature = "kalshi-predictions-ws")]
@@ -353,6 +363,8 @@ const _: fn(crate::prelude::Usdm) = drop;
 const _: fn(crate::prelude::UsdmWs) = drop;
 #[cfg(feature = "binance-spot")]
 const _: fn(crate::prelude::Spot) = drop;
+#[cfg(feature = "binance-spot-ws")]
+const _: fn(crate::prelude::SpotWs) = drop;
 #[cfg(feature = "kalshi-predictions")]
 const _: fn(crate::prelude::Predictions) = drop;
 #[cfg(feature = "kalshi-predictions-ws")]
