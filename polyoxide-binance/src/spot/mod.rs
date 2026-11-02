@@ -11,12 +11,13 @@
 //! per five minutes, under that limit's 300,000.
 //!
 //! ```no_run
-//! use polyoxide_binance::spot::Spot;
+//! use polyoxide_binance::spot::{types::Symbol, Spot};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let spot = Spot::new()?;
-//! let time = spot.health().time().send().await?;
-//! println!("server time {}", time.server_time);
+//! let btc = Symbol::new("BTCUSDT")?;
+//! let info = spot.exchange().exchange_info().symbol(&btc).send().await?;
+//! println!("{} symbols listed", info.symbols.len());
 //! # Ok(())
 //! # }
 //! ```
@@ -33,7 +34,10 @@ pub use weight::WeightBudget;
 
 use polyoxide_core::{ClientConfig, HttpClient};
 
-use crate::spot::{api::health::Health, policy::SpotRetryPolicy};
+use crate::spot::{
+    api::{exchange::ExchangeApi, health::Health},
+    policy::SpotRetryPolicy,
+};
 
 /// Production spot REST host.
 pub const DEFAULT_BASE_URL: &str = "https://api.binance.com";
@@ -62,6 +66,8 @@ impl Spot {
     polyoxide_core::namespaces! { http;
         /// Liveness: `ping`, `time`.
         health: Health,
+        /// Reference data: `exchangeInfo`.
+        exchange: ExchangeApi,
     }
 
     /// The budget this client charges.
@@ -170,5 +176,15 @@ mod tests {
             result.is_err(),
             "5th permit should block with default limit of 4"
         );
+    }
+
+    #[test]
+    fn the_namespaces_share_the_client_s_http_client() {
+        // Both namespaces are cut from one client, so a hold set through one
+        // is the other's.
+        let spot = Spot::new().unwrap();
+        let _health = spot.health();
+        let exchange = spot.exchange();
+        assert_eq!(exchange.exchange_info().cost(), weight::Cost::Weight(20));
     }
 }
