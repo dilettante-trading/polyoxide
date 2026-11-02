@@ -74,15 +74,17 @@ comment, name, argument type and key:
   v2's paged builders use `self.inner;`). A field with an inherent `query`, such as Binance's
   private `Routed<T>`, which replaces a repeated key, keeps it.
 
-Ten setters stay hand-written because they are not single query writes:
+Eleven setters stay hand-written because they are not single query writes:
 
-- Binance's `GetKlines::limit` and `GetDepth::limit`, which also re-price the route;
+- Binance's `GetKlines::limit` and `GetDepth::limit`, and spot's
+  `spot::api::market::GetDepth::limit`, which also re-price the route (spot's
+  `GetKlines::limit` does not, since a spot `klines` costs 2 at any limit);
 - gamma's `GetManyMarkets::include_tag` and the `limit` and `offset` of `QueryByInformation` and
   `QueryAbridged`, which store fields `send` writes;
 - Kalshi's `tickers` of `ListMarkets`, `ListMarketWindow` and `ListEvents`, which refuse an empty
   set or one past `TICKERS_QUERY_BUDGET` before anything is sent (`kalshi.md`).
 
-`tests/query_setters_usdm.rs` (Binance), `tests/query_setters_clob.rs`,
+`tests/query_setters_usdm.rs` and `tests/query_setters_spot.rs` (Binance), `tests/query_setters_clob.rs`,
 `tests/query_setters_gamma.rs` and `tests/query_setters_data.rs` (`polyoxide-polymarket`) and
 `tests/query_setters_predictions.rs` (Kalshi) call every setter with a typed value and pin the
 exact ordered pairs it sends; a new setter gets a row there.

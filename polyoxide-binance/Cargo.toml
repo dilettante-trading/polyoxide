@@ -140,6 +140,10 @@ name = "mock_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "query_setters_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "query_setters_usdm"
 required-features = ["usdm"]
 

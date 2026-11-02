@@ -35,7 +35,7 @@ pub use weight::WeightBudget;
 use polyoxide_core::{ClientConfig, HttpClient};
 
 use crate::spot::{
-    api::{exchange::ExchangeApi, health::Health},
+    api::{exchange::ExchangeApi, health::Health, market::MarketApi},
     policy::SpotRetryPolicy,
 };
 
@@ -68,6 +68,9 @@ impl Spot {
         health: Health,
         /// Reference data: `exchangeInfo`.
         exchange: ExchangeApi,
+        /// Market data: depth, trades, aggregate trades, klines, the average
+        /// price and the tickers.
+        market: MarketApi,
     }
 
     /// The budget this client charges.
