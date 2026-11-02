@@ -97,10 +97,10 @@ What the task guarantees (`src/supervisor/tests.rs` pins each rule):
     bare tier (`Mode::All`, so pings count as liveness, D5) and `retrying_can_fix`, behind its own
     `Capacity` and `AlreadyClosed` (D19) rows in a private recovery function;
   - the CLOB's bare tier: TLS, `WsError`, the bare tier (`Mode::Data`, so a server close is
-    answered, DRIFT R3) and the test server. Its per-address connect is
-    `TungsteniteTransport::per_address()` (D20), each step bounded by the connect timeout on the
-    injected runtime and upgraded through `connect_over`; it keeps its own `select!`,
-    its 10 s text `PING`, its outbound queue and Binary decoded as text (D12).
+    answered, DRIFT R3) and the test server. Its per-address dial is
+    `TungsteniteTransport::per_address()` (D20, moved into the kit), which its builders default
+    to on a host target; it keeps its own `select!`, its 10 s text `PING`, its outbound queue and
+    Binary decoded as text (D12).
 - A per-venue divergence row (D4–D19) stays at the venue; only identical or parametric copies
   were merged into the kit.
 - Keep-alive runs on the wall clock for any host that requires pings. The rtds pump pings only on
@@ -110,10 +110,10 @@ What the task guarantees (`src/supervisor/tests.rs` pins each rule):
 
 `reqwest 0.12` (via core) and alloy's `reqwest 0.13` enable `ring` and `aws-lc-rs` on one shared
 `rustls`, which then installs no default `CryptoProvider`. The kit installs one before connecting
-(`polyoxide_ws::ensure_crypto_provider`, which its `connect` and `connect_over` call). Code that
-calls `tokio_tungstenite::connect_async` directly must do the same or it panics, so connect
-through the kit: `TungsteniteTransport` is the one caller of it, after `ensure_crypto_provider`,
-and no crate gets its own `ensure_crypto_provider` copy.
+(`polyoxide_ws::ensure_crypto_provider`, which `TungsteniteTransport` calls before it dials).
+Code that calls `tokio_tungstenite::connect_async` directly must do the same or it panics, so
+connect through the kit: `TungsteniteTransport` is the one caller of it, after
+`ensure_crypto_provider`, and no crate gets its own `ensure_crypto_provider` copy.
 
 `polyoxide-ws` takes `rustls` from the one `[workspace.dependencies]` entry, which declares `ring`
 and `std`, so it relies on neither `reqwest` nor `alloy` to turn `std` on (clob once compiled only
