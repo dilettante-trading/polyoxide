@@ -302,6 +302,378 @@ filters! {
     }
 }
 
+pub use rows::{
+    AggTrade, AvgPrice, BookTicker, Depth, Interval, Kline, Level, PriceTicker, Ticker24h, Trade,
+};
+
+/// The market routes' rows. Prices and quantities are `Decimal`, decoded from
+/// the decimal strings Binance sends, so no value passes through an `f64`;
+/// timestamps are Unix milliseconds. Where the wire uses one-letter keys
+/// (`aggTrades`), fields take spelled-out names through serde renames.
+mod rows {
+    use std::fmt;
+
+    use polyoxide_venue::positional::{drain, element, DecimalStr};
+    use rust_decimal::Decimal;
+    use serde::{
+        de::{SeqAccess, Visitor},
+        ser::SerializeSeq,
+        Deserialize, Deserializer, Serialize, Serializer,
+    };
+
+    polyoxide_venue::wire_enum! {
+        /// Kline width, for `klines`. This host takes `1s`, which the USDⓈ-M
+        /// host refuses.
+        pub enum Interval {
+            /// One second.
+            Second1 => "1s",
+            /// One minute.
+            Minute1 => "1m",
+            /// Three minutes.
+            Minute3 => "3m",
+            /// Five minutes.
+            Minute5 => "5m",
+            /// Fifteen minutes.
+            Minute15 => "15m",
+            /// Thirty minutes.
+            Minute30 => "30m",
+            /// One hour.
+            Hour1 => "1h",
+            /// Two hours.
+            Hour2 => "2h",
+            /// Four hours.
+            Hour4 => "4h",
+            /// Six hours.
+            Hour6 => "6h",
+            /// Eight hours.
+            Hour8 => "8h",
+            /// Twelve hours.
+            Hour12 => "12h",
+            /// One day.
+            Day1 => "1d",
+            /// Three days.
+            Day3 => "3d",
+            /// One week.
+            Week1 => "1w",
+            /// One calendar month.
+            Month1 => "1M",
+        }
+    }
+
+    /// `GET /api/v3/depth`: an order book snapshot. It carries no time.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[non_exhaustive]
+    pub struct Depth {
+        /// Book update id of the snapshot.
+        pub last_update_id: u64,
+        /// Bids, best first.
+        pub bids: Vec<Level>,
+        /// Asks, best first.
+        pub asks: Vec<Level>,
+    }
+
+    /// A price level, a `[price, quantity]` pair on the wire.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[non_exhaustive]
+    pub struct Level {
+        /// Price.
+        pub price: Decimal,
+        /// Quantity at the price.
+        pub quantity: Decimal,
+    }
+
+    impl Level {
+        /// A level from a price and a quantity.
+        pub fn new(price: Decimal, quantity: Decimal) -> Self {
+            Self { price, quantity }
+        }
+    }
+
+    impl<'de> Deserialize<'de> for Level {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct LevelVisitor;
+
+            impl<'de> Visitor<'de> for LevelVisitor {
+                type Value = Level;
+
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("a [price, quantity] array")
+                }
+
+                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Level, A::Error> {
+                    const WHAT: &str = "a [price, quantity] array";
+                    let level = Level {
+                        price: element::<DecimalStr, _>(&mut seq, 0, WHAT)?.0,
+                        quantity: element::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
+                    };
+                    drain(&mut seq)?;
+                    Ok(level)
+                }
+            }
+
+            deserializer.deserialize_seq(LevelVisitor)
+        }
+    }
+
+    impl Serialize for Level {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let mut seq = serializer.serialize_seq(Some(2))?;
+            seq.serialize_element(&self.price.to_string())?;
+            seq.serialize_element(&self.quantity.to_string())?;
+            seq.end()
+        }
+    }
+
+    /// One row of `GET /api/v3/trades`, oldest first.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[non_exhaustive]
+    pub struct Trade {
+        /// Trade id.
+        pub id: u64,
+        /// Price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub price: Decimal,
+        /// Base-asset quantity.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub qty: Decimal,
+        /// Quote-asset quantity.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub quote_qty: Decimal,
+        /// Trade time.
+        pub time: u64,
+        /// Whether the buyer was the maker, so the taker sold.
+        pub is_buyer_maker: bool,
+        /// Whether the trade was the best price match.
+        pub is_best_match: bool,
+    }
+
+    /// One row of `GET /api/v3/aggTrades`: trades at one price, taken by one
+    /// order, merged.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct AggTrade {
+        /// Aggregate trade id.
+        #[serde(rename = "a")]
+        pub id: u64,
+        /// Price.
+        #[serde(rename = "p", with = "rust_decimal::serde::str")]
+        pub price: Decimal,
+        /// Quantity.
+        #[serde(rename = "q", with = "rust_decimal::serde::str")]
+        pub quantity: Decimal,
+        /// First trade id merged.
+        #[serde(rename = "f")]
+        pub first_trade_id: u64,
+        /// Last trade id merged.
+        #[serde(rename = "l")]
+        pub last_trade_id: u64,
+        /// Trade time.
+        #[serde(rename = "T")]
+        pub time: u64,
+        /// Whether the buyer was the maker, so the taker sold.
+        #[serde(rename = "m")]
+        pub is_buyer_maker: bool,
+        /// Whether the trade was the best price match.
+        #[serde(rename = "M")]
+        pub is_best_match: bool,
+    }
+
+    /// One candle of `GET /api/v3/klines`, a positional array on the wire.
+    ///
+    /// The wire sends a twelfth element Binance documents as "ignore"; it is
+    /// dropped, and any further elements are tolerated.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[non_exhaustive]
+    pub struct Kline {
+        /// Candle start.
+        pub open_time: u64,
+        /// Open price.
+        pub open: Decimal,
+        /// High price.
+        pub high: Decimal,
+        /// Low price.
+        pub low: Decimal,
+        /// Close price.
+        pub close: Decimal,
+        /// Base-asset volume.
+        pub volume: Decimal,
+        /// Candle end, inclusive.
+        pub close_time: u64,
+        /// Quote-asset volume.
+        pub quote_volume: Decimal,
+        /// Trades in the candle.
+        pub trade_count: u64,
+        /// Base-asset volume bought by takers.
+        pub taker_buy_base_volume: Decimal,
+        /// Quote-asset volume bought by takers.
+        pub taker_buy_quote_volume: Decimal,
+    }
+
+    impl<'de> Deserialize<'de> for Kline {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct KlineVisitor;
+
+            impl<'de> Visitor<'de> for KlineVisitor {
+                type Value = Kline;
+
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("a kline array of at least 11 elements")
+                }
+
+                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Kline, A::Error> {
+                    const WHAT: &str = "a kline array of at least 11 elements";
+                    let kline = Kline {
+                        open_time: element(&mut seq, 0, WHAT)?,
+                        open: element::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
+                        high: element::<DecimalStr, _>(&mut seq, 2, WHAT)?.0,
+                        low: element::<DecimalStr, _>(&mut seq, 3, WHAT)?.0,
+                        close: element::<DecimalStr, _>(&mut seq, 4, WHAT)?.0,
+                        volume: element::<DecimalStr, _>(&mut seq, 5, WHAT)?.0,
+                        close_time: element(&mut seq, 6, WHAT)?,
+                        quote_volume: element::<DecimalStr, _>(&mut seq, 7, WHAT)?.0,
+                        trade_count: element(&mut seq, 8, WHAT)?,
+                        taker_buy_base_volume: element::<DecimalStr, _>(&mut seq, 9, WHAT)?.0,
+                        taker_buy_quote_volume: element::<DecimalStr, _>(&mut seq, 10, WHAT)?.0,
+                    };
+                    drain(&mut seq)?;
+                    Ok(kline)
+                }
+            }
+
+            deserializer.deserialize_seq(KlineVisitor)
+        }
+    }
+
+    impl Serialize for Kline {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let mut seq = serializer.serialize_seq(Some(11))?;
+            seq.serialize_element(&self.open_time)?;
+            for value in [&self.open, &self.high, &self.low, &self.close, &self.volume] {
+                seq.serialize_element(&value.to_string())?;
+            }
+            seq.serialize_element(&self.close_time)?;
+            seq.serialize_element(&self.quote_volume.to_string())?;
+            seq.serialize_element(&self.trade_count)?;
+            seq.serialize_element(&self.taker_buy_base_volume.to_string())?;
+            seq.serialize_element(&self.taker_buy_quote_volume.to_string())?;
+            seq.end()
+        }
+    }
+
+    /// `GET /api/v3/avgPrice`: the average price over the last `mins` minutes.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[non_exhaustive]
+    pub struct AvgPrice {
+        /// The window, in minutes.
+        pub mins: u32,
+        /// The average price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub price: Decimal,
+        /// When the average was computed.
+        pub close_time: u64,
+    }
+
+    /// `GET /api/v3/ticker/24hr`: rolling 24-hour statistics.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[non_exhaustive]
+    pub struct Ticker24h {
+        /// The pair.
+        pub symbol: String,
+        /// Last price less the open price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub price_change: Decimal,
+        /// The change as a percentage.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub price_change_percent: Decimal,
+        /// Volume-weighted average price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub weighted_avg_price: Decimal,
+        /// The previous day's close.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub prev_close_price: Decimal,
+        /// Last traded price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub last_price: Decimal,
+        /// Last traded quantity.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub last_qty: Decimal,
+        /// Best bid price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub bid_price: Decimal,
+        /// Quantity at the best bid.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub bid_qty: Decimal,
+        /// Best ask price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub ask_price: Decimal,
+        /// Quantity at the best ask.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub ask_qty: Decimal,
+        /// Price 24 hours ago.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub open_price: Decimal,
+        /// Highest price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub high_price: Decimal,
+        /// Lowest price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub low_price: Decimal,
+        /// Base-asset volume.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub volume: Decimal,
+        /// Quote-asset volume.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub quote_volume: Decimal,
+        /// Window start.
+        pub open_time: u64,
+        /// Window end.
+        pub close_time: u64,
+        /// First trade id in the window, `-1` when there is none.
+        pub first_id: i64,
+        /// Last trade id in the window, `-1` when there is none.
+        pub last_id: i64,
+        /// Trades in the window.
+        pub count: u64,
+    }
+
+    /// `GET /api/v3/ticker/price`: the last price.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct PriceTicker {
+        /// The pair.
+        pub symbol: String,
+        /// Last traded price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub price: Decimal,
+    }
+
+    /// `GET /api/v3/ticker/bookTicker`: the best bid and ask. It carries no
+    /// time.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[non_exhaustive]
+    pub struct BookTicker {
+        /// The pair.
+        pub symbol: String,
+        /// Best bid price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub bid_price: Decimal,
+        /// Quantity at the best bid.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub bid_qty: Decimal,
+        /// Best ask price.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub ask_price: Decimal,
+        /// Quantity at the best ask.
+        #[serde(with = "rust_decimal::serde::str")]
+        pub ask_qty: Decimal,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use polyoxide_test_support::{agreement, fixtures};

@@ -160,6 +160,10 @@ name = "venue_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "wire_agreement_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "wire_agreement_usdm"
 required-features = ["usdm"]
 
