@@ -286,6 +286,13 @@ first, so it needs a spine amendment (D15).
     default `stale_after`, nothing changes. Otherwise, on such a transport, a text keepalive the
     capture shows answered becomes sports' liveness; failing that, sports' staleness check is
     off on that transport, and a lost connection ends through the close event.
+    Decided (owner, 2026-11-02): the capture (19:06:55Z–19:36:56Z) found a game live throughout
+    (longest data gap 10.6 s, protocol pings every 15 s) and both text pings unanswered, so B is
+    out and the quiet-hour gap is unmeasured. Sports takes the last rule (C) without a rerun: on a
+    transport whose `sees_server_pings` is `false` its staleness check is off, and a lost
+    connection ends through the close event. `docs/specs/sports/OBSERVED.md` records the live
+    capture's facts and says the quiet-hour gap and a quiet-hour text-ping answer are unmeasured.
+    A browser socket left half-open goes undetected, which the README's browser gaps say.
   - The CLOB (text `PING`) and perps (JSON `ping`) are unchanged. No in-scope socket sends a
     handshake header.
 
@@ -431,7 +438,8 @@ first, so it needs a spine amendment (D15).
   - Story 8's sports capture: one unauthenticated socket for 30 minutes, at a time the feed
     reports no game live, sending a text `ping` at minutes 10 and 20 and nothing else. A drop
     reconnects once and extends the capture by the time lost. A second drop, or a game live
-    throughout, stops the story and goes to the owner.
+    throughout, stops the story and goes to the owner (it did on 2026-11-02; D9 records the
+    decision).
   - The smoke server is local, and nothing in a story's checks calls an outside host otherwise.
 
 ## 3. Gates
