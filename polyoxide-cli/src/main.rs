@@ -10,7 +10,7 @@ use polyoxide_cli::commands;
 #[command(name = "polyoxide")]
 #[command(
     version,
-    about = "CLI tool for Polymarket's APIs and streams, and Binance USDⓈ-M market data",
+    about = "CLI tool for Polymarket's APIs and streams, and Binance USDⓈ-M and spot market data",
     long_about = None
 )]
 struct Cli {
@@ -27,7 +27,7 @@ enum Commands {
         #[command(subcommand)]
         command: commands::polymarket::PolymarketCommand,
     },
-    /// Binance: USDⓈ-M futures market data
+    /// Binance: USDⓈ-M futures and spot market data
     Binance {
         #[command(subcommand)]
         command: commands::binance::BinanceCommand,

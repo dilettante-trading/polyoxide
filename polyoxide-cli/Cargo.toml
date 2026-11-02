@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Command-line client for the Polymarket APIs and streams, and Binance USDⓈ-M market data"
+description = "Command-line client for the Polymarket APIs and streams, and Binance USDⓈ-M and spot market data"
 keywords = ["polymarket", "prediction-markets", "cli", "trading", "binance"]
 categories = ["command-line-utilities"]
 
@@ -28,7 +28,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-polyoxide-binance = { workspace = true, features = ["usdm-ws"] }
+polyoxide-binance = { workspace = true, features = ["usdm-ws", "spot-ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
 # `Secret`, which carries a credential's values to the keychain, under `keychain`.
 polyoxide-venue = { workspace = true, optional = true }
@@ -58,15 +58,15 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The captured frames, for the `polymarket sports stream` and `polymarket rtds
 # stream` tests.
 polyoxide-polymarket = { workspace = true, features = ["sports", "rtds", "test-server"] }
-# The captured frames, for the `binance usdm stream` tests.
-polyoxide-binance = { workspace = true, features = ["usdm-ws", "test-server"] }
+# The captured frames, for the `binance usdm stream` and `binance spot stream` tests.
+polyoxide-binance = { workspace = true, features = ["usdm-ws", "spot-ws", "test-server"] }
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data"
+readme = "CLI tool for querying Polymarket APIs and Binance USDⓈ-M and spot market data"
 notes = ["its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service"]
 
 [package.metadata.polyoxide.live.live_api]
