@@ -367,7 +367,8 @@ first, so it needs a spine amendment (D15).
       added three browser-only paths no host test reaches (owner, 2026-11-02): a CLOB signature
       (`sign_clob_auth` or `sign_order`, through the `SendWrapper`ed `sign_hash`), a body read
       that outlives `FetchTransport`'s deadline (`Timeout`), and a window-quota wait that paces
-      on the runtime's clock (so nothing reaches quanta's clock, which panics on wasm32).
+      on the runtime's clock (Story 9 measured that quanta's own clock does not panic in a
+      Worker, as 1.4 says; the test proves the limiter reads the injected runtime's clock).
   - CI's job installs the wasm32 target and `wasm-bindgen-cli` at the version `Cargo.lock` pins
     for `wasm-bindgen`, and uses the runner's Chrome and chromedriver. Locally, the flake gains
     the wasm32 target (in the story that first builds for it) and chromium, chromedriver and
