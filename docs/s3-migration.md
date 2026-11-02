@@ -247,3 +247,56 @@ for such an implementer, and it ships in a 0.x minor release.
   and `EventContractMarket` (`MarketData + EventGroups`), each implemented for every type that
   implements its members. Polymarket's `Perps` and Binance's `Usdm` are perpetual markets;
   Polymarket's `Clob` (with `gamma`) and Kalshi's `Predictions` are event-contract markets.
+
+## wasm32: an injected runtime and transports
+
+**Consumer impact: breaking.** Timers, spawns and clock reads go through an injected
+`polyoxide_rt::Runtime`, and every HTTP and socket exchange through an injected transport, so
+the same crates build for `wasm32-unknown-unknown`. A native build behaves as before, but the
+types below change, and a consumer that matched a reqwest error or held a socket by its old type
+migrates. Each break has its entry in [`s3-removals.md`](s3-removals.md), under "Removed" (the
+ones cargo-semver-checks keys) and "Changes the gate does not key" (the signature and auto-trait
+changes it does not).
+
+- The HTTP failure moves. `ApiError::Network` is removed: a failure to get a response, or to read
+  its body, is `ApiError::Transport(TransportError)`, so where you matched `ApiError::Network(e)
+  if e.is_timeout()` match `ApiError::Transport(e) if e.kind() == TransportKind::Timeout`
+  (`is_connect` is `TransportKind::Connect`). `Classify` is unchanged in effect.
+- The response type moves. `HttpClient::send` and the `send_raw` methods (`Request::send_raw` and
+  clob's `ListOrders::send_raw`) return `polyoxide_core::Response` where they returned a
+  `reqwest::Response`; its `status`, `headers`, `url`, `bytes`, `text` and `json` read as before
+  and fail with `ApiError`. `Pong::response`, `ErrorResponse::read`, `ApiError::from_response` and
+  `retry_after_header` take it or its head, and `HttpClient`'s `client` field is gone: inject a
+  reqwest client of your own as `ReqwestTransport::new(client)`.
+- The socket type moves. `polyoxide_ws::Socket` is removed for `polyoxide_ws::BoxSocket`, which
+  `connect`, `connect_over` and `Connection::new` use; `Protocol::connect` takes
+  `(transport, runtime, timeout)` and returns a `BoxSocket` (it first shipped in 0.41, so
+  semver-checks has no baseline for it). `Connection::last_inbound` returns
+  `polyoxide_rt::Instant`, which is `std::time::Instant` on native.
+- Auto traits. `Connection` and every type holding one (`WebSocket`, `WebSocketWithPing`,
+  `UsdmWs`, `Rtds`, `SupervisedRtds`, `SupervisedSportsWs`, `PerpsWs`, `SportsWs`) are no longer
+  `Sync`, and `Supervisor`, `Supervised` and the builders and clients that hold a runtime or
+  transport are no longer `UnwindSafe`. Share a connection through a `Mutex`, and wrap a client
+  in `AssertUnwindSafe` where `catch_unwind` needs it.
+- `Kind::Unsupported` joins `polyoxide_ws::Kind` (an operation the transport cannot do, such as a
+  ping frame in a browser); reconnecting never fixes it. `Kind` is `#[non_exhaustive]`, so a
+  `match` on it already has a wildcard arm.
+
+What is added, so a native build that sets none of it is unchanged:
+
+- `polyoxide-rt`, new and first in the publish order: the `Runtime` trait, `Task`, `timeout`,
+  `Interval`, `default_runtime()` and `TokioRuntime` on a host target, and the `Instant` and
+  `SystemTime` of `web-time` (std's own types on native).
+- Setters on every client and socket builder: `runtime(..)` and, on an HTTP builder,
+  `http_transport(..)` (from `client_config_setters!`), and `runtime(..)` with
+  `socket_transport(..)` on a socket builder (from `polyoxide_ws::transport_setters!`).
+  `HttpClientBuilder::http_transport`, `ClientConfig::http_transport` and `Supervisor`'s own
+  `runtime` and `socket_transport` take the same. With none set, a host target uses
+  `ReqwestTransport`, `TungsteniteTransport` and `TokioRuntime`, and `wasm32` uses `FetchTransport`
+  (`polyoxide-core`), `WebSocketTransport` (`polyoxide-ws`) and `BrowserRuntime`.
+- `polyoxide_ws::Capabilities`, which a `SocketTransport` reports (`client_pings`,
+  `sees_server_pings`, `handshake_headers`), so a protocol learns what its transport can do.
+
+**For a crate outside the workspace that invokes `client_config_setters!`:** the macro's
+`runtime` setter names `polyoxide_rt::Runtime`, which `polyoxide-core` does not re-export, so the
+invoking crate declares `polyoxide-rt` itself. `transport_setters!` needs it the same way.

@@ -48,9 +48,10 @@ To remove a public item in a PR:
 ## Changes the gate does not key
 
 cargo-semver-checks 0.51.0 reports no lint for the signature changes below (it counts
-parameters and does not compare types or aliases), so none has a key to list under
-"Removed"; the removals job prints no line for them, and they are listed here for the
-consumer who migrates from this file. Each is one of the wasm32 plan's Story 5.
+parameters and does not compare types or aliases; `Protocol::connect` also postdates the
+baseline, since it first shipped in v0.41.0), so none has a key to list under "Removed"; the
+removals job prints no line for them, and they are listed here for the consumer who migrates
+from this file. Each is one of the wasm32 plan's Story 5.
 
 - `polyoxide_ws::Socket` (a type alias, which semver-checks does not see): the alias is removed; a connection is a `polyoxide_ws::BoxSocket`, which `connect` and `connect_over` return and `Connection::new` takes.
 - `polyoxide_ws::connect`: its return is re-typed, from `Socket` to `BoxSocket`; it dials through the target's default `SocketTransport` and runtime.
