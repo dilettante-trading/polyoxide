@@ -1,7 +1,6 @@
 # wasm32 through an injected runtime and transport — design
 
-Status: approved by the owner section by section, 2026-11-02; awaiting the owner's review of this
-text. It is the design record for building polyoxide for `wasm32-unknown-unknown`, for prader-rs's
+Status: approved by the owner, 2026-11-02, with the plan-time additions in §1.3. It is the design record for building polyoxide for `wasm32-unknown-unknown`, for prader-rs's
 browser build of its terminal (prader-app-core in a Web Worker). Read it with CLAUDE.md and
 `.claude/rules/{send-loop,sockets,errors,clients,ci-gates,binance,polymarket-sports}.md`. Where
 this spec and an earlier record disagree, this spec binds. prader has not decided to ship its web
@@ -33,6 +32,10 @@ first, so it needs a spine amendment (D15).
 - Injection is per builder, with the target's default when nothing is injected; there is no
   process-wide install.
 - Verification: a browser smoke suite on every push and a live browser job nightly (D13, D14).
+- Later the same day: `polyoxide-rt` gains an `Interval` (D2), at prader's request, so the whole
+  stack shares one. prader's owner confirmed the Kalshi split: prader-server relays Kalshi's
+  public books, trades and candles; the signed socket and the user's key stay desktop-only.
+- Execution is the supervised option; the plan is `docs/plans/2026-11-02-wasm-runtime-transport.md`.
 
 **1.4 Sources (measured 2026-11-02).**
 
@@ -91,9 +94,21 @@ first, so it needs a spine amendment (D15).
 
   pub fn default_runtime() -> Arc<dyn Runtime>; // TokioRuntime on native, BrowserRuntime on wasm32
   pub fn spawn<T: Send + 'static>(rt: &dyn Runtime, f: impl Future<Output = T> + Send + 'static) -> Task<T>;
-  /// `None` when `d` passed first.
+  /// `None` when `d` passed first. `f` is polled before the timer, so a ready future wins even
+  /// at `Duration::ZERO`.
   pub async fn timeout<F: Future>(rt: &dyn Runtime, d: Duration, f: F) -> Option<F::Output>;
+  /// Ticks every `period`, the first at once. Panics when `period` is zero.
+  pub fn interval(rt: Arc<dyn Runtime>, period: Duration) -> Interval;
   ```
+
+  `Interval` has `async fn tick(&mut self) -> Instant` (the deadline it was due at),
+  `reset(&mut self)` (the next tick a period from now), `period(&self) -> Duration` and
+  `set_missed_tick(&mut self, MissedTick)`. `MissedTick` is `#[non_exhaustive]` with tokio's
+  three behaviours and its default: `Burst` (default: fire the missed ticks at once), `Delay`
+  (the next tick a period after the late one) and `Skip` (the next tick on the original grid). It
+  is built on `sleep_until` and `now`, so `TokioRuntime`'s paused clock drives it. The zero-period
+  panic message is `interval period must be non-zero`. Dropping a `Task` detaches it, as tokio's
+  `JoinHandle` does.
 
   `Task<T>` is a `Future<Output = Option<T>>` with `abort()` and `is_finished()`, built by
   `spawn` from `futures`' `Abortable`, a oneshot for the output and a completion flag, so a
@@ -122,11 +137,16 @@ first, so it needs a spine amendment (D15).
     and forwarders, sports, rtds and the CLOB's bare tier. governor keeps its own quanta clock.
   - Wall-clock reads are not injected: `UnixMillis::now` (`polyoxide-venue/src/time.rs`) and
     `shared::auth::current_timestamp` read `web_time::SystemTime`.
-  - A workspace `clippy.toml` `disallowed-methods` list bans `tokio::spawn`, `tokio::time::sleep`,
-    `sleep_until`, `timeout`, `interval`, `tokio::time::Instant::now`, `std::time::Instant::now`
-    and `std::time::SystemTime::now`. `polyoxide-rt`'s implementations, `polyoxide-ws`'s
-    `test-server` module (native-only, tokio-built) and test code (`#[cfg(test)]`, `tests/`)
-    allow it locally.
+  - `scripts/runtime_gate.py`, beside `venue_gate.py`, holds the line, not clippy: a
+    `disallowed-methods` config would also fire in every test and example, which use tokio
+    legitimately. It scans `src/**/*.rs` of `polyoxide-venue`, `-core`, `-ws`, `-polymarket`,
+    `-binance` and `-kalshi`. It skips `#[cfg(test)]` modules, `polyoxide-ws/src/test_server/`
+    and each crate's feature-gated `scripted.rs` fixtures. It fails on `tokio::spawn`,
+    `tokio::task::spawn`, any `tokio::time::` path, `Instant::now(` and `SystemTime::now(`.
+    A line ending `// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is.
+    `polyoxide-rt` is not scanned, since it implements the runtime.
+    `.github/scripts/tests/test_runtime_gate.py` runs it in CI's scripts job and proves it
+    fires on each banned path.
 
 - **D4. `HttpTransport` and `Response` (core).**
 
@@ -144,9 +164,10 @@ first, so it needs a spine amendment (D15).
     the client's. The timeout bounds the whole exchange, body included, for every transport.
   - `polyoxide_core::Response` is an owned head and a lazy body:
     `Response::new(status, headers, url, body: BoxFuture<Result<Bytes, TransportError>>)`,
-    `status()`, `headers()`, `url()`, and async `bytes()`, `text()` and `json::<T>()`, each
-    returning `Result<_, ApiError>`. The loop decides on the head, releases the permit, then
-    reads an error body, as `send-loop.md` requires.
+    `status()`, `headers()`, `url()`, and async `bytes()`, `text()` (UTF-8, invalid sequences
+    replaced) and `json::<T>()`, each returning `Result<_, ApiError>`. The loop decides on the
+    head, releases the permit, then reads an error body, as `send-loop.md` requires.
+    `ErrorResponse`'s fields and `ErrorResponse::new(status, headers, body)` do not change.
   - `HttpClient::send`, `Request::send_raw`, clob's `ListOrders::send_raw` and
     `Pong::response` return it; `ErrorResponse::read` and `ApiError::from_response` take it;
     `retry_after_header` takes `&HeaderMap`. `HttpClient`'s public `client: reqwest::Client`
@@ -164,8 +185,13 @@ first, so it needs a spine amendment (D15).
   `ApiError::Transport(#[from] TransportError)`. `TransportError` is `#[non_exhaustive]`, built
   by `TransportError::new(kind, source)` so a custom transport can make one, with
   `kind() -> TransportKind` (`Connect`, `Timeout`, `Body`, `Request`, `Other`, itself
-  `#[non_exhaustive]`) and a boxed `Send + Sync` source. It implements `Classify`: `Request` is
-  `InvalidRequest`, every other kind `Network`. `ReqwestTransport` maps a reqwest error by the
+  `#[non_exhaustive]` and `Debug, Clone, Copy, PartialEq, Eq`) and a boxed `Send + Sync` source,
+  so a caller that matched `ApiError::Network(e) if e.is_timeout()` matches
+  `ApiError::Transport(e) if e.kind() == TransportKind::Timeout`. Its `Display` is
+  `<kind>: <source>`, the kind in lower case (`connect`, `timeout`, `body`, `request`,
+  `other`), and `ApiError::Transport`'s is `Transport error: <that>`. It implements `Classify`:
+  `Request` is `InvalidRequest`, every other kind `Network`. No `From<reqwest::Error>` exists
+  anywhere: `ReqwestTransport` maps through a private function. `ReqwestTransport` maps a reqwest error by the
   rule `classify_reqwest` holds today (timeout, connect, body, or an I/O error or body failure in
   the source chain, are failures in transit), so a body that broke off mid-read stays `Network`.
   `classify_reqwest` is removed. `ApiError`'s `Classify` arm delegates. `TransportError` joins
@@ -197,9 +223,13 @@ first, so it needs a spine amendment (D15).
 
   - The transport bounds its own steps with the runtime it is given, so one transport serves
     clients with different runtimes. A timed-out connect is `Kind::ConnectTimeout`.
+  - `Capabilities` is built by `Capabilities::new(client_pings, sees_server_pings,
+    handshake_headers)` (a `const fn`), and `Capabilities::FULL` is all `true`.
   - `Kind` gains `Unsupported`: an operation the transport cannot perform (a handshake header,
     a control frame). A transport reports it as `tungstenite::Error::Io` with
-    `io::ErrorKind::Unsupported`, which `WsError::kind` reads as `Kind::Unsupported`.
+    `io::ErrorKind::Unsupported`, which `WsError::kind` reads as `Kind::Unsupported`. The browser
+    transport's messages are `a handshake header is not supported by the browser transport`,
+    and the same with `a ping frame`, `a pong frame` and `a raw frame`.
     `retrying_can_fix` returns `false` for it and `impl_ws_classification!` classes it
     `InvalidRequest`, not a fault of the venue's.
   - `BoxSocket` replaces the `Socket` alias. The free `connect(request, timeout)` dials through
@@ -240,8 +270,11 @@ first, so it needs a spine amendment (D15).
   - Binance (`client_pings == false`): the supervised protocol pings with a
     `{"method":"LIST_SUBSCRIPTIONS","id":n}` request through its request correlation (paced, as
     every request is, by `MIN_REQUEST_INTERVAL`), and its answer is liveness. The bare client's
-    `ping()` fails with `Kind::Unsupported` on such a transport. The live suite confirms
-    `LIST_SUBSCRIPTIONS` on `fstream` and `docs/specs/binance/OBSERVED.md` records it.
+    `ping()` fails with `Kind::Unsupported` on such a transport. A live test in `live_usdm_ws`
+    confirms `LIST_SUBSCRIPTIONS` on `fstream` (D17), and `docs/specs/binance/OBSERVED.md`
+    records it. If `fstream` leaves it unanswered, the protocol's `ping()` returns `None` on
+    such a transport instead, liveness comes from data frames only, and the README's browser
+    gaps say a quiet stream reconnects at `stale_after`; that is not escalated.
   - Sports (`sees_server_pings == false`): the story first captures the feed for 30 minutes
     with no game live: the longest gap between data frames, and whether a text `ping` is
     answered, recorded in `docs/specs/sports/OBSERVED.md`. If the longest gap is under the 45 s
@@ -278,29 +311,50 @@ first, so it needs a spine amendment (D15).
   asserts. Two new tests prove injection is honoured: a recording `HttpTransport` drives one
   retry and one hold through the loop; an in-memory `SocketTransport` drives a `Supervisor`
   through a connect, a replay and a reconnect without TCP. Test bodies changed by D6's paths and
-  D11's types each get a `[[drift]]` entry in `ci/test-body-diff.toml` (AD-12). Each moved or
-  re-proved line in `docs/MUTANTS.md` moves with it.
+  D11's types each get a `[[drift]]` entry in `ci/test-body-diff.toml` (AD-12), naming a new
+  DRIFT row, `R22`, in `_bmad-output/specs/spec-venue-extensibility/divergences.md`: the
+  wasm32 seams change the names and types tests use, never what they assert. The story that
+  first changes a test body adds the row; later stories cite it. Divergence row D20's text
+  moves the CLOB's dial into `TungsteniteTransport::per_address()`. Each moved or re-proved line
+  in `docs/MUTANTS.md` moves with it.
 
 - **D13. The per-push `wasm` job** (the tenth CI job; the CLAUDE.md table gains its row).
-  - A wasm32 `cargo check` of D1's set, crate by crate with their features named, with
-    `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'`.
-  - `cargo clippy` with D3's `disallowed-methods` over the supported crates, native and wasm32.
-  - wasm-bindgen-test in headless Chrome, inside a dedicated Worker, from a new `publish = false`
-    crate, `polyoxide-wasm-smoke`: `BrowserRuntime` (sleep, `sleep_until`, `timeout`, spawn,
-    abort, `is_finished`, a monotonic `now`, a sleep past `i32::MAX` ms that does not fire
-    early); `FetchTransport` and `WebSocketTransport` against the crate's native smoke server,
-    started in the same step: canned HTTP routes with CORS headers, a 429 with `Retry-After`
-    exposed and one without, and a scripted socket from `polyoxide-ws`'s `test-server`.
-  - The flake gains the wasm32 target, chromium, chromedriver and a `wasm-bindgen-cli` locked to
-    the `wasm-bindgen` crate's version.
+  - `scripts/wasm_check.sh` (no arguments; stops at the first failure) runs `cargo check` and
+    `cargo clippy -- -D warnings` for `wasm32-unknown-unknown` over D1's set, crate by crate
+    with their features named. It sets `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'` itself,
+    replacing any inherited value, since an inherited `RUSTFLAGS` (a host `target-cpu`) would
+    override a config file's and break the target. With `--target`, cargo does not pass
+    `RUSTFLAGS` to build scripts, so the host cache is untouched.
+  - D3's `runtime_gate.py` runs in the existing CI scripts job.
+  - `scripts/wasm_smoke.sh` starts the smoke server, exports its addresses, and runs
+    wasm-bindgen-test in headless Chrome inside a dedicated Worker
+    (`wasm_bindgen_test_configure!(run_in_dedicated_worker)`), then stops the server. The suite
+    lives in a new `publish = false` crate, `polyoxide-wasm-smoke`:
+    - its native bin `wasm-smoke-server` binds `127.0.0.1:0` for HTTP (mockito, every route
+      answering CORS headers, one 429 that exposes `Retry-After` and one that does not) and for
+      a socket (`polyoxide-ws`'s `test-server`, one scripted connection), and writes
+      `POLYOXIDE_SMOKE_HTTP=<url>` and `POLYOXIDE_SMOKE_WS=<url>` lines to the file its one
+      argument names;
+    - its wasm32 tests, `tests/browser_smoke.rs`, read both through `env!`, so a build without
+      them fails to compile rather than passing empty. They cover `BrowserRuntime` (sleep,
+      `sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, and
+      a sleep past `i32::MAX` ms that has not fired after a second), `FetchTransport` (a 200, a
+      timeout, both 429s read through `ErrorResponse`) and `WebSocketTransport` (a text echo, a
+      close with its code, and a refused handshake header and ping frame).
+  - CI's job installs the wasm32 target and `wasm-bindgen-cli` at the version `Cargo.lock` pins
+    for `wasm-bindgen`, and uses the runner's Chrome and chromedriver. Locally, the flake gains
+    the wasm32 target (in the story that first builds for it) and chromium, chromedriver and
+    the same `wasm-bindgen-cli` (in this one); `flake.lock` does not change.
 
 - **D14. The nightly live browser job,** `live-wasm-browser`, generated through
   `scripts/gen_registry.py` from `polyoxide-wasm-smoke`'s metadata (the generator learns a
   wasm-bindgen runner). Per host in 1.4: CORS, the exposed headers and the socket upgrade, one
   public GET per HTTP host, one socket per socket host, and Binance's `LIST_SUBSCRIPTIONS`
   keepalive. It needs no secrets. Failures are tagged through `polyoxide-test-support`, whose
-  tags build on wasm32 (its keychain loaders become native-only). The live tests are gated by a
-  `live` feature, not `#[ignore]`.
+  tags build on wasm32 (its keychain loaders become native-only). The live tests,
+  `polyoxide-wasm-smoke/tests/browser_live.rs`, are gated by a `live` feature, not `#[ignore]`,
+  and run through `scripts/wasm_live.sh`. The story proves a tag line from a failing browser
+  test reaches the runner's output, which the nightly classifier reads. Its limits are D17's.
 
 - **D15. Documentation and rules.**
   - A "WebAssembly" section in README.md: D1's set and contexts, the getrandom flag, injection
@@ -314,28 +368,51 @@ first, so it needs a spine amendment (D15).
   - Rules files change in the commits that change their rules (AD-21): `sockets.md` (the
     transport, the kit's dependencies, D20's new home), `send-loop.md` (the transport, the
     `Response`, the header pins on the default), `errors.md` (`TransportError`,
-    `Kind::Unsupported`), `clients.md` (the new setters), `ci-gates.md` (the `wasm` job, the
-    lint), `binance.md` and `polymarket-sports.md` (D9), plus CLAUDE.md's workspace list,
+    `Kind::Unsupported`), `clients.md` (the new setters), `ci-gates.md` (the `wasm` job,
+    `runtime_gate.py`), `binance.md` and `polymarket-sports.md` (D9), plus CLAUDE.md's workspace list,
     `polyoxide-ws`'s dependency sentence, the jobs table and a new `rt.md`.
-  - A spine amendment adds `polyoxide-rt` to the foundation, an AD for the three injection seams
-    and the `SendWrapper` containment, and the dependency changes; `docs/ARCHITECTURE.md` is
-    regenerated from it, never edited.
+  - A spine amendment, `spine-amendments/wasm-runtime-transport.md` beside the spine, adds
+    `polyoxide-rt` to the foundation, an AD for the three injection seams and the
+    `SendWrapper` containment, and the dependency changes. Merging it into the spine and
+    regenerating `docs/ARCHITECTURE.md` is the owner's; no story edits either.
 
-- **D16. Sequencing.** Every commit builds. An API change lands with all its callers.
-  1. `polyoxide-rt` with `TokioRuntime`, and its crate plumbing (publish order, manifests,
-     registry metadata, venue gate, allowlists).
-  2. core onto the runtime (D3's core sites and setters).
-  3. `HttpTransport`, `ReqwestTransport`, `Response`, `TransportError` and `polyoxide_core::http`,
-     with every venue caller, the removals lines and the drift entries (D4–D6).
-  4. `SocketTransport`, `TungsteniteTransport` with `per_address`, `BoxSocket`, and the kit and
-     every socket crate on the runtime and transport (D3, D7).
-  5. The wall clock through `web-time`, the `disallowed-methods` lint and the sweep of what it
-     finds.
-  6. D10's gating and D8's browser implementations, then D9 (Binance; the sports capture first).
-  7. D13: the `wasm` job, the flake, the smoke server and the offline browser suite.
-  8. D14: the nightly job, the generator's runner, test-support's wasm32 tags, the `OBSERVED.md`
-     facts.
-  9. D15's docs, rules and spine amendment, and the 0.45.0 bump with its changelog.
+- **D16. Sequencing.** Every commit builds, and an API change lands with all its callers. No
+  story bumps a version or publishes.
+  1. `polyoxide-rt` with `TokioRuntime`, `Task`, `timeout` and `Interval`, and its crate
+     plumbing (publish order, manifests, registry metadata, venue gate, allowlists).
+  2. core, and the HTTP side of the venue crates, onto the runtime: D3's core sites, the
+     `runtime` setters, and the throttles, limits and clients in polymarket, binance and kalshi.
+  3. `polyoxide_core::http` and the move of every `reqwest::` vocabulary path to it (D6), with
+     DRIFT row `R22` and the drift entries. No behaviour or API changes.
+  4. `HttpTransport`, `ReqwestTransport`, `Response` and `TransportError` (D4, D5), with every
+     venue caller, the removals lines and the drift entries.
+  5. `SocketTransport`, `TungsteniteTransport` with `per_address`, `BoxSocket`,
+    `Kind::Unsupported`, and the kit and every socket crate on the runtime and transport (D3,
+    D7), with D20's row, the removals lines and the drift entries.
+  6. The wall clock through `web-time`, `runtime_gate.py` and the sweep of what it finds (D3).
+  7. D10's gating and D8's browser implementations, the flake's wasm32 target, and
+     `scripts/wasm_check.sh`.
+  8. D9: the Binance keepalive with its live check, and the sports capture, then its rule.
+  9. D13: the `wasm` job, `polyoxide-wasm-smoke`, the smoke server, `scripts/wasm_smoke.sh` and
+     the flake's browser tools.
+  10. D14: the nightly job, the generator's runner, test-support's wasm32 tags,
+      `scripts/wasm_live.sh` and the `OBSERVED.md` facts.
+  11. D15: the README, the rules files, CLAUDE.md and the spine amendment.
+
+- **D17. Limits on the outside services this work calls.**
+  - The nightly browser job, per host: one GET (no preflight) bounded by 10 s, and one socket
+    held until its first data frame or 20 s. Each check retries once after 5 s. A second
+    failure is `real`, except a socket that opened and then dropped, which is `transient`. The
+    job's timeout is 15 minutes.
+  - Story 8's `LIST_SUBSCRIPTIONS` live test: one socket on `fstream`'s `/market` path,
+    subscribed to `btcusdt@markPrice@1s`, sending the request six times 20 s apart (well above
+    the 200 ms pacing). Each answer is due within 5 s. An unanswered one selects D9's fallback,
+    and is recorded, not escalated.
+  - Story 8's sports capture: one unauthenticated socket for 30 minutes, at a time the feed
+    reports no game live, sending a text `ping` at minutes 10 and 20 and nothing else. A drop
+    reconnects once and extends the capture by the time lost. A second drop, or a game live
+    throughout, stops the story and goes to the owner.
+  - The smoke server is local, and nothing in a story's checks calls an outside host otherwise.
 
 ## 3. Gates
 
@@ -348,8 +425,7 @@ first, so it needs a spine amendment (D15).
 
 ## 4. Owner actions
 
-- Review this spec.
-- Approve the spine amendment (D15) before story 9 merges.
-- During story 6, nothing: the sports capture and the `LIST_SUBSCRIPTIONS` check use public,
-  unauthenticated sockets.
-- After the run: the 0.45.0 release, and prader-rs's bump to it.
+- During story 8, nothing unless D17 stops it: the sports capture and the `LIST_SUBSCRIPTIONS`
+  check use public, unauthenticated sockets.
+- After the run: merge the spine amendment and regenerate `docs/ARCHITECTURE.md`; the 0.45.0
+  version-bump commit on `main` and its release; prader-rs's bump to it.
