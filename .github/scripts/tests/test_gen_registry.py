@@ -734,6 +734,20 @@ def test_a_runner_job_runs_its_script_and_classifies_what_it_writes(tmp_path: Pa
     assert native["steps"][1]["uses"] == "./.github/actions/live-suite"
 
 
+def test_a_runner_with_no_job_template_is_refused(tmp_path: Path, monkeypatch) -> None:
+    # RUNNERS is a table, but the job's steps are wasm-bindgen's: a second entry must not be given
+    # them silently.
+    monkeypatch.setitem(gen_registry.RUNNERS, "selenium", ("browser", "scripts/selenium_live.sh"))
+
+    def other(metadata, workspace, manifests):
+        table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+        table["browser_live"] = live(suite="browser", features=["live"], runner="selenium")
+
+    registry = build(tmp_path, other)
+    with pytest.raises(RegistryError, match="runner 'selenium' has no job template"):
+        gen_registry.nightly_live_jobs(registry)
+
+
 def test_the_runner_job_is_listed_beside_the_native_ones(tmp_path: Path) -> None:
     registry = build(tmp_path, _with_browser_job)
     assert "  - live-wasm-browser" in gen_registry.nightly_aggregate_needs(registry)

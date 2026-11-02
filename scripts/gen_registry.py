@@ -1171,7 +1171,15 @@ def _runner_job(job: Job) -> list[str]:
     """A job for a target the live-suite action cannot run: the runner's script writes
     libtest-json, and the classifier's own two commands merge it into the artifact the aggregate
     reads. The script's retry pass stands in for nextest's, so the merge's retry file is the
-    script's."""
+    script's.
+
+    The steps below are wasm-bindgen's (the target, the CLI install, the output directory), though
+    RUNNERS is a table: a second runner needs its own steps, not these."""
+    if job.runner != "wasm-bindgen":
+        raise RegistryError(
+            f"{job.id}: runner {job.runner!r} has no job template; _runner_job writes only "
+            "wasm-bindgen's steps (the wasm32 target, the CLI install, target/wasm-live/)"
+        )
     script = RUNNERS[job.runner][1]
     out = f"artifacts/{job.crate}"
     return [
