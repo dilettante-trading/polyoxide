@@ -255,3 +255,10 @@ file = "polyoxide-polymarket/tests/spec_agreement_perps.rs"
 item = "every_enum_matches_the_spec"
 row = "R21"
 sha256 = "6103b1930eb27050c934d6b301ec99abc9ca274a2f52169f464ab7ab5e2271f4"
+
+[[drift]]
+file = "polyoxide-binance/src/usdm/ws/client.rs"
+item = "UsdmWs::close_frame"
+kind = "method"
+row = "R22"
+sha256 = "0d4a05039a271ac9bbdacec37f21429625b7552f7ad95f291b643c0b9f544c85"
