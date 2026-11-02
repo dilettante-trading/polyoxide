@@ -10,7 +10,6 @@ use std::{
 use futures_util::{Stream, StreamExt};
 use polyoxide_ws::{connect, tungstenite::Message, Connection, Correlated, Kind, Mode, WsError};
 use serde_json::{json, Value};
-use tokio::time::Instant;
 
 use crate::usdm::ws::{
     error::UsdmWsError, event::Update, stream::StreamName, StreamPath, MAX_NAMES_PER_REQUEST,
@@ -275,7 +274,8 @@ impl UsdmWs {
 
     /// Send a protocol ping and wait for the pong, returning the round trip.
     pub async fn ping(&mut self) -> Result<Duration, UsdmWsError> {
-        let start = Instant::now();
+        let runtime = std::sync::Arc::clone(self.connection.runtime());
+        let start = runtime.now();
         self.send_ping().await?;
         self.connection
             .await_answer(|message| match message {
@@ -284,7 +284,7 @@ impl UsdmWs {
             })
             .await
             .map_err(|err| no_answer(err, 0))?;
-        Ok(start.elapsed())
+        Ok(runtime.now().saturating_duration_since(start))
     }
 
     /// Close the connection.
@@ -352,6 +352,8 @@ impl Stream for UsdmWs {
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::Instant;
+
     use super::*;
     use crate::usdm::{
         types::Symbol,

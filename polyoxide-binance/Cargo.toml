@@ -17,7 +17,6 @@ categories = ["api-bindings", "web-programming::http-client"]
 default = ["usdm"]
 usdm = [
     "dep:polyoxide-core",
-    "dep:polyoxide-rt",
     "polyoxide-venue/decimal",
     "polyoxide-venue/market",
     "dep:rust_decimal",
@@ -29,15 +28,15 @@ usdm = [
     "dep:url",
 ]
 # The USDⓈ-M market streams, `usdm::ws`, on the socket kit.
-usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/macros"]
 # Exposes the captured frames, `usdm::ws::fixtures`, for downstream tests, with
 # `usdm-ws`; it turns no module on. Not for consumers.
 test-server = []
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
-# The runtime the client and its weight budget keep time on.
-polyoxide-rt = { workspace = true, optional = true }
+# The runtime the client, its weight budget and the streams keep time on.
+polyoxide-rt = { workspace = true }
 polyoxide-venue = { workspace = true }
 # The socket kit (`usdm-ws`): connect, the bare tier, the socket error and the
 # supervisor. It owns the transport, tokio-tungstenite and rustls.

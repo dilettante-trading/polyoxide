@@ -15,7 +15,11 @@ use std::{
 };
 
 use futures_util::{Stream, StreamExt};
-use polyoxide_ws::{MembershipHandle as PathHandle, Supervised, Supervisor, Timing};
+use polyoxide_rt::{default_runtime, spawn, Runtime, Task};
+use polyoxide_ws::{
+    default_socket_transport, MembershipHandle as PathHandle, SocketTransport, Supervised,
+    Supervisor, Timing,
+};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::usdm::ws::{
@@ -109,6 +113,8 @@ pub struct UsdmWsBuilder {
     base_url: String,
     timing: Timing,
     streams: Vec<StreamName>,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for UsdmWsBuilder {
@@ -128,6 +134,8 @@ impl UsdmWsBuilder {
             base_url: USDM_WS_BASE.to_owned(),
             timing,
             streams: Vec::new(),
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -169,6 +177,14 @@ impl UsdmWsBuilder {
         max_connection_age;
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the paths' supervision tasks, the router and its
+        /// forwarders run on. By default the target's.
+        runtime;
+        /// How each path's connection dials. By default the target's.
+        socket_transport;
+    }
+
     /// The streams to open with.
     pub fn streams(mut self, streams: impl IntoIterator<Item = StreamName>) -> Self {
         self.streams = streams.into_iter().collect();
@@ -181,7 +197,11 @@ impl UsdmWsBuilder {
     /// Fails if any first connect fails, closing the others: a setup that is
     /// wrong is reported, not retried. With no streams it opens nothing until
     /// the first [`MembershipHandle::subscribe`].
-    pub async fn connect(self) -> Result<SupervisedUsdmWs, UsdmWsError> {
+    pub async fn connect(mut self) -> Result<SupervisedUsdmWs, UsdmWsError> {
+        // Resolved once, so every path's supervisor and the router share them.
+        let runtime = Arc::clone(self.runtime.get_or_insert_with(default_runtime));
+        self.socket_transport
+            .get_or_insert_with(default_socket_transport);
         let mut membership: HashMap<StreamPath, Vec<StreamName>> = HashMap::new();
         for stream in self.streams.iter().cloned() {
             let wanted = membership.entry(stream.path()).or_default();
@@ -219,6 +239,7 @@ impl UsdmWsBuilder {
         let stop = Stop::default();
         let mut router = Router {
             config: self,
+            runtime: Arc::clone(&runtime),
             paths: HashMap::new(),
             membership,
             events,
@@ -231,7 +252,7 @@ impl UsdmWsBuilder {
         for (path, supervised) in opened {
             router.adopt(path, supervised);
         }
-        let task = tokio::spawn(route(router, commands_rx, ended_rx));
+        let task = spawn(runtime.as_ref(), route(router, commands_rx, ended_rx));
         Ok(SupervisedUsdmWs {
             events: events_rx,
             commands,
@@ -242,7 +263,16 @@ impl UsdmWsBuilder {
 
     /// The supervisor for one path's connection.
     fn supervisor(&self, path: StreamPath) -> Supervisor<UsdmProtocol> {
-        Supervisor::new(UsdmProtocol::new(self.base_url.clone(), path), self.timing)
+        let supervisor =
+            Supervisor::new(UsdmProtocol::new(self.base_url.clone(), path), self.timing);
+        let supervisor = match &self.runtime {
+            Some(runtime) => supervisor.runtime(Arc::clone(runtime)),
+            None => supervisor,
+        };
+        match &self.socket_transport {
+            Some(transport) => supervisor.socket_transport(Arc::clone(transport)),
+            None => supervisor,
+        }
     }
 }
 
@@ -382,7 +412,7 @@ impl Stop {
 pub struct SupervisedUsdmWs {
     events: mpsc::Receiver<Item>,
     commands: mpsc::Sender<Command>,
-    task: tokio::task::JoinHandle<Result<(), UsdmWsError>>,
+    task: Task<Result<(), UsdmWsError>>,
     stop: Stop,
 }
 
@@ -426,8 +456,8 @@ impl SupervisedUsdmWs {
         let _ = commands.send(Command::Close).await;
         drop(commands);
         match task.await {
-            Ok(result) => result,
-            Err(_) => Err(stop.error()),
+            Some(result) => result,
+            None => Err(stop.error()),
         }
     }
 }
@@ -466,6 +496,8 @@ struct Ended {
 /// first stream, and lets it close when its last leaves.
 struct Router {
     config: UsdmWsBuilder,
+    /// The runtime the router spawns each path's forwarder on.
+    runtime: Arc<dyn Runtime>,
     paths: HashMap<StreamPath, Path>,
     /// Each path's streams, as its supervisor last reported them.
     membership: HashMap<StreamPath, Vec<StreamName>>,
@@ -473,7 +505,7 @@ struct Router {
     /// Set when the router closes, which closes every path.
     closing: watch::Sender<bool>,
     ended: mpsc::UnboundedSender<Ended>,
-    forwarders: Vec<tokio::task::JoinHandle<()>>,
+    forwarders: Vec<Task<()>>,
     generation: u64,
     /// The cause the client stopped on, shared with the stream and handles.
     stop: Stop,
@@ -486,14 +518,17 @@ impl Router {
         self.generation += 1;
         let handle = supervised.membership();
         self.forwarders.retain(|forwarder| !forwarder.is_finished());
-        self.forwarders.push(tokio::spawn(forward(
-            path,
-            self.generation,
-            supervised,
-            self.events.clone(),
-            self.closing.subscribe(),
-            self.ended.clone(),
-        )));
+        self.forwarders.push(spawn(
+            self.runtime.as_ref(),
+            forward(
+                path,
+                self.generation,
+                supervised,
+                self.events.clone(),
+                self.closing.subscribe(),
+                self.ended.clone(),
+            ),
+        ));
         self.paths.insert(
             path,
             Path {
@@ -789,5 +824,48 @@ mod tests {
         let mut b = Backoff::new(Duration::MAX, Duration::MAX);
         assert_eq!(b.take(), Duration::MAX);
         assert_eq!(b.take(), Duration::MAX);
+    }
+
+    /// A runtime that counts its spawns and runs them on tokio's.
+    #[derive(Debug, Default)]
+    struct CountingRuntime {
+        inner: polyoxide_rt::TokioRuntime,
+        spawns: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Runtime for CountingRuntime {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.spawns
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_router_and_each_path_are_spawned_on_the_injected_runtime() {
+        use crate::usdm::ws::scripted::{Script, ScriptedServer};
+
+        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let runtime = std::sync::Arc::new(CountingRuntime::default());
+        let btc = crate::usdm::types::Symbol::new("BTCUSDT").unwrap();
+        let feed = UsdmWsBuilder::new()
+            .base_url(server.url.clone())
+            .runtime(runtime.clone())
+            .streams([StreamName::MarkPrice(btc)])
+            .connect()
+            .await
+            .expect("connect");
+        // One spawn for the path's supervision task, one for its forwarder and
+        // one for the router.
+        assert_eq!(runtime.spawns.load(std::sync::atomic::Ordering::SeqCst), 3);
+        feed.close().await.expect("close");
     }
 }
