@@ -25,8 +25,8 @@ paths:
   `ClientConfig::http_builder()` and gives it `HttpClientBuilder::runtime`, and adds the throttle
   (built on the same runtime) and retry policy the venue installs; the config sets no `gzip`.
 - `http_transport(..)`, from the same macro, injects the `Arc<dyn HttpTransport>` every attempt is
-  sent on; with none set, `build` makes `ReqwestTransport` (`send-loop.md`), and `pool_size` and
-  the client's `gzip` feed only that native default.
+  sent on; with none set, `build` makes `ReqwestTransport` on a host target and `FetchTransport` on
+  `wasm32` (`send-loop.md`), and `pool_size` and the client's `gzip` feed only the host default.
 - A venue's own knobs stay on its builder:
   - data: `pnl_base_url`, `rankings_base_url`;
   - perps: `with_rate_limiter`;

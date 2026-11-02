@@ -43,7 +43,8 @@ Every dial goes through a `SocketTransport` and every timer, clock read and spaw
   `InvalidRequest`.
 - A builder's `runtime(..)` and `socket_transport(..)` come from `polyoxide_ws::transport_setters!`,
   beside `timing_setters!`, and its connect falls back to the target's defaults. The CLOB's
-  default transport is `TungsteniteTransport::per_address()`.
+  default transport is `TungsteniteTransport::per_address()` on a host target and
+  `default_socket_transport` on `wasm32`.
 - `Supervisor::new` keeps its signature and gains `.runtime(..)` and `.socket_transport(..)`.
   `Connection::new` runs on the default runtime and `Connection::with_runtime` on the one given,
   which `Connection::runtime()` returns for a protocol's own timers.

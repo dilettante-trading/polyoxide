@@ -108,9 +108,10 @@ an owned head and a lazy body read by `bytes()`, `text()` and `json()`, each int
 loop decides on the head, releases the permit, then reads an error body.
 
 - `ClientConfig::http_transport`, the `http_transport(..)` setter of `client_config_setters!` and
-  `HttpClientBuilder::http_transport(..)` inject one. With none set, `build` makes
-  `ReqwestTransport` from the builder's timeout, pool size and `gzip` (unset), a 10 s connect
-  timeout and no redirects. `pool_size` and `gzip` feed only that native default.
+  `HttpClientBuilder::http_transport(..)` inject one. With none set, `build` makes,
+  on a host target, `ReqwestTransport` (on `wasm32`, `FetchTransport`, below) from the builder's
+  timeout, pool size and `gzip` (unset), a 10 s connect timeout and no redirects. `pool_size` and
+  `gzip` feed only that native default.
 - A transport that cannot produce a response is `ApiError::Transport(TransportError)`, neither
   observed nor retried. `TransportError::kind()` is `Connect`, `Timeout`, `Body`, `Request` or
   `Other`; only `Request` is `InvalidRequest`, so a body that broke off mid-read is `Network`.
@@ -124,13 +125,14 @@ loop decides on the head, releases the permit, then reads an error body.
 
 ## reqwest, gzip and the header pins
 
-- Core is the only member that declares reqwest (AD-18): it enables `json`, `rustls-tls` and
-  `gzip` with no default features and re-exports the crate as `polyoxide_core::reqwest`, through
+- On a host target, core is the only member that declares reqwest (AD-18): it enables `json`,
+  `rustls-tls` and `gzip` with no default features and re-exports the crate as `polyoxide_core::reqwest`, through
   which every other member's src, tests and examples name its client types (`Client`, `Response`,
   `RequestBuilder`). The request vocabulary, `Method`, `StatusCode`, `HeaderMap`, `HeaderValue`
   and `header::*`, they name through `polyoxide_core::http`, core's re-export of the `http` crate:
-  the very types reqwest re-exports, so a path change only. Nothing but `ReqwestTransport` sends
-  through reqwest: `HttpClient` holds a transport (`## The transport`).
+  the very types reqwest re-exports, so a path change only. On a host target nothing but
+  `ReqwestTransport` sends through reqwest (on `wasm32`, `FetchTransport` does, below):
+  `HttpClient` holds a transport (`## The transport`).
   `test_dependency_fences.py` fails on any other member's direct dependency, so no crate can
   change reqwest's features for the rest.
 - `HttpClientBuilder::gzip` is unset by default, which leaves reqwest's default: every client asks
@@ -148,4 +150,4 @@ loop decides on the head, releases the permit, then reads an error body.
 
 ## The browser's fetch (`polyoxide-core/src/fetch.rs`)
 
-`FetchTransport` is the `wasm32` default of the config's `http_transport`; a host's is `ReqwestTransport`. It sends through reqwest's wasm client (the page's `fetch`) with the request's timeout set per request, which bounds the whole exchange, body included. A `fetch` that fails is `Connect` (a network failure and a CORS refusal look alike to a page), a failed body read is `Body`, a timeout is `Timeout` wherever it struck, and a request the browser would not build is `Request`; `kind_of` holds the rule and the host's tests pin it. The pool size and the gzip setting feed only the host default: the browser negotiates compression itself, follows redirects, and shows a page only the response headers the server exposes, so a `Retry-After` is unreadable unless it is. The header pins of the `headers_<module>` suites hold the host default only. The exchange sits in a `SendWrapper`, as in `rt.md`.
+`FetchTransport` is the `wasm32` default of the config's `http_transport`; a host's is `ReqwestTransport`. It sends through reqwest's wasm client (the page's `fetch`) with the request's timeout set per request, which bounds the whole exchange, body included. A `fetch` that fails is `Connect` (a network failure and a CORS refusal look alike to a page), a failed body read is `Body`, a timeout is `Timeout` wherever it struck, and a request the browser would not build is `Request`. Reqwest's wasm client flags only a timeout before the response head (a body read cut short by the same timer comes back as a decode error), so the transport counts a failure at or after the request's own deadline as a timeout too (`timed_out`), and holds the timeout to `i32::MAX` milliseconds (`clamped`), the most that client converts without panicking. `kind_of`, `timed_out` and `clamped` hold the rules and the host's tests pin them. The pool size and the gzip setting feed only the host default: the browser negotiates compression itself, follows redirects, and shows a page only the response headers the server exposes, so a `Retry-After` is unreadable unless it is. The header pins of the `headers_<module>` suites hold the host default only. The exchange sits in a `SendWrapper`, as in `rt.md`.

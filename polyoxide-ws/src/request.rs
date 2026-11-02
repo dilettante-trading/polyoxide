@@ -2,11 +2,10 @@
 
 use std::{future::Future, sync::Arc, time::Duration};
 
-use crate::tungstenite::Message;
 use futures_util::StreamExt;
 use polyoxide_rt::{Instant, Runtime};
 
-use crate::{Connection, WsError};
+use crate::{tungstenite::Message, Connection, WsError};
 
 /// What a frame read while a request awaits its answer is, as the caller's
 /// matcher reads it.

@@ -23,7 +23,8 @@ developer on another platform reads the same tree CI does.
 build (spec D10), taken with `--target wasm32-unknown-unknown`, for spec D1's
 crates and features (`WASM_SET`); the host's files stay pinned to
 `x86_64-unknown-linux-gnu`. Its files obey the deny-lists above, except that
-`polyoxide-core`, the HTTP stack itself, is not fenced. No file may build
+`polyoxide-core`, the HTTP stack itself, may build that stack (`EXEMPT`) but not
+the signing stack or the keychain. No file may build
 `WASM_NEVER`, the host-only crates (`tokio-tungstenite`, `rustls`), and each must
 build the crates in `WASM_MUST_BUILD`, which only the browser build reaches, so
 a target that silently resolved as the host's fails.
@@ -198,8 +199,10 @@ WASM_MUST_BUILD = {
     "polyoxide-polymarket@perps.txt": ("reqwest",),
     "polyoxide-polymarket@sports.txt": ("polyoxide-ws", "web-sys"),
 }
-# A crate whose purpose is the stack the socket-only deny-list refuses.
-UNFENCED = frozenset({"polyoxide-core"})
+# A crate whose purpose is part of the stack the socket-only deny-list refuses
+# is exempt from those names alone: core is the HTTP stack, and still refuses the
+# signing stack and the keychain.
+EXEMPT = {"polyoxide-core": frozenset({"reqwest", "polyoxide-core", "governor", "sha2"})}
 
 HEADER = """\
 # The crates `cargo tree -p {crate} -e normal{defaults} --target {target}{features}` builds,
@@ -291,11 +294,9 @@ def denied(crate: str, names: list[str], features: tuple[str, ...] = (),
     """Each name `crate` built with `features` may not build, with the rule
     that refuses it. `table` is the crate's `[features]`, read from cargo
     metadata when a per-feature rule needs it and none is given."""
-    if crate in UNFENCED:
-        return []
     rules = PER_FEATURE.get(crate)
     if rules is None:
-        refused = DENIED | DENIED_FOR.get(crate, frozenset())
+        refused = (DENIED | DENIED_FOR.get(crate, frozenset())) - EXEMPT.get(crate, frozenset())
         return sorted(f"{n} ({SOCKET_ONLY})" for n in names
                       if n in refused or n.startswith(DENIED_PREFIXES))
     on = enabled(features, feature_table(crate) if table is None else table)
@@ -428,6 +429,11 @@ def test_the_host_still_builds_what_the_browser_does_not() -> None:
 
 def test_the_http_stack_crate_is_not_held_to_the_socket_only_deny_list() -> None:
     assert denied("polyoxide-core", ["governor", "reqwest", "sha2"]) == []
+    # What core is exempt from is the HTTP stack alone: the keychain and the
+    # signing stack stay refused.
+    assert denied("polyoxide-core", ["alloy-primitives", "hmac", "keyring"]) == [
+        f"alloy-primitives ({SOCKET_ONLY})", f"hmac ({SOCKET_ONLY})",
+        f"keyring ({SOCKET_ONLY})"]
     # Only core: any other crate without a rule of its own keeps the deny-list.
     assert denied("polyoxide-rt", ["reqwest"]) == [f"reqwest ({SOCKET_ONLY})"]
 

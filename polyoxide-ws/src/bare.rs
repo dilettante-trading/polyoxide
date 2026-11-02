@@ -8,11 +8,10 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::tungstenite::Message;
 use futures_util::{SinkExt, Stream, StreamExt};
 use polyoxide_rt::{default_runtime, Instant, Runtime};
 
-use crate::{request::Requests, BoxSocket, WsError};
+use crate::{request::Requests, tungstenite::Message, BoxSocket, WsError};
 
 /// Which frames a [`Connection`] yields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
