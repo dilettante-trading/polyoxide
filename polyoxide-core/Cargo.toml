@@ -16,6 +16,9 @@ keychain = ["dep:keyring"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
+# The runtime every wait, clock read and spawn goes through. Core does not
+# re-export it: a crate that names `Runtime` declares it itself.
+polyoxide-rt = { workspace = true }
 # The one HTTP client, and the only member that declares it (AD-18): every
 # venue crate names its types through `polyoxide_core::reqwest`, so no other
 # crate can change its features for the rest. `gzip` is on, so every client

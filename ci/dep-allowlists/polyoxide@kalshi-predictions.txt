@@ -25,6 +25,7 @@ flate2
 form_urlencoded
 futures-channel
 futures-core
+futures-macro
 futures-sink
 futures-task
 futures-timer
@@ -69,6 +70,7 @@ percent-encoding
 pin-project-lite
 polyoxide-core
 polyoxide-kalshi
+polyoxide-rt
 polyoxide-venue
 portable-atomic
 potential_utf

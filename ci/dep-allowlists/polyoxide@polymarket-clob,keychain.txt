@@ -193,6 +193,7 @@ piper
 polling
 polyoxide-core
 polyoxide-polymarket
+polyoxide-rt
 polyoxide-venue
 portable-atomic
 potential_utf

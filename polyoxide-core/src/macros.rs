@@ -1,8 +1,11 @@
 //! Macros for reducing boilerplate in API client implementations
 
-/// Generates a client builder's five transport setters over a
+/// Generates a client builder's six transport setters over a
 /// `ClientConfig` field: `base_url`, `timeout_ms`, `pool_size`,
-/// `with_retry_config` and `max_concurrent`.
+/// `with_retry_config`, `max_concurrent` and `runtime`.
+///
+/// `runtime` names `polyoxide_rt::Runtime`, which core does not re-export, so
+/// the invoking crate declares `polyoxide-rt` itself.
 ///
 /// Invoke it inside the builder's `impl`, naming the field that holds the
 /// config. The builder's `build` reads the config back through
@@ -59,6 +62,14 @@ macro_rules! client_config_setters {
         /// request, so every send waits forever.
         pub fn max_concurrent(mut self, max: usize) -> Self {
             self.$config.max_concurrent = Some(max);
+            self
+        }
+
+        /// Set the runtime the client's waits, clock reads and spawns go
+        /// through. Unset, the target's default is used
+        /// (`polyoxide_rt::default_runtime`).
+        pub fn runtime(mut self, runtime: ::std::sync::Arc<dyn ::polyoxide_rt::Runtime>) -> Self {
+            self.$config.runtime = Some(runtime);
             self
         }
     };

@@ -74,6 +74,7 @@ parking_lot_core
 percent-encoding
 pin-project-lite
 polyoxide-core
+polyoxide-rt
 polyoxide-venue
 polyoxide-ws
 portable-atomic

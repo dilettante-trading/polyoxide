@@ -192,6 +192,7 @@ pin-project-lite
 piper
 polling
 polyoxide-core
+polyoxide-rt
 polyoxide-venue
 portable-atomic
 potential_utf

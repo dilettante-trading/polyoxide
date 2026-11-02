@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use polyoxide_rt::Runtime;
 use reqwest::Method;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
@@ -43,6 +44,7 @@ pub struct HttpClient {
     pub(crate) throttle: Arc<DynThrottle<'static>>,
     pub(crate) policy: Arc<DynRetryPolicy<'static>>,
     pub(crate) retry_config: RetryConfig,
+    pub(crate) runtime: Arc<dyn Runtime>,
     concurrency_limiter: Option<Arc<Semaphore>>,
 }
 
@@ -54,6 +56,7 @@ impl std::fmt::Debug for HttpClient {
             .field("client", &self.client)
             .field("base_url", &self.base_url)
             .field("retry_config", &self.retry_config)
+            .field("runtime", &self.runtime)
             .field("concurrency_limiter", &self.concurrency_limiter)
             .finish_non_exhaustive()
     }
@@ -63,7 +66,7 @@ impl HttpClient {
     /// Clone this client, pointed at a different base URL.
     ///
     /// The underlying reqwest client (and so its connection pool), throttle
-    /// (and so its hold), retry policy, retry config, and concurrency limiter
+    /// (and so its hold), retry policy, retry config, runtime, and concurrency limiter
     /// are all shared with the original. Use this to reach a sibling API host
     /// that should share the same transport configuration and request budget —
     /// a venue whose APIs live on their own subdomains is consumed by one
@@ -92,6 +95,13 @@ impl HttpClient {
             base_url: Url::parse(base_url)?,
             ..self.clone()
         })
+    }
+
+    /// The runtime this client's waits, clock reads and spawns go through:
+    /// the one its builder was given, else the target's default. Shared with
+    /// every [`with_base_url`](Self::with_base_url) sibling.
+    pub fn runtime(&self) -> &Arc<dyn Runtime> {
+        &self.runtime
     }
 
     /// Acquire a concurrency permit, if a limiter is configured.
@@ -170,6 +180,7 @@ pub struct HttpClientBuilder {
     policy: Option<Arc<DynRetryPolicy<'static>>>,
     retry_config: RetryConfig,
     max_concurrent: Option<usize>,
+    runtime: Option<Arc<dyn Runtime>>,
     gzip: Option<bool>,
 }
 
@@ -184,6 +195,7 @@ impl HttpClientBuilder {
             policy: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
+            runtime: None,
             gzip: None,
         }
     }
@@ -244,6 +256,18 @@ impl HttpClientBuilder {
         self
     }
 
+    /// Set the runtime this client's waits, clock reads and spawns go
+    /// through, shared with every [`with_base_url`](HttpClient::with_base_url)
+    /// sibling.
+    ///
+    /// Default: [`polyoxide_rt::default_runtime`]. A throttle installed with
+    /// [`with_throttle`](Self::with_throttle) keeps time on the runtime it was
+    /// built on: build it on this one, as the venue crates do.
+    pub fn runtime(mut self, runtime: Arc<dyn Runtime>) -> Self {
+        self.runtime = Some(runtime);
+        self
+    }
+
     /// Ask for gzip-compressed responses and decode them, or pin that off.
     ///
     /// Unset by default, which leaves reqwest's own default. This crate enables
@@ -281,6 +305,7 @@ impl HttpClientBuilder {
                 .policy
                 .unwrap_or_else(|| DynRetryPolicy::new_arc(DefaultRetryPolicy)),
             retry_config: self.retry_config,
+            runtime: self.runtime.unwrap_or_else(polyoxide_rt::default_runtime),
             concurrency_limiter: self.max_concurrent.map(|n| Arc::new(Semaphore::new(n))),
         })
     }

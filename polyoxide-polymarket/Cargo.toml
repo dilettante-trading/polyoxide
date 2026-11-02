@@ -21,6 +21,7 @@ categories = ["api-bindings", "web-programming::http-client", "web-programming::
 default = ["clob", "gamma", "data"]
 clob = [
     "dep:polyoxide-core",
+    "dep:polyoxide-rt",
     "polyoxide-venue/market",
     "dep:base64",
     "dep:hmac",
@@ -50,6 +51,7 @@ clob-ws = [
 ]
 gamma = [
     "dep:polyoxide-core",
+    "dep:polyoxide-rt",
     "polyoxide-venue/keys",
     "dep:serde",
     "dep:serde_json",
@@ -63,6 +65,7 @@ gamma = [
 ]
 data = [
     "dep:polyoxide-core",
+    "dep:polyoxide-rt",
     "polyoxide-venue/keys",
     "dep:serde",
     "dep:serde_json",
@@ -75,6 +78,7 @@ data = [
 # The relay adds the chain RPC its gas estimation calls through alloy.
 relay = [
     "dep:polyoxide-core",
+    "dep:polyoxide-rt",
     "dep:base64",
     "dep:hmac",
     "dep:sha2",
@@ -93,6 +97,7 @@ relay = [
 ]
 perps = [
     "dep:polyoxide-core",
+    "dep:polyoxide-rt",
     "polyoxide-venue/market",
     "polyoxide-venue/decimal",
     "dep:rust_decimal",
@@ -154,6 +159,10 @@ specta = ["dep:specta"]
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
+# The runtime the HTTP modules' clients and throttles keep time on. The socket
+# modules (`rtds`, `sports`) build none of it until the socket kit moves on to
+# it.
+polyoxide-rt = { workspace = true, optional = true }
 polyoxide-venue = { workspace = true }
 # EIP-712 signing and the chain types (`clob`, `relay`); the relay adds the
 # chain RPC its gas estimation calls.

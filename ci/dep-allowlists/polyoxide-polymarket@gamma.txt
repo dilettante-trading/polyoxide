@@ -24,6 +24,7 @@ flate2
 form_urlencoded
 futures-channel
 futures-core
+futures-macro
 futures-sink
 futures-task
 futures-timer
@@ -67,6 +68,7 @@ parking_lot_core
 percent-encoding
 pin-project-lite
 polyoxide-core
+polyoxide-rt
 polyoxide-venue
 portable-atomic
 potential_utf

@@ -18,6 +18,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 default = ["predictions"]
 predictions = [
     "dep:polyoxide-core",
+    "dep:polyoxide-rt",
     "polyoxide-venue/decimal",
     "polyoxide-venue/market",
     "dep:base64",
@@ -40,6 +41,8 @@ predictions-ws = ["predictions", "dep:polyoxide-ws"]
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
+# The runtime the client and its Read throttle keep time on.
+polyoxide-rt = { workspace = true, optional = true }
 polyoxide-venue = { workspace = true }
 base64 = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }

@@ -158,6 +158,7 @@ pin-project
 pin-project-internal
 pin-project-lite
 polyoxide-core
+polyoxide-rt
 polyoxide-venue
 polyoxide-ws
 portable-atomic
