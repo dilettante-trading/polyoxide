@@ -137,10 +137,11 @@ fourteen methods over eleven routes, with no credentials. It is the first produc
   without `limit` and for 1 to 100, 25 for 101 to 500, 50 for 501 to 1000 and 250 above (each band
   measured, `OBSERVED.md`'s `## Spot`), `trades` 25, `aggTrades` 4, `klines`, `avgPrice` and the
   one-symbol tickers 2, `ticker/24hr` without a symbol 80, `ticker/price` and `ticker/bookTicker`
-  without one 4. `weight_probe_spot` re-measures it (`cargo run -p polyoxide-binance --example weight_probe_spot`, no
-  `--product` argument; `weight_probe` is unchanged and measures USDⓈ-M).
-  `GetDepth::limit` is a hand-written setter because it also re-prices the route (`clients.md`);
-  `docs/MUTANTS.md`'s row (l) holds the re-pricing.
+  without one 4. `weight_probe_spot` re-measures it
+  (`cargo run -p polyoxide-binance --example weight_probe_spot`, no `--product` argument;
+  `weight_probe` is unchanged and measures USDⓈ-M). `GetDepth::limit` is a hand-written setter
+  because it also re-prices the route (`clients.md`); `docs/MUTANTS.md`'s row (l) holds the
+  re-pricing.
 - **A `limit` past a route's maximum is truncated by the venue, not refused**, and is sent as the
   caller gave it; the cost does not change but for `depth`'s bands. Only `Symbol` is validated by
   the client.
@@ -153,8 +154,9 @@ fourteen methods over eleven routes, with no credentials. It is the first produc
   `polyoxide_binance::spot::error`.
 - `Interval` is exhaustive (`1s` through `1M`) and separate from `usdm`'s. `Symbol` is `usdm`'s
   (`shared`), so it accepts `_` though spot lists no such symbol; the venue answers an unknown
-  symbol `400` with `-1121`. `Filter` keeps an unknown `filterType` whole in `Filter::Other`. Klines and book levels decode through
-  `polyoxide_venue::positional` in visitors that tolerate extra elements. Response rows carry
+  symbol `400` with `-1121`. `Filter` keeps an unknown `filterType` whole in `Filter::Other`. Klines
+  and book levels decode through `polyoxide_venue::positional` in visitors that tolerate extra
+  elements. Response rows carry
   symbols as `String`.
 - **`spot::venue`:** `MarketData`, `Instruments`, `Trades` and `Candles` on `Spot`, with
   `InstrumentExt`, `BookExt`, `TradeExt` and `CandleExt`; a quote has no extension. Its `quote` is

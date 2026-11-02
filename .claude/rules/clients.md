@@ -85,7 +85,7 @@ Eleven setters stay hand-written because they are not single query writes:
 - Kalshi's `tickers` of `ListMarkets`, `ListMarketWindow` and `ListEvents`, which refuse an empty
   set or one past `TICKERS_QUERY_BUDGET` before anything is sent (`kalshi.md`).
 
-`tests/query_setters_usdm.rs` and `tests/query_setters_spot.rs` (Binance), `tests/query_setters_clob.rs`,
-`tests/query_setters_gamma.rs` and `tests/query_setters_data.rs` (`polyoxide-polymarket`) and
-`tests/query_setters_predictions.rs` (Kalshi) call every setter with a typed value and pin the
-exact ordered pairs it sends; a new setter gets a row there.
+`tests/query_setters_usdm.rs` and `tests/query_setters_spot.rs` (Binance),
+`tests/query_setters_clob.rs`, `tests/query_setters_gamma.rs` and `tests/query_setters_data.rs`
+(`polyoxide-polymarket`) and `tests/query_setters_predictions.rs` (Kalshi) call every setter with a
+typed value and pin the exact ordered pairs it sends; a new setter gets a row there.

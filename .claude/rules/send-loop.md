@@ -110,8 +110,8 @@ The loop retries only what the client's policy decides; callers decide with
   Only four rate-limit examples pin `.gzip(false)`, on bare clients, so their soaks keep the wire
   they were measured on.
 - Each HTTP module has a `tests/headers_<module>.rs` (polymarket's `clob`, `gamma`, `data`,
-  `relay` and `perps`, Binance's `usdm` and `spot`, Kalshi's `predictions`) that sends one unauthenticated
-  `GET` through `polyoxide_test_support::query::headers_sent` and asserts exactly `accept: */*`,
-  `accept-encoding: gzip` and `host`. CI runs it in the module's minimal build, in the workspace
-  build and beside `polyoxide/full`, so a feature another member or another venue switches on
-  fails one of the three.
+  `relay` and `perps`, Binance's `usdm` and `spot`, Kalshi's `predictions`) that sends one
+  unauthenticated `GET` through `polyoxide_test_support::query::headers_sent` and asserts exactly
+  `accept: */*`, `accept-encoding: gzip` and `host`. CI runs it in the module's minimal build, in
+  the workspace build and beside `polyoxide/full`, so a feature another member or another venue
+  switches on fails one of the three.

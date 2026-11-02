@@ -14,8 +14,8 @@ paths:
 ## The hierarchy
 
 - `ApiError` (core) is wrapped by each module's `<Module>Error`: `ClobError`, `GammaError`,
-  `DataError`, `RelayError`, Binance's `UsdmError` and `SpotError`, Kalshi's `PredictionsError`. A module's socket
-  error is `<Module>WsError`. Every module's error enum is `#[non_exhaustive]`.
+  `DataError`, `RelayError`, Binance's `UsdmError` and `SpotError`, Kalshi's `PredictionsError`. A
+  module's socket error is `<Module>WsError`. Every module's error enum is `#[non_exhaustive]`.
 - An unsuccessful response is `ApiError::Response(Box<ErrorResponse>)`: the status, headers, body,
   the body's `error` or `message` field as `message`, and the unclamped `Retry-After` (a zero is
   `None`). `ApiError::Validation` is a refusal made before sending, and only that.

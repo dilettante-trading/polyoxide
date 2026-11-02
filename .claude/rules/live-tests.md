@@ -80,8 +80,8 @@ per-file `opted_out` count that may not rise without a hand edit a reviewer sees
 Each regex-era case is a row of `.github/scripts/tests/test_classify_failures.py`'s tag table, and
 each row naming an error the tests can build has a Rust twin in a failure-tags suite asserting the
 tag that error prints: `polyoxide-test-support`'s `tests/failure_tags.rs` (core's `ApiError`),
-`polyoxide-binance`'s `tests/failure_tags_usdm.rs` and `tests/failure_tags_spot.rs`, and `polyoxide-polymarket`'s
-`tests/failure_tags_sports.rs` and `tests/failure_tags_rtds.rs`.
+`polyoxide-binance`'s `tests/failure_tags_usdm.rs` and `tests/failure_tags_spot.rs`, and
+`polyoxide-polymarket`'s `tests/failure_tags_sports.rs` and `tests/failure_tags_rtds.rs`.
 
 ## Reading the environment
 

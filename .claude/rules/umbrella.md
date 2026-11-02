@@ -16,9 +16,10 @@ paths:
   each venue adding its own `?/keychain`; there is no umbrella `specta`. The generated feature list
   is in CLAUDE.md.
 - A module that implements the market-data traits (`polymarket-clob`, `polymarket-perps`,
-  `binance-usdm`, `binance-spot`, `kalshi-predictions`) also turns on `polyoxide-venue/market`, and one that only
-  names keys (`polymarket-gamma`, `polymarket-data`) `polyoxide-venue/keys`, so `polyoxide::venue`
-  carries the traits with every module that implements them, which a `const _` pins.
+  `binance-usdm`, `binance-spot`, `kalshi-predictions`) also turns on `polyoxide-venue/market`, and
+  one that only names keys (`polymarket-gamma`, `polymarket-data`) `polyoxide-venue/keys`, so
+  `polyoxide::venue` carries the traits with every module that implements them, which a `const _`
+  pins.
   `polymarket-clob-ws` turns on `polyoxide-venue/trading`, and its `const _` pins `DynTrading` and
   `Clob: Trading`.
 - Each passthrough names one type of its module through the path it opens, in a `const _` outside
