@@ -187,6 +187,10 @@ name = "wire_agreement_spot"
 required-features = ["spot"]
 
 [[test]]
+name = "wire_agreement_spot_ws"
+required-features = ["spot-ws", "test-server"]
+
+[[test]]
 name = "wire_agreement_usdm"
 required-features = ["usdm"]
 
