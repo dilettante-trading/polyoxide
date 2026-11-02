@@ -146,7 +146,7 @@ Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depend
 ## Testing and the nightly
 
 - Each HTTP module has a `mockito` suite, `tests/mock_<module>.rs`; socket suites run on `polyoxide-ws`'s scripted server; the shared test helpers live once, in `polyoxide-test-support`.
-- Live suites, `tests/live_*.rs`, hit the real APIs, are `#[ignore]`d, and run with `-- --ignored`. A live test fails through test-support's tags (`.or_fail`, `fail`, the credential loaders, `environmental`, `transient`), not through a bare `unwrap`, `expect` or `panic!`: the nightly classifies a failure by its tag line alone. `scripts/live_unwraps.py` holds such sites at zero per file; a line that must keep one ends with `// live-unwraps: <reason>` and counts as opted out.
+- Live suites, `tests/live_*.rs`, hit the real APIs, are `#[ignore]`d, and run with `-- --ignored`. A live test fails through test-support's tags (`.or_fail`, `fail`, the credential loaders, `environmental`, `transient`), not through a bare `unwrap`, `expect` or `panic!`: the nightly classifies a failure by its tag line alone. `scripts/live_unwraps.py` holds such sites at zero per file; a line that must keep one ends with `// live-unwraps: <reason>` and counts as opted out. The browser job (`live-wasm-browser`) is the exception: its target, `polyoxide-wasm-smoke`'s `browser_live`, is a wasm32 test behind the `live` feature that `scripts/wasm_live.sh` runs, tagged through the same crate (`live-tests.md`).
 
 Two workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
 

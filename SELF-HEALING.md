@@ -41,6 +41,11 @@ the live loaders treat as absent. Besides the 06:00 UTC run, it also runs on
 Saturday and Sunday at 18:30 UTC. The sports feed carries only what is live,
 and that is when North American leagues and weekend soccer are on.
 
+One job is not a nextest run: `live-wasm-browser` runs `polyoxide-wasm-smoke`'s `browser_live`
+in headless Chrome through `scripts/wasm_live.sh`, which hands the classifier the same
+`polyoxide-class=<tag>` lines in libtest-json, and its artifact is read by the aggregate like the
+others. It needs no secrets.
+
 <!-- generated:begin selfheal-behavioral -->
 | Crate | Test binaries |
 |-------|---------------|

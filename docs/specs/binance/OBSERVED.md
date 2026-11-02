@@ -121,3 +121,15 @@ connection alive with a request the server answers instead.
   answered, in 0.301 s, 0.319 s, 0.322 s, 0.318 s, 0.319 s and 0.319 s. An
   answer is the request's id with `result` the subscribed names, so it is a
   frame like any other and counts as liveness.
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `fapi.binance.com` answers `Access-Control-Allow-Origin: *` (with `Access-Control-Allow-Headers:
+  *` and `Access-Control-Allow-Credentials: true`) and sets no `Access-Control-Expose-Headers`: the
+  response carries `X-MBX-USED-WEIGHT-1M`, and a browser does not show it. The weight header is
+  unreadable in a browser, so the client's weight accounting has nothing to read there.
+- `fstream.binance.com` upgrades (101) on `/market/stream`. A browser sends no protocol ping, so
+  the supervised protocol's keepalive is the `LIST_SUBSCRIPTIONS` request: the nightly job
+  subscribes to `btcusdt@markPrice@1s`, sends it 250 ms later and expects an answer with its id
+  within 5 s whose `result` names the stream.

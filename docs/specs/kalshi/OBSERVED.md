@@ -321,3 +321,14 @@ Upstream's AsyncAPI, still `info.version` 2.0.0, changes three things. The adopt
 - **Conflated `orderbook_delta` (opt-in).** `subscribe` gains `update_interval_ms` (0, 100 or 1000; default 0), for the order-book channel only. At 100 or 1000 the host sends one net `orderbook_delta` per changed price level per window, and a conflated delta's `clock` is that level's latest included change: it can go down between messages and matches nothing across connections. Only real-time mode (0) keeps #72's guarantees. Code 29 refuses another interval, and code 11 now also answers a repeated `subscribe` whose interval differs from the existing subscription's. The prose adds that each connection has one `orderbook_delta` subscription, that a repeated `subscribe` adds markets to its `sid` without resending snapshots, and that a `get_snapshot` answer replaces the market's local book. The client never sends `update_interval_ms`, so its subscription is real-time and #72's clock guarantees still hold for it; a repeated `subscribe` never happens, since membership changes go through `update_subscription`; and `Books` already replaces a book on each snapshot. Code 29 is yielded and skipped like any code the recovery table does not name. Conflated mode is not offered.
 - **`batch_communications` is gone**, 15 channels in all: its seven RFQ batch and batch quote messages now arrive on `communications`, and `rfq_created` and `rfq_deleted` gain an optional `rfq_batch_id` for a batch's child RFQs. The client implements neither channel.
 - **Descriptions.** Batch execution is now fill-or-kill across the children (`partially executed` only in a rare cancellation case), and `user_filter: "self"` also filters RFQ batch events.
+
+## Browser transport (2026-11)
+
+Probed with `Origin: https://prader.example` on 2026-11-02. Kalshi stays native-only (the
+nightly browser job, `browser_live`, does not open it), and these are the reasons it cannot go in a page.
+
+- Production REST answers 403 to that origin and 200 to `Origin: https://kalshi.com`, so a page
+  on any other origin is refused.
+- Its socket answers 401 to both origins, since it requires signed handshake headers, which the
+  browser transport refuses to send (`a handshake header is not supported by the browser
+  transport`).

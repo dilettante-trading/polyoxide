@@ -434,3 +434,11 @@ The remaining validations use `--concurrency 16`, and this route is re-run with 
 | `/v2/activity` | 400 | clean to 40 req/s (harness ceiling) |
 | `/v2/user-pnl` | 400 | clean to 40 req/s (harness ceiling); p99 near the saturation threshold at 30 |
 | `/v2/holders` | 400 | clean to 40 req/s (harness ceiling), measured with `include_pnl=true` |
+
+## Browser transport (2026-11)
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `data-api.polymarket.com` answers `Access-Control-Allow-Origin: *` and sets no
+  `Access-Control-Expose-Headers`, so a browser cannot read `Retry-After` from it.

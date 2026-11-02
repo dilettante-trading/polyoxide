@@ -119,3 +119,11 @@ The supervised feed's rule on such a transport is C: no staleness limit, and a
 lost connection ends through its close event. That is the owner's decision of
 2026-11-02 (spec D9), taken with the quiet-hour figures unmeasured, not a
 measurement's verdict; see `.claude/rules/polymarket-sports.md`.
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `sports-api.polymarket.com/ws` upgrades (101). The server's protocol pings are not visible to a
+  page, so the browser's only signal of a live connection is a data frame or a close event; the
+  nightly job sends nothing, holds the socket until its first data frame or 20 s, and counts a
+  close or an error before then as a drop (`transient`).

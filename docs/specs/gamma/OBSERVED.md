@@ -443,3 +443,11 @@ enforced by `tests/wire_agreement_gamma.rs`'s
 `search_response_tolerates_null_profile_entries`. `events` and `tags` were
 probed across the same 12 queries (240 event slots, 68 tag slots) and never
 observed to contain `null`, so they are left as `Vec<Event>` / `Vec<Tag>`.
+
+## Browser transport (2026-11)
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `gamma-api.polymarket.com` answers `Access-Control-Allow-Origin: *` and sets no
+  `Access-Control-Expose-Headers`, so a browser cannot read `Retry-After` from it.
