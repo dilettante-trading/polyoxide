@@ -151,7 +151,10 @@ it; each venue keeps only its protocol's answer and its fixtures.
 apply backpressure); the `WebSocket` and its callbacks sit in `SendWrapper`s, as in `rt.md`. A close
 event yields `Message::Close` with its code and reason, then ends the stream; an error event yields
 an I/O error. `Close` goes out with its code when it is 1000 or in 3000-4999 and 1000 otherwise, its
-reason cut to 123 bytes, since a browser throws on anything else. A handshake request with a header
+reason cut to 123 bytes, since a browser throws on anything else. A send while the browser socket is
+closing, before the stream has yielded its close, is dropped and returns `Ok`, as a native send
+before the reader sees the close succeeds; only a send after the stream has yielded its close is
+`AlreadyClosed`. `src/browser.rs`'s `send_state` decides it. A handshake request with a header
 beyond those tungstenite generates (a `Sec-WebSocket-Protocol` becomes the subprotocol list) is
 refused before dialling, and sending a ping, pong or raw frame is refused, each as
 `Kind::Unsupported` with the message `a handshake header`, `a ping frame`, `a pong frame` or

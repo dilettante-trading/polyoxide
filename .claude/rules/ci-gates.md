@@ -150,15 +150,16 @@ injected `polyoxide_rt::Runtime`, so a browser build can supply its own. It fail
 `tokio::time` path, and `Instant::now` and `SystemTime::now`, called or passed as a function
 value, and not clippy, whose `disallowed-methods` would also fire in every test and example,
 which use tokio legitimately. It reads a `use` tree rooted at `tokio` leaf by leaf, so
-`use tokio::{spawn, time::sleep};`, `use tokio::task;` and an `as` alias are hits. It skips an item
-under a `cfg` that holds only in tests (`test`, or `all(..)` with `test` among its operands; an
-`any(test, feature = "..")` is production code and is read), the file a `mod x;` under one
-declares (inside an inline `mod y { .. }`, `y/x.rs`), `polyoxide-ws/src/test_server/` and every
-`scripted.rs`; `polyoxide-rt` implements the runtime and is not scanned. A line ending
-`// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is: the two in tree are the
-wall-clock reads, `UnixMillis::now` and `shared::auth::current_timestamp`, which are never
-injected. The scripts job runs it through `test_runtime_gate.py` and also directly, as
-`python3 scripts/runtime_gate.py`.
+`use tokio::{spawn, time::sleep};`, `use tokio::task;` and an `as` alias are hits.
+`use tokio as tk;`, `use tokio::{self as tk};` and `extern crate tokio as tk;` are each reported as
+a `tokio alias` hit. It skips an item under a `cfg` that holds only in tests (`test`, or `all(..)`
+with `test` among its operands; an `any(test, feature = "..")` is production code and is read), the
+file a `mod x;` under one declares (inside an inline `mod y { .. }`, `y/x.rs`),
+`polyoxide-ws/src/test_server/` and every `scripted.rs`; `polyoxide-rt` implements the runtime and
+is not scanned. A line ending `// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out
+is: the two in tree are the wall-clock reads, `UnixMillis::now` and
+`shared::auth::current_timestamp`, which are never injected. The scripts job runs it through
+`test_runtime_gate.py` and also directly, as `python3 scripts/runtime_gate.py`.
 
 ## wasm
 
@@ -202,12 +203,11 @@ through `Account::sign_clob_auth`, byte-equal to the host's py-clob-client golde
 drives the wasm32 `SendWrapper` arm of `sign_digest` in `clob/core/eip712.rs` around alloy's
 `?Send` `sign_hash` future (the smoke crate's browser dev-dependency on `polyoxide-polymarket`
 with `clob`); a body read that outlives `FetchTransport`'s deadline, which comes back as
-`TransportKind::Timeout` because the transport counts a failure at or after the deadline as one
-(reqwest's wasm client reports that cut-short read as a decode error); and a window-quota wait
-that paces on the runtime's clock, shown with a runtime running four times fast since quanta
-reads the same `performance.now()` in a Worker and a real-clock test cannot tell the two apart.
-Each test's failure was shown by breaking the one thing it pins, so a new test comes with
-the same proof.
+`TransportKind::Timeout` because the transport counts a failure within 2 ms of the deadline or after
+it as one (reqwest's wasm client reports that cut-short read as a decode error); and a window-quota
+wait that paces on the runtime's clock, shown with a runtime running four times fast since quanta
+reads the same `performance.now()` in a Worker and a real-clock test cannot tell the two apart. Each
+test's failure was shown by breaking the one thing it pins, so a new test comes with the same proof.
 
 CI's job installs the wasm32 target and `wasm-bindgen-cli` at the locked version, and uses the
 runner's Chrome and chromedriver. Locally, the flake provides chromium, chromedriver (Linux) and
