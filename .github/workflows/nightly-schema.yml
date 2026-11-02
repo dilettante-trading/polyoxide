@@ -51,9 +51,12 @@ jobs:
         #     relayer OpenAPI (only `/deployed?type=WALLET` appears), so there
         #     is no mirror to diff; the SDK-generated fixtures are the drift
         #     check.
-        #   - Binance USDⓈ-M (docs/specs/binance/): Not a Polymarket host, and
-        #     Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the
-        #     live suites in `polyoxide-binance` are the drift check.
+        #   - Binance USDⓈ-M and spot (docs/specs/binance/): Not a Polymarket
+        #     host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M
+        #     futures; spot's `spot_api.yaml` (in `binance-api-swagger`) was
+        #     last released on 2024-10-08 and lacks fields the wire sends today,
+        #     so a diff of it would never fire. The live suites in
+        #     `polyoxide-binance` are the drift check.
         # generated:end schema-exclusions
         include:
           # generated:begin schema-watch
