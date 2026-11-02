@@ -40,7 +40,7 @@ pub use event::{
     PartialDepthEvent, Payload, TickerEvent, TradeEvent, Update,
 };
 pub use stream::{DepthLevels, DepthSpeed, InvalidStreamName, StreamName};
-pub use supervised::{DisconnectReason, Event};
+pub use supervised::{DisconnectReason, Event, MembershipHandle, SpotWsBuilder, SupervisedSpotWs};
 
 /// The production stream host. The client appends `/stream`.
 pub const SPOT_WS_BASE: &str = "wss://stream.binance.com:9443";

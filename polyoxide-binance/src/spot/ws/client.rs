@@ -41,7 +41,8 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// close as [`SpotWsError::Closed`] or, after an error, as
 /// [`SpotWsError::Connect`] whose kind is `AlreadyClosed`, and sends nothing.
 /// Binance closes a connection after 24 hours; the supervised tier
-/// (`SpotWsBuilder`) replaces it before then, and this tier does not.
+/// ([`SpotWsBuilder`](crate::spot::ws::SpotWsBuilder)) replaces it before then,
+/// and this tier does not.
 ///
 /// ```no_run
 /// use futures_util::StreamExt;

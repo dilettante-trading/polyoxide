@@ -134,6 +134,7 @@ impl<S: StreamSet> Bare<S> {
     }
 
     /// The path this connection is on.
+    #[cfg_attr(not(feature = "usdm-ws"), allow(dead_code))]
     pub(crate) fn path(&self) -> S::Path {
         self.path
     }

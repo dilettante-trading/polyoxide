@@ -89,6 +89,7 @@ pub(crate) enum Shape<'a> {
     /// A subscribe past the connection's cap, refused before sending.
     TooManyStreams,
     /// A stream for the other path, refused before sending.
+    #[cfg_attr(not(feature = "usdm-ws"), allow(dead_code))]
     WrongPath,
     /// A frame that did not decode.
     Frame,

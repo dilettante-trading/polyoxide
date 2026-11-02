@@ -163,6 +163,10 @@ name = "query_setters_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "supervision_spot"
+required-features = ["spot-ws", "test-server"]
+
+[[test]]
 name = "supervision_usdm"
 required-features = ["usdm-ws", "test-server"]
 
