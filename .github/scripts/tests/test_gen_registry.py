@@ -382,6 +382,18 @@ def test_the_fixture_orders_crates_by_publish_order_then_unpublished(fixture_reg
         "polyoxide-cli", "polyoxide-py"]
 
 
+def test_an_unpublished_crate_has_no_published_after_clause(tmp_path: Path) -> None:
+    def versioned_dev_dependency(metadata, workspace, manifests):
+        py = next(p for p in metadata["packages"] if p["name"] == "polyoxide-py")
+        py["dependencies"].append(dep("polyoxide-omega", kind="dev", req="^1.0.0"))
+
+    registry = build(tmp_path, versioned_dev_dependency)
+    assert registry.crate("polyoxide-py").published_after == ("polyoxide-omega",)
+    lines = {line.split(" — ")[0]: line for line in gen_registry.claude_graph(registry)}
+    assert "published after" not in lines["- `polyoxide-py`"]
+    assert "published after" in lines["- `polyoxide-omega`"]
+
+
 def test_a_duplicate_venue_and_product_fails_naming_both_crates(tmp_path: Path) -> None:
     def clash(metadata, workspace, manifests):
         meta = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]

@@ -110,8 +110,12 @@ own rule is the same: a failure goes through the tags or is untagged on purpose.
   `.github/scripts/wasm_live_convert.py` (the block dedented, its `panicked at` line given the
   `thread '...'` shape the classifier looks for), which exits 1 unless the runner's own
   `test result:` counts equal the results it parsed, since a test that never reported (a runner
-  stopped early) would read as a pass. Each run is bounded by `WASM_BINDGEN_TEST_TIMEOUT=450`, over
-  the D17 worst case of about 7 minutes and inside the job's 15. The script runs the classifier's
+  stopped early) would read as a pass. `WASM_BINDGEN_TEST_TIMEOUT=450` bounds each
+  run (the probe, the first pass and every retry), not the job: its 15 minutes also hold a cold
+  wasm32 build (the generated job has no build cache; the build is unmeasured), the probe run and
+  one more run for each transient test. The D17 worst case of about 7 minutes is the first pass
+  alone, so a slow build or several retries can reach the limit, and a job killed there uploads
+  no merged report. The script runs the classifier's
   own `classify` on the result, and does one more run of the transient ones, each selected with
   `--exact` and required to run that one test. Before
   all that it runs `probe_tag_line`, a test built to fail with a `transient` tag, and exits 1 unless

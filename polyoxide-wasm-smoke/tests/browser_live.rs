@@ -252,7 +252,9 @@ fn closed(frame: Option<tungstenite::protocol::CloseFrame>) -> Failure {
 }
 
 /// Open `host`, speak first if it needs it, and hold the socket until its first data frame or the
-/// window ends. A socket that closes or errors first opened and then dropped.
+/// window ends. A close frame is judged by its code on the socket table (`closed`), so a refusal
+/// (1002, 1003, 1007-1010, 4000-4999) is `real`; a socket that errors, ends without a frame or
+/// closes with any other code opened and then dropped, which is `transient`.
 async fn hold(host: &SocketHost) -> Result<(), Failure> {
     let mut socket = open(host.url).await?;
     if let Some(hello) = host.hello {

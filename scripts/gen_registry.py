@@ -1062,7 +1062,7 @@ def claude_graph(r: Registry) -> list[str]:
     for c in r.crates:
         needs = ", ".join(_dependency(d) for d in c.needs) or "nothing in the workspace"
         parts = [f"`{c.name}` — {c.readme}", f"needs: {needs}"]
-        if c.published_after:
+        if c.published and c.published_after:
             parts.append(f"published after {_code_list(c.published_after)}, "
                          f"a versioned dev-dependency")
         lines.append("- " + "; ".join(parts + list(c.notes)))

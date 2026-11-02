@@ -61,6 +61,9 @@ fi
 # Binance checks `environmental` at once, without calling Binance from the browser. Any other
 # status, or a curl failure, leaves the run unchanged. WASM_LIVE_BINANCE_STATUS=<status> stands in
 # for the read (to prove the 451 path from an address Binance accepts).
+# An inherited POLYOXIDE_LIVE_BINANCE_STATUS would mark the checks environmental whatever the read
+# says, so only the read below may set it.
+unset POLYOXIDE_LIVE_BINANCE_STATUS
 binance_status=${WASM_LIVE_BINANCE_STATUS:-}
 if [ -z "$binance_status" ]; then
   binance_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
