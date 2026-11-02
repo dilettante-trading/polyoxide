@@ -243,7 +243,8 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
                               "ClobError", "ParseTickSizeError", "ClobWsError", "RelayError",
                               "PerpsError", "VenueError", "PerpsWsError", "RtdsError",
                               "SportsError", "BuildError"}),
-    ("polyoxide-binance", {"UsdmError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
+    ("polyoxide-binance", {"UsdmError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName",
+                           "SpotWsError"}),
     (VOCABULARY, {"UnknownVariant"}),
 ])
 def test_the_sweep_finds_the_known_types(crate: str, names: set[str]) -> None:
@@ -310,6 +311,7 @@ def test_every_file_that_expands_the_socket_table_calls_all_of_it() -> None:
     ("polyoxide-binance", "UsdmWsError"),
     ("polyoxide-polymarket", "RtdsError"),
     ("polyoxide-polymarket", "SportsError"),
+    ("polyoxide-binance", "SpotWsError"),
 ])
 def test_the_ws_sweep_finds_every_socket_error(crate: str, name: str) -> None:
     # A sweep that matched nothing would pass the fences above vacuously.

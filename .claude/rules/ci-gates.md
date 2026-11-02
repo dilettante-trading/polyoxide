@@ -78,8 +78,9 @@ on the PR that introduces it rather than halfway through a release.
     `@sports,test-server`; `@perps` must hold `reqwest`, `@clob` and `@relay` `alloy`, and
     `@clob,keychain` `keyring`, so no rule can pass vacuously.
   - `polyoxide-binance`: `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with
-    `usdm-ws` (files `@usdm`, `@usdm-ws` and `@spot`; `@usdm-ws` must hold `polyoxide-ws`, and
-    `@spot` must hold `polyoxide-core` and `reqwest`). `rustls` is not on the
+    `usdm-ws` or `spot-ws` (files `@usdm`, `@usdm-ws`, `@spot` and `@spot-ws`; `@usdm-ws` and
+    `@spot-ws` must each hold `polyoxide-ws`, and `@spot` must hold `polyoxide-core` and
+    `reqwest`). `rustls` is not on the
     rule, since core's HTTP client builds it for TLS.
   - `polyoxide-kalshi`: `reqwest`, `polyoxide-core`, `governor` and `sha2` only with
     `predictions`, which every file names; `alloy*`, `hmac` and `keyring` never; `polyoxide-ws`,
