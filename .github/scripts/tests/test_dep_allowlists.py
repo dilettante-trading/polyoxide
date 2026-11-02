@@ -584,6 +584,30 @@ def test_only_the_umbrellas_kalshi_stream_feature_builds_the_socket_kit() -> Non
     assert [n for n in SOCKET_STACK if n not in stream] == [], stream
 
 
+def test_binances_spot_allowlist_is_the_rest_tree_and_builds_no_socket_stack() -> None:
+    # `spot` is an HTTP module like `usdm`: it builds core and reqwest, and none of
+    # the socket stack, which only `usdm-ws` admits. The file must list core, or a
+    # rule that admitted nothing could not be told from one that holds.
+    path = ALLOWLISTS / "polyoxide-binance@spot.txt"
+    assert path.exists(), "run `uv run python -m tests.test_dep_allowlists --write`"
+    listed = read_allowlist(path)
+    assert "polyoxide-core" in listed, listed
+    assert "reqwest" in listed, listed
+    assert [n for n in SOCKET_STACK if n in listed] == [], listed
+    assert denied(BINANCE, listed, ("spot",)) == []
+
+
+def test_binances_spot_feature_stands_alone() -> None:
+    # `cargo hack --each-feature` builds `spot` without `usdm`: neither turns the
+    # other, nor the streams, on. The real table, not a stand-in.
+    table = feature_table(BINANCE)
+    assert enabled(("spot",), table) == {"spot"}
+    assert "spot" not in enabled(("usdm",), table)
+    assert "spot" not in enabled(("usdm-ws",), table)
+    assert "usdm-ws" not in enabled(("spot",), table)
+    assert "spot" in table["default"] and "usdm" in table["default"], table["default"]
+
+
 if __name__ == "__main__":
     if sys.argv[1:] != ["--write"]:
         sys.exit("usage: python -m tests.test_dep_allowlists --write")
