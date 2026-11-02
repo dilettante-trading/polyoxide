@@ -159,6 +159,8 @@ Story 5 of the Binance spot plan (`cargo test -p polyoxide-binance --no-default-
 spot --test mock_spot -j 4 -- every_market_builder_charges_its_route
 a_deep_depth_is_charged_its_band`).
 
+Row (m), spot's socket pace, was proved on 2026-11-02 on top of `70f14983`, on Rust 1.99.0 with `-j 4`: its three tests passed, then failed with the mutant in place, then passed again once the line was restored, with `git diff --exit-code` clean, through the commands in Story 4 of the Binance spot streams plan (`cargo test -p polyoxide-binance --no-default-features --features spot-ws,test-server -j 4 --lib -- the_documented_limits_are_the_measured_ones requests_are_paced_at_500_ms` and `--test supervision_spot -- a_membership_change_waits_500_ms_for_the_one_before`).
+
 ## The rules
 
 | Rule | Where it holds | Mutation | Tests that fail |
@@ -182,6 +184,7 @@ a_deep_depth_is_charged_its_band`).
 | (j) A window quota aims at 90% of its published count, the reserve measured on `/closed-positions` | `polyoxide-core/src/rate_limit.rs:216`, `RESERVED_FRACTION`, and `polyoxide-core/src/rate_limit.rs:208`, where `sustained_slots` takes the reserve off | `RESERVED_FRACTION = 20` at the first, which fails only the first test; `let target = count;` at the second | `polyoxide-core/src/rate_limit.rs:303` `a_published_150_per_10s_admits_135_per_window`; `polyoxide-core/src/rate_limit.rs:280` `every_quota_reserves_headroom_below_the_published_count` (the second mutant only) |
 | (k) A `418` holds every request on the weight budget, for its `Retry-After` or two minutes, so no request is sent into a ban | `polyoxide-binance/src/shared/policy.rs:51`, `shared::policy::decide`'s 418 arm | `hold: None`, which fails the first two tests; `asked.unwrap_or(Duration::ZERO)`, which fails the third | `polyoxide-binance/tests/mock_usdm.rs:409` `a_418_is_not_retried_and_holds_the_next_request`; `polyoxide-binance/tests/mock_usdm.rs:707` `every_usdm_on_one_budget_is_held_by_one_ban`; `polyoxide-binance/src/usdm/policy.rs:160` `a_418_without_retry_after_holds_two_minutes` |
 | (l) `GetDepth::limit` re-prices the route by its band, so a deeper spot book is charged its weight | `polyoxide-binance/src/spot/api/market.rs:167`, `GetDepth::limit`'s `.route(Route::Depth { limit: Some(limit) })` | Delete that call, leaving the route at `Depth { limit: None }` and the `limit` query still sent | `polyoxide-binance/tests/mock_spot.rs:923` `every_market_builder_charges_its_route`; `polyoxide-binance/tests/mock_spot.rs:977` `a_deep_depth_is_charged_its_band` |
+| (m) Spot's socket requests go no faster than one per 500 ms, the pace its probe held for 45 s where one per 250 ms was closed with 1008 "Too many requests" | `polyoxide-binance/src/spot/ws/mod.rs:85`, `MIN_REQUEST_INTERVAL`, which `SpotStreams` hands to the shared bare connection and to the kit's `configure` | `Duration::from_millis(250)` | `polyoxide-binance/src/spot/ws/client.rs:181` `the_documented_limits_are_the_measured_ones`; `polyoxide-binance/src/spot/ws/client.rs:228` `requests_are_paced_at_500_ms`; `polyoxide-binance/tests/supervision_spot.rs:187` `a_membership_change_waits_500_ms_for_the_one_before` |
 
 `polyoxide-polymarket/tests/polymarket_limits.rs:1054` `a_cooldown_extended_mid_wait_is_honoured_in_full`
 held row (c), a hold extended mid-wait, until Story 3.3. It drives `RateLimiter::acquire`, whose
