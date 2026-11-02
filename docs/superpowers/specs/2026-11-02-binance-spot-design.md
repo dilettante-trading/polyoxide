@@ -419,6 +419,8 @@ Polymarket's crypto up-or-down markets resolve on.
 - **The WebSocket limits**: whether spot caps names per request, how it answers an unknown or
   uppercase name and an over-limit request, whether `!ticker@arr` still delivers, and the ping
   interval that keeps a connection under 5 messages per second. The WebSocket probe settles each
-  before plan 2 is written.
+  before plan 2 is written. It measures the over-limit answer with one deliberate burst on one
+  connection and stops at the first disconnect, never repeating it: repeated excess bans the IP,
+  which the live suites and other sessions on this host share (owner, 2026-11-02).
 - **The 418, 451 and 403 bodies** on spot are not seen from this IP; classification uses the
   status alone, as on `usdm`.
