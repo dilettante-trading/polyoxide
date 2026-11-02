@@ -34,11 +34,18 @@ fn clamped(timeout: Duration) -> Duration {
 /// reqwest's wasm client reports a timeout only for one that struck before the
 /// response head: a body read cut short by the same timer comes back as a
 /// decode error. So the transport decides from its own clock too: a failure at
-/// or after the request's deadline timed out, whatever reqwest says.
+/// or after the request's deadline timed out, whatever reqwest says. A browser
+/// rounds `performance.now()` (Firefox to a millisecond or more), so a timer
+/// that struck at the deadline can read a tick short: a failure within
+/// `CLOCK_SLACK` of the deadline counts as at it.
 #[cfg(any(target_arch = "wasm32", test))]
 fn timed_out(reqwest_says: bool, elapsed: Duration, timeout: Duration) -> bool {
-    reqwest_says || elapsed >= timeout
+    reqwest_says || elapsed + CLOCK_SLACK >= timeout
 }
+
+/// How far short of its deadline a timer-cut failure may read on a coarse clock.
+#[cfg(any(target_arch = "wasm32", test))]
+const CLOCK_SLACK: Duration = Duration::from_millis(2);
 
 /// The kind of a failed exchange.
 ///
@@ -152,7 +159,7 @@ mod tests {
 
     use std::time::Duration;
 
-    use super::{clamped, kind_of, timed_out, Stage};
+    use super::{clamped, kind_of, timed_out, Stage, CLOCK_SLACK};
     use crate::{TransportError, TransportKind};
 
     const TIMEOUT: Duration = Duration::from_secs(30);
@@ -199,8 +206,23 @@ mod tests {
 
     #[test]
     fn a_body_failure_before_the_deadline_is_a_body_failure() {
-        let early = timed_out(false, TIMEOUT - Duration::from_millis(1), TIMEOUT);
+        let early = timed_out(
+            false,
+            TIMEOUT - CLOCK_SLACK - Duration::from_millis(1),
+            TIMEOUT,
+        );
         assert_eq!(kind_of(Stage::Body, early, false), TransportKind::Body);
+    }
+
+    #[test]
+    fn a_failure_one_clock_tick_short_of_the_deadline_is_still_a_timeout() {
+        // A coarse `performance.now()` can read a timer-cut failure a tick early.
+        assert!(timed_out(false, TIMEOUT - CLOCK_SLACK, TIMEOUT));
+        assert!(!timed_out(
+            false,
+            TIMEOUT - CLOCK_SLACK - Duration::from_nanos(1),
+            TIMEOUT
+        ));
     }
 
     #[test]
