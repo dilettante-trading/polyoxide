@@ -2,13 +2,14 @@
 
 Recorded per AD-21: the work records each proposed amendment here, and one session later merges this file into the spine and regenerates the guide. The design is `docs/superpowers/specs/2026-11-02-wasm-runtime-transport-design.md`, and the release is 0.45.0, an owner session after the run (spec §1.2 and D16).
 
-## AW-1: `polyoxide-rt` is a foundation crate, first in the publish order (amends the Design Paradigm layer table, AD-1's edges, the dependency graph and AD-16's CAP-7 foundation list)
+## AW-1: `polyoxide-rt` is a foundation crate, first in the publish order (amends the Design Paradigm layer table, AD-1's edges, the dependency graph, AD-16's CAP-7 foundation list and the Structural Seed's crate tree)
 
 - **Proposed by:** the owner, 2026-11-02, during the wasm32 design (spec §1.3, D2 and D10).
 - **Current rule:**
-  - The foundation crates are `polyoxide-venue`, `polyoxide-core`, `polyoxide-ws` and `polyoxide-test-support`, which name no venue: AD-16's CAP-7 gate greps `polyoxide-{venue,core,ws,test-support}`, and `scripts/venue_gate.py`'s `FOUNDATION` is that list.
+  - The foundation crates are `polyoxide-venue`, `polyoxide-core`, `polyoxide-ws` and `polyoxide-test-support`, which name no venue: AD-16's CAP-7 gate greps `polyoxide-{venue,core,ws,test-support}`, and the `FOUNDATION` tuple in `scripts/gen_registry.py`, which `scripts/venue_gate.py` imports, held that list until Story 1 added `polyoxide-rt` to it.
   - The Design Paradigm layer table has no runtime layer: the kernels are `polyoxide-core` and `polyoxide-ws`, over the ports in `polyoxide-venue`.
   - AD-1: "A venue crate's edges are `polyoxide-core`, `polyoxide-ws` and `polyoxide-venue`, and nothing in-workspace beyond them", and "`polyoxide-ws` depends on neither" `polyoxide-core` nor `polyoxide-venue`. The spine's mermaid graph draws exactly those edges.
+  - The Structural Seed's crate tree (`ARCHITECTURE-SPINE.md`, "Structural Seed") lists `polyoxide-venue/src/`, `polyoxide-core/src/`, `polyoxide-ws/src/` and `polyoxide-test-support/src/` and has no `polyoxide-rt/src/` line.
   - No spine text lists the publish order: AD-25's loop publishes what `publish_order.py` computes from `cargo metadata`.
 - **Proposed rule:**
   - A fifth foundation crate, `polyoxide-rt`, holds the `Runtime` trait, `Task`, `timeout` and `Interval`, with `TokioRuntime` natively and `BrowserRuntime` on wasm32. It depends on nothing in the workspace, names no venue (it joins the venue gate's list) and has no public error type, so the `Classify` sweep has nothing to cover there.
@@ -19,7 +20,7 @@ Recorded per AD-21: the work records each proposed amendment here, and one sessi
 - **Why:**
   - **Three foundation crates need one clock.** The send loop's holds and sleeps, the supervisor's pings and the socket kit's timers all had tokio's clock; injecting a runtime needs a crate below all three that none of them has to depend on the others to reach.
   - **A browser has no tokio clock or executor.** Putting the trait in a crate of its own keeps the vocabulary layer (AD-3, `polyoxide-venue`) free of timers and keeps `polyoxide-venue` dependency-free by default.
-- **Follow-up in the code:** Story 1 creates the crate and adds it to `FOUNDATION`, the workspace and the registry; Story 6 adds `runtime_gate.py`, which holds the crates that use it to the runtime. The merge session edits the layer table, AD-1, the dependency graph and AD-16's CAP-7 foundation list.
+- **Follow-up in the code:** Story 1 creates the crate and adds it to `FOUNDATION`, the workspace and the registry; Story 6 adds `runtime_gate.py`, which holds the crates that use it to the runtime. The merge session edits the layer table, AD-1, the dependency graph, AD-16's CAP-7 foundation list and the Structural Seed's crate tree, which gains a `polyoxide-rt/src/` line (the `Runtime` trait, `Task`, `timeout`, `Interval`, `TokioRuntime`, `BrowserRuntime`).
 
 ## AW-2: time, HTTP and sockets are injected per builder, by three seams (amends AD-18, AD-11 and AD-9)
 
@@ -76,7 +77,7 @@ Recorded per AD-21: the work records each proposed amendment here, and one sessi
 - **Proposed by:** the owner, 2026-11-02 (spec D3 and D13).
 - **Current rule:** AD-22 lists the CI jobs: `cargo hack`, the MSRV check, the publish dry run, the removal gate and the AD-2, AD-13 and AD-18 checks.
 - **Proposed rule:**
-  - `scripts/runtime_gate.py` runs in the scripts job through its pytest. It fails on `tokio::spawn`, `tokio::task::spawn`, any `tokio::time` path, `Instant::now(` and `SystemTime::now(` in the production source of the six crates that use the runtime, with the opt-out `// runtime-gate: <reason>`.
+  - `scripts/runtime_gate.py` runs in the scripts job through its pytest. It fails on `tokio::spawn`, any `tokio::task::spawn*` (`spawn_blocking` and `spawn_local` too), any `tokio::time` path, and `Instant::now` and `SystemTime::now`, called or passed as a function value, in the production source of the six crates that use the runtime. It reads a `use` tree rooted at `tokio` leaf by leaf (`use tokio::{spawn, time::sleep};` and `use tokio::task;` are hits, an `as` alias too) and skips only what holds in tests alone (a `cfg(test)` item or `cfg(all(.., test, ..))`; an `any(test, ..)` is production code and is read), `polyoxide-ws`'s test server and every `scripted.rs`. The opt-out is `// runtime-gate: <reason>` at the end of a line.
   - A `wasm` job (named WebAssembly) runs `scripts/wasm_check.sh`, a `cargo check` and a `cargo clippy -- -D warnings` of the supported set for `wasm32-unknown-unknown`, then `scripts/wasm_smoke.sh`, a browser smoke suite in headless Chrome. A nightly job, `live-wasm-browser`, runs a live suite from a browser against each host in scope.
   - `runtime_gate.py` (in the scripts job) and the `wasm` job withhold the release when red, as the other jobs do. The nightly `live-wasm-browser` job does not gate the release.
 - **Why:**
