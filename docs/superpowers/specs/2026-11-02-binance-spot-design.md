@@ -282,10 +282,11 @@ name a stream; `PartialDepthEvent` and `BookTickerEvent` carry the symbol parsed
 envelope's `stream`.
 
 The client enforces spot's rules first: at most 1024 streams per connection, requests paced at
-one per 250 ms (4 a second), leaving room under the 5-a-second limit for the automatic pong; the
-client's wall-clock ping counts against the same limit, so its interval, and the pace if pongs
-and pings leave too little room, are set from the probe. The cap on names per request is set
-from the probe (`usdm`'s is 200). Every `Event::Disconnected { path }` is followed by
+one per 500 ms (2 a second). The WebSocket probe's request every 250 ms was closed after 16 s
+with 1008 "Too many requests" (`OBSERVED.md`, `## Spot`); at 500 ms a second holds at most three
+requests when one slips, with the automatic pong and the wall-clock ping five in all, and since
+one request can carry all 1024 names a replay costs little at that pace. The cap on names per
+request is set from the probe (`usdm`'s is 200). Every `Event::Disconnected { path }` is followed by
 `Event::Reconnected { path }` while the client runs, from the shared code. A path that stops on
 an error ends the stream, and `close()` and later membership calls answer
 `SpotWsError::Stopped { cause }`, as `usdm`'s do.
