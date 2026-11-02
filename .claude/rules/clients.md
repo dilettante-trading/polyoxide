@@ -16,7 +16,8 @@ paths:
 
 - Every client is built: `ClobBuilder::new()`, `Clob::builder(private_key, credentials)`,
   `Gamma::builder()`, `DataApi::builder()`, `Perps::builder()`, `Usdm::builder()`,
-  `Predictions::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
+  `Spot::builder()`, `Predictions::builder()`, `RelayClient::default_builder()`,
+  `Polymarket::builder(account)`.
 - Each venue builder holds a `polyoxide_core::ClientConfig` (base URL, timeout, pool size, retry
   config, concurrency, and the client's default concurrency: relay 2; gamma, data, perps, Binance
   and Kalshi 4; clob 8) and gets its five transport setters, `base_url`, `timeout_ms`,

@@ -72,7 +72,7 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
   posts bound each attempt with `RequestParts::timeout` (300 s). Relay's alloy gas estimation goes
   to the chain's RPC node and is the one request outside the loop.
 - Binance's route builders send core's `Request` over its `WeightBudget` throttle and
-  `UsdmRetryPolicy`.
+  `UsdmRetryPolicy` (spot's, over its own `WeightBudget` and `SpotRetryPolicy`).
 
 ## Pings
 
@@ -81,8 +81,8 @@ Every venue's `ping` calls `HttpClient::health(path, costs)` (`polyoxide-core/sr
 that answered, timed from its signing by a core-private authenticator, so it leaves out the
 permit, throttle and backoff waits; a final non-2xx is `ApiError::Response` as the caller's error.
 Each ping keeps its path (gamma `/status`; data, clob and relay their base URL's path, so relay
-keeps a prefix; perps `/v1/info/ping`; Binance `/fapi/v1/ping`, costed from `Route::Ping`) and its
-body check (perps `status == "ok"`, Binance `{}`).
+keeps a prefix; perps `/v1/info/ping`; Binance `/fapi/v1/ping`, and spot's `/api/v3/ping`, each
+costed from its own `Route::Ping`) and its body check (perps `status == "ok"`, Binance `{}`).
 
 ## Retry policies
 
@@ -93,7 +93,7 @@ The loop retries only what the client's policy decides; callers decide with
   it, so it does not retry a `425`.
 - `polyoxide_polymarket::shared::PolymarketRetryPolicy`, which gamma, data, perps, clob and relay
   install, retries `429` and `425`.
-- Binance's `UsdmRetryPolicy` retries a `429` and never a `425` (`binance.md`).
+- Binance's `UsdmRetryPolicy` and `SpotRetryPolicy` retry a `429` and never a `425` (`binance.md`).
 - No policy retries 5xx or 408 (AD-17).
 
 ## reqwest, gzip and the header pins
@@ -110,7 +110,7 @@ The loop retries only what the client's policy decides; callers decide with
   Only four rate-limit examples pin `.gzip(false)`, on bare clients, so their soaks keep the wire
   they were measured on.
 - Each HTTP module has a `tests/headers_<module>.rs` (polymarket's `clob`, `gamma`, `data`,
-  `relay` and `perps`, Binance's `usdm`, Kalshi's `predictions`) that sends one unauthenticated
+  `relay` and `perps`, Binance's `usdm` and `spot`, Kalshi's `predictions`) that sends one unauthenticated
   `GET` through `polyoxide_test_support::query::headers_sent` and asserts exactly `accept: */*`,
   `accept-encoding: gzip` and `host`. CI runs it in the module's minimal build, in the workspace
   build and beside `polyoxide/full`, so a feature another member or another venue switches on

@@ -10,7 +10,8 @@ paths:
 - Suites are named `<kind>_<module>.rs` (`mock_clob.rs`, `live_usdm_ws.rs`, `venue_perps.rs`).
 - **Mock HTTP:** `mockito` (a workspace dev-dependency). Each HTTP module has a
   `tests/mock_<module>.rs`: `polyoxide-polymarket`'s `mock_clob`, `mock_gamma`, `mock_data` (v2 in
-  `mock_data_v2.rs` beside it), `mock_relay` and `mock_perps`; Binance's `mock_usdm`; Kalshi's
+  `mock_data_v2.rs` beside it), `mock_relay` and `mock_perps`; Binance's `mock_usdm` and
+  `mock_spot`; Kalshi's
   `mock_predictions`, whose later suites are files of their own named `mock_predictions_<what>`.
   Each has helpers like `test_public_clob(server)` that point clients at the mock server's URL.
 - The read-only modules build with `Gamma::builder().build()` and `DataApi::builder().build()`;
