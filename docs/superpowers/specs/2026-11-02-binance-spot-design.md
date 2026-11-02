@@ -217,8 +217,11 @@ because it re-prices the route (`clients.md` gains the row).
 6000`, `WEIGHT_LAYER = LayerId("binance-spot-weight")`, no paced layer. `spot::weight::Cost` and
 `Route` are spot's own. `RAW_REQUESTS` is not modelled: every request weighs at least 1, so the
 budget caps a client at 27,000 requests per 5 minutes, under the 300,000 limit; the module docs
-say so. `Route::cost` holds §3.1's table, pinned by a `documented_weights` test, and
-`examples/weight_probe.rs` gains the spot routes.
+say so. `Route::cost` holds §3.1's table, pinned by a `documented_weights` test, and a new
+example, `examples/weight_probe_spot.rs` (its own `[[example]]` with `test = true` and
+`required-features = ["spot"]`, and its own unit tests), probes the spot routes.
+`examples/weight_probe.rs` stays byte for byte: it is `test = true`, so the test-bodies gate
+counts every item in it, and a `--product` argument would change them (owner, 2026-11-02).
 
 ### 5.6 Types
 
