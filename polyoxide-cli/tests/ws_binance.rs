@@ -998,4 +998,98 @@ mod spot_ws {
             lines[0]
         );
     }
+
+    #[tokio::test]
+    async fn a_closed_kline_ends_its_line_with_closed() {
+        // The fixture's bar is still open; the same frame with `x` set is the
+        // bar's final update.
+        let mut wire = frame(fixtures::KLINE);
+        assert_eq!(wire["data"]["k"]["x"], Value::Bool(false), "{wire}");
+        let open = pretty(&wire.to_string()).await;
+        assert_eq!(open.len(), 1, "{open:?}");
+        assert!(!open[0].ends_with("closed"), "{}", open[0]);
+
+        wire["data"]["k"]["x"] = Value::Bool(true);
+        let lines = pretty(&wire.to_string()).await;
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].ends_with(" closed"), "{}", lines[0]);
+        assert_eq!(
+            lines[0].trim_end_matches(" closed"),
+            open[0],
+            "closing the bar changes only the suffix"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_depth_line_counts_the_larger_side() {
+        // Bids stay at the fixture's count and the asks are cut to one row, so
+        // the larger side is the bids and the smaller is not what is counted.
+        for raw in [fixtures::PARTIAL_DEPTH, fixtures::PARTIAL_DEPTH_100MS] {
+            let mut wire = frame(raw);
+            let bids = wire["data"]["bids"].as_array().unwrap().len();
+            assert!(bids > 1, "{wire}");
+            wire["data"]["asks"].as_array_mut().unwrap().truncate(1);
+            let lines = pretty(&wire.to_string()).await;
+            assert_eq!(lines.len(), 1, "{lines:?}");
+            assert_depth(&lines[0], &wire);
+            assert!(
+                lines[0].ends_with(&format!("({bids} levels)")),
+                "{}",
+                lines[0]
+            );
+
+            // And the other way round: bids cut to one, asks at their count.
+            let mut wire = frame(raw);
+            let asks = wire["data"]["asks"].as_array().unwrap().len();
+            assert!(asks > 1, "{wire}");
+            wire["data"]["bids"].as_array_mut().unwrap().truncate(1);
+            let lines = pretty(&wire.to_string()).await;
+            assert_eq!(lines.len(), 1, "{lines:?}");
+            assert!(
+                lines[0].ends_with(&format!("({asks} levels)")),
+                "{}",
+                lines[0]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_empty_depth_side_prints_a_dash() {
+        let wire = frame(fixtures::PARTIAL_DEPTH);
+        let bids = wire["data"]["bids"].as_array().unwrap().len();
+        let asks = wire["data"]["asks"].as_array().unwrap().len();
+        let symbol = str_at(&wire, "/stream")
+            .split('@')
+            .next()
+            .unwrap()
+            .to_ascii_uppercase();
+
+        let mut empty_asks = wire.clone();
+        empty_asks["data"]["asks"] = Value::Array(Vec::new());
+        let lines = pretty(&empty_asks.to_string()).await;
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let best_bid = format!(
+            "{} x {}",
+            str_at(&wire, "/data/bids/0/0"),
+            str_at(&wire, "/data/bids/0/1")
+        );
+        assert_eq!(
+            lines[0],
+            format!("{symbol:<16} depth   bid {best_bid} ask - ({bids} levels)")
+        );
+
+        let mut empty_bids = wire.clone();
+        empty_bids["data"]["bids"] = Value::Array(Vec::new());
+        let lines = pretty(&empty_bids.to_string()).await;
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let best_ask = format!(
+            "{} x {}",
+            str_at(&wire, "/data/asks/0/0"),
+            str_at(&wire, "/data/asks/0/1")
+        );
+        assert_eq!(
+            lines[0],
+            format!("{symbol:<16} depth   bid - ask {best_ask} ({asks} levels)")
+        );
+    }
 }
