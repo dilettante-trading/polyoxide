@@ -143,9 +143,21 @@ did not move. Its `the_decode_splits_out_a_heartbeat_mismatch_only_on_a_400` fai
 2026-10-23 on top of `3691eda`, on Rust 1.99.1 with `-j 4`: each row's tests passed, then failed
 with its mutant in place, then passed again once the file was restored, with
 `git diff --exit-code` clean, through the same command.
-The Binance spot plan's Story 2 moved `UsdmRetryPolicy`'s decision into `polyoxide-binance/src/shared/policy.rs` (`shared::policy::decide`), which every Binance product's policy calls, and the 418 test's line in `src/usdm/policy.rs` moved with the file's top. Rows "(a), Binance's policy" and "(k)" were re-cited there and proved again on 2026-11-02 on top of `546d88e1`, on Rust 1.99.0: each row's tests passed, then failed with its mutant in place (two for row (k)), then passed again once the file was restored, through `cargo test -p polyoxide-binance --all-features`.
+The Binance spot plan's Story 2 moved `UsdmRetryPolicy`'s decision into
+`polyoxide-binance/src/shared/policy.rs` (`shared::policy::decide`), which every Binance product's
+policy calls, and the 418 test's line in `src/usdm/policy.rs` moved with the file's top. Rows "(a),
+Binance's policy" and "(k)" were re-cited there and proved again on 2026-11-02 on the tree committed
+as `ec304f56`, on Rust 1.99.0: each row's tests passed, then failed with its mutant in place (two
+for row (k)), then passed again once the file was restored, through `cargo test -p polyoxide-binance
+--all-features`.
 
-Row (l), spot's depth re-pricing, was proved on 2026-11-02 on top of `f9fc23d9`, on Rust 1.99.0 with `-j 4`: the two tests passed, then failed with the mutant in place, then passed again once the line was restored, with `git diff --exit-code` clean, through the command in Story 5 of the Binance spot plan (`cargo test -p polyoxide-binance --no-default-features --features spot --test mock_spot -j 4 -- every_market_builder_charges_its_route a_deep_depth_is_charged_its_band`).
+Row (l), spot's depth re-pricing, was proved on 2026-11-02 on top of `7bf6f943`, on Rust 1.99.0 with
+`-j 4`, after Story 5's review round collapsed `mock_spot.rs`'s `market_*` helpers onto the suite's
+own and moved the two tests up: the two tests passed, then failed with the mutant in place, then
+passed again once the line was restored, with `git diff --exit-code` clean, through the command in
+Story 5 of the Binance spot plan (`cargo test -p polyoxide-binance --no-default-features --features
+spot --test mock_spot -j 4 -- every_market_builder_charges_its_route
+a_deep_depth_is_charged_its_band`).
 
 ## The rules
 
