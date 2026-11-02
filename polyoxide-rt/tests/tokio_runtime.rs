@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use polyoxide_rt::{
-    default_runtime, spawn, BoxFuture, Instant, Runtime, SystemTime, TokioRuntime, UNIX_EPOCH,
+    default_runtime, spawn, timeout, BoxFuture, Instant, Runtime, SystemTime, TokioRuntime,
+    UNIX_EPOCH,
 };
 
 /// The paused clock wakes a timer on its millisecond, so a measured wait is its
@@ -193,4 +194,76 @@ async fn a_panicking_task_ends_with_no_output() {
     TokioRuntime.sleep(Duration::from_secs(1)).await;
     assert!(task.is_finished(), "a task that panicked is not finished");
     assert_eq!(task.await, None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn timeout_returns_the_output_of_a_future_that_finishes_in_time() {
+    let start = TokioRuntime.now();
+    let output = timeout(&TokioRuntime, Duration::from_secs(10), async {
+        TokioRuntime.sleep(Duration::from_secs(2)).await;
+        7
+    })
+    .await;
+    assert_eq!(output, Some(7));
+    assert_near(TokioRuntime.now() - start, Duration::from_secs(2));
+}
+
+#[tokio::test(start_paused = true)]
+async fn timeout_gives_up_at_the_deadline() {
+    let start = TokioRuntime.now();
+    let output = timeout(
+        &TokioRuntime,
+        Duration::from_secs(10),
+        TokioRuntime.sleep(Duration::from_secs(60)),
+    )
+    .await;
+    assert_eq!(output, None);
+    assert_near(TokioRuntime.now() - start, Duration::from_secs(10));
+}
+
+#[tokio::test(start_paused = true)]
+async fn timeout_at_zero_lets_a_ready_future_win() {
+    assert_eq!(
+        timeout(&TokioRuntime, Duration::ZERO, async { 42 }).await,
+        Some(42)
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn timeout_at_zero_expires_a_pending_future() {
+    assert_eq!(
+        timeout(&TokioRuntime, Duration::ZERO, std::future::pending::<()>()).await,
+        None
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn timeout_accepts_the_maximum_duration() {
+    assert_eq!(
+        timeout(&TokioRuntime, Duration::MAX, async { 1 }).await,
+        Some(1)
+    );
+    // A timer of the longest length does not fire within a year.
+    let year = Duration::from_secs(86_400 * 365);
+    let never = timeout(&TokioRuntime, Duration::MAX, std::future::pending::<()>());
+    assert!(tokio::time::timeout(year, never).await.is_err());
+}
+
+#[tokio::test]
+async fn timeout_polls_the_future_before_the_timer() {
+    // This runtime's sleeps are always ready, so only the order of the two
+    // polls lets the future's output through.
+    let rt = Scripted::new();
+    assert_eq!(
+        timeout(&rt, Duration::from_secs(3), async { 9 }).await,
+        Some(9)
+    );
+}
+
+#[tokio::test]
+async fn timeout_sleeps_on_the_runtime_it_is_given() {
+    let rt = Scripted::new();
+    let output = timeout(&rt, Duration::from_secs(3), std::future::pending::<()>()).await;
+    assert_eq!(output, None);
+    assert_eq!(*rt.slept.lock().unwrap(), vec![Duration::from_secs(3)]);
 }
