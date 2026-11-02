@@ -40,8 +40,8 @@ paths:
     `gamma` feature, which `clob` does not imply); `data` (built only with `data`, for the `Trades`
     the CLOB reads through the Data API; `build` makes one, and the Gamma one, with the builder's
     timeout, pool size, runtime and transport when none is given, and the unified client hands clob
-    its own); `user_socket` (built only with `clob-ws`: the URL and timing of the supervised user
-    socket each `Trading::events` stream opens).
+    its own); `user_socket` (built only with `clob-ws`: the URL, timing, `runtime` and
+    `socket_transport` of the supervised user socket each `Trading::events` stream opens).
 - `polyoxide_polymarket::Polymarket`, the unified client (built with `clob`, `gamma` and `data`),
   builds one CLOB, Gamma and Data client from one `Account`, and the CLOB client reads through
   that same Gamma and Data client. `Polymarket::new` and `PolymarketBuilder::build` return a

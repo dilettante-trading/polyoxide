@@ -35,7 +35,9 @@ test-server = []
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
-# The runtime the client, its weight budget and the streams keep time on.
+# The runtime the client, its weight budget and the streams keep time on. Plain
+# and not optional under `usdm`, unlike Kalshi's: the HTTP side and the socket
+# side both read it.
 polyoxide-rt = { workspace = true }
 polyoxide-venue = { workspace = true }
 # The socket kit (`usdm-ws`): connect, the bare tier, the socket error and the

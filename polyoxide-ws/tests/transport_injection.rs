@@ -27,6 +27,8 @@ struct CountingRuntime {
     inner: TokioRuntime,
     spawns: AtomicUsize,
     sleeps: AtomicUsize,
+    /// How long each sleep asked for, in order.
+    slept: Mutex<Vec<Duration>>,
 }
 
 impl Runtime for CountingRuntime {
@@ -37,6 +39,7 @@ impl Runtime for CountingRuntime {
 
     fn sleep(&self, duration: Duration) -> BoxFuture<()> {
         self.sleeps.fetch_add(1, Ordering::SeqCst);
+        self.slept.lock().unwrap().push(duration);
         self.inner.sleep(duration)
     }
 
@@ -310,6 +313,11 @@ async fn a_supervisor_connects_replays_and_reconnects_over_an_injected_transport
         assert!(
             runtime.sleeps.load(Ordering::SeqCst) >= 1,
             "the supervisor's waits are the injected runtime's sleeps"
+        );
+        let slept = runtime.slept.lock().unwrap();
+        assert!(
+            slept.contains(&timing().initial_backoff),
+            "the reconnect waits the backoff's first step on the injected runtime: {slept:?}"
         );
     }
     ws.close().await.expect("close");

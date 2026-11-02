@@ -90,9 +90,9 @@ What the task guarantees (`src/supervisor/tests.rs` pins each rule):
 - On the blocks, each keeping its own supervision shape (D7):
   - rtds: TLS, `Backoff`, connect with a timeout, `retrying_can_fix`, the bare tier's close reply
     and the test server;
-  - sports: TLS, `Backoff`, the kit's `connect`, the bare tier (`Mode::All`, so pings count as
-    liveness, D5) and `retrying_can_fix`, behind its own `Capacity` and `AlreadyClosed` (D19) rows
-    in a private recovery function;
+  - sports: TLS, `Backoff`, a dial through `open_with` and the builder's `SocketTransport`, the
+    bare tier (`Mode::All`, so pings count as liveness, D5) and `retrying_can_fix`, behind its own
+    `Capacity` and `AlreadyClosed` (D19) rows in a private recovery function;
   - the CLOB's bare tier: TLS, `WsError`, the bare tier (`Mode::Data`, so a server close is
     answered, DRIFT R3) and the test server. Its per-address connect is
     `TungsteniteTransport::per_address()` (D20), each step bounded by the connect timeout on the

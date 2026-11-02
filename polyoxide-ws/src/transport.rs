@@ -247,7 +247,21 @@ async fn dial_per_address(
             .collect(),
     };
 
-    let mut last_err = no_addresses(&uri);
+    dial_addresses(request, addrs, timeout, runtime).await
+}
+
+/// Open `request` on each of `addrs` in family-interleaved order, within
+/// `timeout` for each step, and return the first upgraded socket. A refused
+/// upgrade is returned at once; any other failure falls through to the next
+/// address, and the last one is returned when none answers.
+#[cfg(not(target_arch = "wasm32"))]
+async fn dial_addresses(
+    request: Request<()>,
+    addrs: Vec<SocketAddr>,
+    timeout: Duration,
+    runtime: &dyn Runtime,
+) -> Result<BoxSocket, WsError> {
+    let mut last_err = no_addresses(request.uri());
     for addr in interleave_address_families(addrs) {
         let stream = match crate::connect::bounded(runtime, timeout, TcpStream::connect(addr)).await
         {
@@ -572,12 +586,21 @@ mod connect_tests {
     }
 
     #[tokio::test]
-    async fn per_address_returns_a_refused_upgrade_at_once() {
+    async fn a_refused_upgrade_is_returned_at_once_with_other_addresses_left() {
         let server = ScriptedServer::start(vec![Script::refuse_upgrade(503)]).await;
         let request = server.url.as_str().into_client_request().unwrap();
-        let Err(err) = TungsteniteTransport::per_address()
-            .connect(request, Duration::from_secs(2), default_runtime())
-            .await
+        let addr: SocketAddr = server
+            .url
+            .trim_start_matches("ws://")
+            .parse()
+            .expect("the server's address");
+        let Err(err) = dial_addresses(
+            request,
+            vec![addr, addr],
+            Duration::from_secs(2),
+            default_runtime().as_ref(),
+        )
+        .await
         else {
             panic!("a refused upgrade must not connect");
         };
@@ -588,7 +611,40 @@ mod connect_tests {
                 retry_after: None
             }
         );
-        assert_eq!(server.connection_count(), 1, "no other address is tried");
+        assert_eq!(
+            server.connection_count(),
+            1,
+            "the second address is not tried"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stalled_address_falls_through_to_the_next() {
+        let stalled = ScriptedServer::start(vec![Script::stall()]).await;
+        let serving = ScriptedServer::start(vec![Script::frames(&["hello"])]).await;
+        let address = |server: &ScriptedServer| -> SocketAddr {
+            server
+                .url
+                .trim_start_matches("ws://")
+                .parse()
+                .expect("the server's address")
+        };
+        let request = serving.url.as_str().into_client_request().unwrap();
+        let mut socket = dial_addresses(
+            request,
+            vec![address(&stalled), address(&serving)],
+            Duration::from_millis(200),
+            default_runtime().as_ref(),
+        )
+        .await
+        .expect("the second address answers");
+        let first = tokio::time::timeout(Duration::from_secs(3), socket.next())
+            .await
+            .expect("a frame within the window")
+            .expect("the stream has not ended")
+            .expect("a frame, not an error");
+        assert_eq!(first, Message::Text("hello".into()));
+        assert_eq!(stalled.connection_count(), 1);
     }
 
     #[tokio::test]

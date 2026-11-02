@@ -2,13 +2,12 @@
 
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::{Stream, StreamExt};
-use std::sync::Arc;
-
 use polyoxide_rt::{default_runtime, Runtime};
 use polyoxide_ws::{
     default_socket_transport,

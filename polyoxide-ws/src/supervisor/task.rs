@@ -275,7 +275,6 @@ async fn follow_up<P: Protocol>(
 }
 
 /// Send a close frame, but not wait on a peer that has stopped reading.
-/// Send a close frame, but not wait on a peer that has stopped reading.
 async fn close_politely(runtime: &dyn Runtime, connection: &mut Connection) {
     let _ = timeout(runtime, CLOSE_WAIT, connection.close()).await;
 }

@@ -1053,11 +1053,56 @@ mod tests {
         assert_eq!(server.connection_count(), 1);
     }
 
+    /// A transport that records each dial and fails it.
+    #[derive(Debug, Default)]
+    struct Recording {
+        dials: std::sync::atomic::AtomicUsize,
+    }
+
+    impl polyoxide_ws::SocketTransport for Recording {
+        fn connect(
+            &self,
+            _request: polyoxide_ws::tungstenite::http::Request<()>,
+            _timeout: Duration,
+            _runtime: Arc<dyn Runtime>,
+        ) -> polyoxide_rt::BoxFuture<Result<polyoxide_ws::BoxSocket, polyoxide_ws::WsError>>
+        {
+            self.dials.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async {
+                Err(polyoxide_ws::WsError::from(
+                    polyoxide_ws::tungstenite::Error::Io(std::io::Error::other("recorded")),
+                ))
+            })
+        }
+
+        fn capabilities(&self) -> polyoxide_ws::Capabilities {
+            polyoxide_ws::Capabilities::FULL
+        }
+    }
+
     #[tokio::test]
-    async fn the_supervisor_dials_with_clobs_per_address_connect() {
+    async fn the_builder_dials_through_the_transport_it_was_given() {
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let recording = Arc::new(Recording::default());
+        let err = builder(&server)
+            .socket_transport(Arc::clone(&recording) as Arc<dyn polyoxide_ws::SocketTransport>)
+            .connect(ids(&["a"]))
+            .await
+            .expect_err("the recording transport never connects");
+        assert!(matches!(err, ClobWsError::Connection(_)), "{err:?}");
+        assert_eq!(
+            recording.dials.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the builder's dial went through the injected transport"
+        );
+        assert_eq!(server.connection_count(), 0, "the server was never dialled");
+    }
+
+    #[tokio::test]
+    async fn a_step_that_outlives_its_bound_is_clobs_connect_timeout() {
         // clob's dial maps a step that outlived its bound to its own
-        // `ConnectTimeout`, naming the URL; the kit's default connect would
-        // return the kit's error wrapped in `Connection`.
+        // `ConnectTimeout`, naming the URL; the kit's error would otherwise
+        // come back wrapped in `Connection`.
         let server = ScriptedServer::start(vec![Script::stall()]).await;
         let step = Duration::from_millis(200);
         let err = builder(&server)

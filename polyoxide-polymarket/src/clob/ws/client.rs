@@ -1360,6 +1360,26 @@ mod dial_tests {
 
     use super::*;
 
+    #[test]
+    fn a_clob_socket_dials_per_address_unless_a_transport_was_injected() {
+        // The debug text is the only way to tell the two dials apart.
+        assert_eq!(
+            format!("{:?}", clob_transport(None)),
+            format!("{:?}", TungsteniteTransport::per_address()),
+            "the default is the per-address dial (D20)"
+        );
+        assert_ne!(
+            format!("{:?}", clob_transport(None)),
+            format!("{:?}", TungsteniteTransport::new()),
+            "the plain dial is told apart from the per-address one"
+        );
+        let injected: Arc<dyn SocketTransport> = Arc::new(TungsteniteTransport::new());
+        assert!(
+            Arc::ptr_eq(&clob_transport(Some(Arc::clone(&injected))), &injected),
+            "an injected transport is used as it is"
+        );
+    }
+
     #[tokio::test]
     async fn dial_returns_the_upgraded_socket_with_nothing_read() {
         let server = ScriptedServer::start(vec![Script::frames(&["hello"])]).await;

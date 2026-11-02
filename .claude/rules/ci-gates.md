@@ -224,7 +224,8 @@ stage does not hold, printing each one's key to copy there.
   core's `mock_request` `retries_on_429_then_succeeds`, which mockito answered from its success
   mock first so it never retried: the 429 mock now goes first with `expect(1)`, the retry
   happens, and the entry cites R22 too. The test bodies story 5 changed cite R22 as well:
-  `Kind::Unsupported`'s row, added to `every_other_kind`, to the kit's
+  `Kind::Unsupported`'s row (a sweep over a closed set of kinds gains the row for a variant the
+  seams add), added to `every_other_kind`, to the kit's
   `every_transport_error_has_its_kind` and to `a_failure_that_replays_on_every_attempt_is_not_retried`;
   the kit's connect and test-server tests (`polyoxide-ws`'s `connect` tests and the test server's
   `a_refused_upgrade_carries_its_status_and_headers`, `a_stalled_handshake_never_completes` and
