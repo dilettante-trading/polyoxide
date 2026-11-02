@@ -3,9 +3,10 @@
 # by crate with their features named. The first failure stops it.
 #
 # `cargo check` and `cargo clippy` both run, since clippy -D warnings is the
-# gate CI holds the native build to. The browser's getrandom backend is chosen
-# by a cfg flag, not a feature, so this script sets RUSTFLAGS itself, replacing
-# any inherited value (a host `target-cpu`, say, would override a config
+# gate CI holds the native build to. With getrandom 0.3.4 locked, its `wasm_js`
+# feature alone selects the browser backend; the `--cfg getrandom_backend` flag
+# is kept (spec D1) for consumers that resolve an older 0.3.x, so this script
+# sets RUSTFLAGS itself, replacing any inherited value (a host `target-cpu`, say, would override a config
 # file's and break the target); CARGO_ENCODED_RUSTFLAGS outranks RUSTFLAGS, so
 # it goes too. With `--target`, cargo does not pass RUSTFLAGS to build scripts,
 # so the host build cache is untouched.

@@ -214,7 +214,7 @@ The crates and features below build for `wasm32-unknown-unknown` and run in a br
 
 Run the client in a Worker. A hidden tab throttles the timers of its main thread (in Chrome to once a second, and to once a minute after five minutes), which breaks ping cadences. A threaded build (with atomics) is unsupported, because the browser implementations keep their JavaScript handles in `SendWrapper`, which panics off the thread that made it.
 
-The final binary must be built with `RUSTFLAGS` set to `--cfg getrandom_backend="wasm_js"`. polyoxide turns on getrandom 0.3's `wasm_js` feature, which getrandom releases before 0.3.4 compile only with that flag.
+Build the final binary with `RUSTFLAGS` set to `--cfg getrandom_backend="wasm_js"`. polyoxide turns on getrandom 0.3's `wasm_js` feature, which alone selects the browser backend from getrandom 0.3.4 on; the flag is kept for consumers that resolve an older 0.3.x, where it is required.
 
 Every timer, monotonic clock read and spawn goes through an injected `Runtime` (`polyoxide_rt`), every HTTP exchange through an injected `HttpTransport` (`polyoxide_core`) and every socket dial through an injected `SocketTransport` (`polyoxide_ws`). Each is injected on a builder, never process-wide: HTTP builders take `runtime(..)` and `http_transport(..)`, and socket builders take `runtime(..)` and `socket_transport(..)`. A builder with nothing injected uses its target's default. Natively that is `TokioRuntime`, `ReqwestTransport` and `TungsteniteTransport` (the CLOB's builders default to `TungsteniteTransport::per_address()`). On `wasm32-unknown-unknown` it is `BrowserRuntime`, `FetchTransport` and `WebSocketTransport`, so a consumer injects nothing unless it wants its own.
 

@@ -25,8 +25,9 @@ tokio = { workspace = true, features = ["rt", "time"] }
 
 # `BrowserRuntime` (D8). `getrandom` 0.3's `wasm_js` backend is on here so
 # feature unification reaches `rand` and `tungstenite` from every crate that
-# builds this one; the final binary still sets
-# `--cfg getrandom_backend="wasm_js"`.
+# builds this one. With getrandom 0.3.4 locked the feature alone selects the
+# backend; the final binary's `--cfg getrandom_backend="wasm_js"` is kept
+# (spec D1) for consumers that resolve an older 0.3.x.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 gloo-timers = { workspace = true, features = ["futures"] }
