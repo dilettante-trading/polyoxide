@@ -78,6 +78,9 @@ def test_each_banned_path_is_a_hit(tmp_path: Path, code: str, banned: str) -> No
     ("pub(crate) use tokio::spawn as go;", [(2, "tokio::spawn")]),
     ("use ::tokio::{spawn};", [(2, "tokio::spawn")]),
     ("use tokio::*;", [(2, "tokio::spawn")]),
+    ("use tokio as tk;\nfn f() { tk::spawn(x); }", [(2, "tokio alias")]),
+    ("use tokio::{self as tk, sync};", [(2, "tokio alias")]),
+    ("extern crate tokio as tk;", [(2, "tokio alias")]),
 ])
 def test_a_use_tree_rooted_at_tokio_is_read_leaf_by_leaf(
         tmp_path: Path, code: str, hits: list[tuple[int, str]]) -> None:
@@ -93,6 +96,8 @@ def test_a_use_tree_rooted_at_tokio_is_read_leaf_by_leaf(
     "use tokio_util::time::DelayQueue;",
     "use polyoxide_rt::{spawn, time};",
     "use std::time::{Duration, Instant};",
+    "use tokio as _;",
+    "extern crate tokio as _;",
 ])
 def test_a_use_tree_that_names_no_banned_path_is_clean(tmp_path: Path, code: str) -> None:
     assert found(tree(tmp_path, {CORE: f"{code}\n"})) == []

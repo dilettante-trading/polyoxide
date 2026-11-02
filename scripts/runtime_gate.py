@@ -72,6 +72,9 @@ CFG = re.compile(r"#\s*(!?)\s*\[\s*cfg\s*\(")
 MOD_NAME = re.compile(r"\bmod\s+(\w+)\s*$")
 INLINE_MOD = re.compile(r"\bmod\s+(\w+)\s*\{")
 USE = re.compile(r"\buse\b")
+# `extern crate tokio as tk;`, which names the crate under another name; `as _` binds nothing.
+EXTERN_ALIAS = re.compile(r"\bextern\s+crate\s+(?:::\s*)?tokio\s+as\s+(?!_\b)\w+")
+ALIAS = "tokio alias"
 USE_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|::|[{},*]")
 # What starts an item, as against a variant, field, parameter or match arm: an item's header
 # may hold commas outside brackets (`fn f<A, B>() where A: X, B: Y`).
@@ -184,13 +187,14 @@ def _inline_modules(code: str, at: int) -> tuple[str, ...]:
     return tuple(around)
 
 
-def _use_leaves(code: str, start: int) -> list[tuple[tuple[str, ...], int]]:
-    """Each leaf path of the `use` tree that follows `start`, with its offset in `code`. A
-    `self` leaf is its prefix; `as` aliases are dropped; a glob is the path `.., "*"`."""
+def _use_leaves(code: str, start: int) -> list[tuple[tuple[str, ...], int, bool]]:
+    """Each leaf path of the `use` tree that follows `start`, with its offset in `code` and
+    whether it renames the path (`as` something but `_`). A `self` leaf is its prefix; a glob is
+    the path `.., "*"`."""
     end = code.find(";", start)
     tokens = [(m[0], start + m.start()) for m in USE_TOKEN.finditer(code[start:end])] \
         if end >= 0 else []
-    leaves: list[tuple[tuple[str, ...], int]] = []
+    leaves: list[tuple[tuple[str, ...], int, bool]] = []
 
     def tree(at: int, prefix: tuple[str, ...]) -> int:
         while at < len(tokens) and tokens[at][0] == "::":
@@ -199,7 +203,7 @@ def _use_leaves(code: str, start: int) -> list[tuple[tuple[str, ...], int]]:
             return at
         text, offset = tokens[at]
         if text == "*":
-            leaves.append((prefix + ("*",), offset))
+            leaves.append((prefix + ("*",), offset, False))
             return at + 1
         if text == "{":
             at += 1
@@ -214,9 +218,11 @@ def _use_leaves(code: str, start: int) -> list[tuple[tuple[str, ...], int]]:
         at += 1
         if at < len(tokens) and tokens[at][0] == "::":
             return tree(at + 1, path)
+        renamed = False
         if at < len(tokens) and tokens[at][0] == "as":
+            renamed = at + 1 < len(tokens) and tokens[at + 1][0] != "_"
             at += 2
-        leaves.append((path, offset))
+        leaves.append((path, offset, renamed))
         return at
 
     tree(0, ())
@@ -225,14 +231,18 @@ def _use_leaves(code: str, start: int) -> list[tuple[tuple[str, ...], int]]:
 
 def use_hits(code: str) -> list[tuple[int, str]]:
     """The offset and banned path of each leaf of a `use` tree rooted at `tokio` that is one
-    of the banned paths (the plain regexes read a path only when it is written whole)."""
-    hits = []
+    of the banned paths (the plain regexes read a path only when it is written whole), and each
+    renaming of the `tokio` root itself (`use tokio as tk;`, `use tokio::{self as tk};`,
+    `extern crate tokio as tk;`), after which `tk::spawn` is written whole nowhere."""
+    hits = [(match.start(), ALIAS) for match in EXTERN_ALIAS.finditer(code)]
     for match in USE.finditer(code):
-        for path, offset in _use_leaves(code, match.end()):
+        for path, offset, renamed in _use_leaves(code, match.end()):
             if path[:1] != ("tokio",):
                 continue
             rest = path[1:]
-            if rest[:1] == ("*",) or (rest and rest[0].startswith("spawn")):
+            if not rest and renamed:
+                hits.append((offset, ALIAS))
+            elif rest[:1] == ("*",) or (rest and rest[0].startswith("spawn")):
                 hits.append((offset, "tokio::spawn"))
             elif rest[:1] == ("task",) and (len(rest) == 1 or rest[1] == "*"
                                             or rest[1].startswith("spawn")):
