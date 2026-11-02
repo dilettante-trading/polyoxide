@@ -5,7 +5,7 @@ paths:
   - "polyoxide-binance/src/usdm/{weight,policy}.rs"
   - "polyoxide-binance/src/shared/weight.rs"
   - "polyoxide-binance/src/shared/policy.rs"
-  - "polyoxide-binance/src/spot/weight.rs"
+  - "polyoxide-binance/src/spot/{weight,policy}.rs"
   - "polyoxide-kalshi/src/predictions/throttle.rs"
   - "**/examples/*{soak,probe,ceiling}*"
   - "polyoxide-polymarket/examples/v2_soak/**"

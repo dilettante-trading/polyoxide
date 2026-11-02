@@ -7,6 +7,7 @@ paths:
   - "polyoxide-binance/src/usdm/{policy,request}.rs"
   - "polyoxide-binance/src/shared/policy.rs"
   - "polyoxide-binance/src/shared/request.rs"
+  - "polyoxide-binance/src/spot/{policy,request}.rs"
   - "polyoxide-kalshi/src/predictions/{auth,request}.rs"
   - "**/tests/{send_loop,health,mock_request}.rs"
   - "**/tests/headers_*.rs"

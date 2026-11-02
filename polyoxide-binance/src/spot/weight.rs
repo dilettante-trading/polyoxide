@@ -229,6 +229,12 @@ impl WeightBudget {
     pub fn used(&self) -> u32 {
         self.inner.used()
     }
+
+    /// Time left in the current UTC minute: what a `429` with no `Retry-After`
+    /// and no retry left holds for.
+    pub(crate) fn until_next_minute(&self) -> Duration {
+        self.inner.until_next_minute()
+    }
 }
 
 /// The budget as core's send loop sees it.
