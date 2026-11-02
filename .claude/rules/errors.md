@@ -88,7 +88,7 @@ its decode, a core `Response` it keeps included. A zero is no wait anywhere (DRI
   which expands in the invoking module to private `ws_class`, `ws_is_fault` and `ws_retry_after`
   over `polyoxide_ws::WsError`'s `Kind`; the venue's `Classify` impl calls them on its `WsError`
   arm.
-- The wrappers: `PerpsWsError::Connection`, `UsdmWsError::Connect`,
+- The wrappers: `PerpsWsError::Connection`, `UsdmWsError::Connect`, `SpotWsError::Connect`,
   `PredictionsWsError::Connection`, `RtdsError::Connection`, `ClobWsError::Connection` and
   `SportsError::{Connect, Transport}`. Binance and sports map the kit's server close and connect
   timeout to their own `Closed` and `ConnectTimeout`, and Binance keeps its handshake `403` →

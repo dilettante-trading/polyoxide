@@ -32,7 +32,7 @@ A venue describes its socket as a `Protocol` and gets a `Supervised<P>` stream w
 
 - a handshake built per attempt; `connect`, the dial of each attempt (by default it dials the
   handshake's request; a venue that tries each address overrides it); `configure` of each fresh
-  connection, such as Binance's 200 ms request pacing;
+  connection, such as Binance's request pacing (200 ms on USDⓈ-M, 500 ms on spot);
 - `replay` and `apply` of its membership over the connection's request correlation; `decode` of
   every frame into `Decoded` events; its liveness (D5) and delivered (D6) predicates; its ping
   (D4); `wanted`;
@@ -62,8 +62,9 @@ What the task guarantees (`src/supervisor/tests.rs` pins each rule):
 
 ## Which socket runs on what
 
-- On the `Supervisor`: perps (`PerpsProtocol`), Binance (one supervisor per routed path, behind a
-  router), Kalshi (`PredictionsProtocol`), and the CLOB's supervised market and user sockets.
+- On the `Supervisor`: perps (`PerpsProtocol`), Binance (`shared::ws`'s `BinanceProtocol`, one for
+  both products: one supervisor per routed path, behind a router; spot has the one path),
+  Kalshi (`PredictionsProtocol`), and the CLOB's supervised market and user sockets.
 - On the blocks, each keeping its own supervision shape (D7):
   - rtds: TLS, `Backoff`, connect with a timeout, `retrying_can_fix`, the bare tier's close reply
     and the test server;

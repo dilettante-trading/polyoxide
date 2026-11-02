@@ -5,13 +5,13 @@ paths:
 
 # The CLI (`polyoxide-cli`)
 
-It queries Polymarket's APIs and Binance USDⓈ-M market data, and depends on the component crates
+It queries Polymarket's APIs and Binance's USDⓈ-M and spot market data, and depends on the component crates
 directly, never on the umbrella (CLAUDE.md's crate list names the features).
 
 ## The command tree
 
 `polyoxide <venue> <module> <verb…>`: `polyoxide polymarket` holds `gamma`, `data`, `clob`,
-`rtds`, `sports` and, with `keychain`, `credentials`; `polyoxide binance` holds `usdm`;
+`rtds`, `sports` and, with `keychain`, `credentials`; `polyoxide binance` holds `usdm` and `spot`;
 `completions` stays at the top. The library follows the tree,
 `polyoxide_cli::commands::{polymarket, binance, completions}`, beside the shared `stream` and
 `credentials` modules, and the root of `commands` re-exports nothing.
@@ -33,8 +33,9 @@ command. Each list argument also has a parse test that passes a comma list.
 
 ## Every socket is its module's `stream` verb, on one runner
 
-`polymarket clob stream market` and `… user`, `polymarket rtds stream`, `polymarket sports stream`
-and `binance usdm stream` each describe their socket as a `commands::stream::Feed` (what each
+`polymarket clob stream market` and `… user`, `polymarket rtds stream`, `polymarket sports stream`,
+`binance usdm stream` and `binance spot stream` each describe their socket as a
+`commands::stream::Feed` (what each
 event and each error means), and `stream::run` owns the rest:
 
 - `-n`, counted in printed events and checked before each wait, so a feed that goes quiet after
@@ -59,6 +60,14 @@ event and each error means), and `stream::run` owns the rest:
   and `--format json` prints each frame's envelope. `tests/ws_binance.rs` drives it with the
   crate's captured frames (`polyoxide_binance::usdm::ws::fixtures`, features `usdm-ws` and
   `test-server`).
+- `binance spot stream` streams through the supervised tier of `polyoxide-binance`'s `spot::ws`,
+  with `usdm`'s flags and parsers: `--symbol` and `--kind` are comma-separated and each kind is
+  streamed for each symbol. Its kinds are `agg-trade`, `trade`, `kline-<interval>`, `mini-ticker`,
+  `ticker`, `book-ticker`, `avg-price` and `depth5`, `depth10` and `depth20` (each every 100 ms);
+  `--all-mini-tickers` streams `!miniTicker@arr` in the place of `usdm`'s two array flags.
+  `pretty` prints a line per update and per array row, outage markers and skipped frames go to
+  stderr, and `--format json` prints each frame's envelope. `tests/ws_binance.rs` drives it with
+  `polyoxide_binance::spot::ws::fixtures` (features `spot-ws` and `test-server`).
 
 ## Logging
 

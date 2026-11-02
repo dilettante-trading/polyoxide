@@ -26,7 +26,7 @@ paths:
   `cfg(test)`, so `cargo hack --each-feature` fails a re-export whose `cfg` leaves a feature out.
 - The prelude re-exports a selection of the enabled modules' clients, errors and stream types
   under the umbrella's feature names, aliasing a stream's `Event` by its venue (`PerpsEvent`,
-  `SportsEvent`, `UsdmEvent`, `PredictionsEvent`). One `const _` per prelude block pins it to its
+  `SportsEvent`, `UsdmEvent`, `SpotEvent`, `PredictionsEvent`). One `const _` per prelude block pins it to its
   feature, and one more pins the unified client (`polyoxide_polymarket::Polymarket`, also at
   `polyoxide::polymarket::Polymarket`) to `polymarket`.
 - Kalshi's prelude names are `Predictions`, `PredictionsBuilder` and `PredictionsError`,
@@ -39,6 +39,10 @@ paths:
   `WeightBudget` as `SpotWeightBudget` (`USDⓈ-M`'s keeps the bare `WeightBudget`). `parse_key` also
   names `binance.spot` under `binance-spot`, and its passthrough `const _` names
   `crate::binance::spot::Spot`. `SpotMarket` is at `polyoxide::venue` beside the other bundles.
+- `binance-spot-ws` is `["binance-spot", "polyoxide-binance/spot-ws"]`, and `full` turns it on.
+  Under it the prelude also names `Event` as `SpotEvent`, `StreamName` as `SpotStreamName`
+  (`USDⓈ-M`'s keeps the bare `StreamName`), `SpotWs`, `SpotWsBuilder` and `SpotWsError`, and a
+  passthrough `const _` names `SpotWs` at `crate::binance::spot::ws`, with another at the prelude.
 - `examples/venue_neutral.rs` reads the best bid and ask of the CLOB, perps, USDⓈ-M and Kalshi with
   one `best_bid_ask(&DynMarketData, &MarketKey)`, and their errors with one classifier generic
   over `Classify` (CAP-5 and CAP-4). `tests/venue_neutral.rs` includes it by `#[path]` and runs

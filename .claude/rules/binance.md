@@ -14,7 +14,8 @@ paths:
 market data on `fapi.binance.com` (`usdm::Usdm::new()`; namespaces `usdm.health()`, `exchange()`,
 `market()`) for consumers that trade both venues. Binance is not a Polymarket host. The umbrella
 re-exports the crate as `polyoxide::binance` under its `binance`, `binance-usdm`,
-`binance-usdm-ws`, `binance-spot` and `full` features, none of which its default, `polymarket`,
+`binance-usdm-ws`, `binance-spot`, `binance-spot-ws` and `full` features, none of which its default,
+`polymarket`,
 turns on. Its `spot` module (feature `spot`, on by default) reads public spot market data on
 `api.binance.com`; the `shared` and `spot` sections below hold the rules both modules share and
 spot's own.
@@ -52,6 +53,14 @@ builds each product without the other, so every item in it compiles under either
   logs the `418` body at WARN itself, so the WARN's target is `polyoxide_binance::<module>::error`.
 - `shared::request`: `Routed<T, R, E>`, the `Priced` trait a route table implements, and the
   `route_builder!` macro that writes every route builder with no setters of its own.
+- `shared::ws`, built under `any(feature = "usdm-ws", feature = "spot-ws")` and so compiling under
+  either alone: what both products' sockets do the same way, generic over a product's `StreamSet`
+  (its stream name, path, update, error and event types, its paths and URL, its frame decode, its
+  pacing interval and its cap on names per request) and its error's `SocketError` (constructors for
+  the errors the shared code makes, and a `Shape` view the recovery and the router match on): the
+  request correlation (`request`), the bare connection (`Bare`), the kit `Protocol`
+  (`BinanceProtocol<S>`), and the router with its forwarding queue of 1024 and its stop
+  (`supervised`). Each product's public socket types stay its own structs and enums over it.
 - `shared::symbol`: `Symbol` and `InvalidSymbol`. Nothing else is shared: response types,
   `Interval` and `Filter` stay per product, so one product's wire change never reaches the other.
 - **A product keeps** its `WeightBudget`, its `<Module>RetryPolicy`, its `<Module>Error`, its
@@ -168,7 +177,8 @@ fourteen methods over eleven routes, with no credentials. It is the first produc
   makes `binance.spot:<SYMBOL>` keys with `CLASS = ProductClass::Spot`.
 - A 451, a `418` and the firewall `403` are `Restricted`, classified by status as on `usdm`.
 - `tests/venue_spot.rs` holds each method to the native client's values on the captured fixtures;
-  the fixtures are captured, never written by hand, by `scripts/capture_binance_spot.py rest`.
+  the fixtures are captured, never written by hand, by `scripts/capture_binance_spot.py rest`
+  (the stream frames by its `ws`, described in the Streams (`spot-ws`) section below).
 
 ## Streams (`usdm-ws`)
 
@@ -211,3 +221,53 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
   same). The `test-server` feature, with `usdm-ws`, exposes the captured frames as
   `usdm::ws::fixtures`, which the CLI's tests import, and nothing else; it turns no module on, so a
   build that wants the frames names both features.
+
+## Streams (`spot-ws`)
+
+Nine spot market streams on `stream.binance.com`: `SpotWs` (one connection) and
+`SpotWsBuilder`/`SupervisedSpotWs`, on the same `shared::ws` code as `usdm::ws`, with `SpotStreams`
+as spot's `StreamSet`. `spot-ws` turns `spot` on.
+
+- **One path.** Every stream is on `/stream` of `SPOT_WS_BASE`, `wss://stream.binance.com:9443`:
+  `base_url` sets another host and the client appends `/stream`, so a test server's base works as it
+  does for `usdm`. `StreamPath` has the one variant, `Stream`, exhaustive, and `Event::Disconnected`
+  and `Reconnected` keep their `{ path }` field, so a consumer that folds outages treats both
+  products alike; every `Disconnected` is followed by a `Reconnected` while the client runs, from
+  the shared code.
+- **The limits are measured**, not copied (`OBSERVED.md`, `## Spot`, from `### Stream limits`): at
+  most 1024 streams per connection (`MAX_STREAMS_PER_CONNECTION`), 1024 names in one request
+  (`MAX_NAMES_PER_REQUEST`: one `SUBSCRIBE` of 1024 names, 23,598 bytes, was acknowledged and held,
+  where `usdm`'s is 200) and one request per 500 ms (`MIN_REQUEST_INTERVAL`). Binance counts at
+  most 5 incoming messages a second on a connection, pings, pongs and requests included, and
+  closes one past it with 1008 "Too many requests": a request every 250 ms was closed after 16 s,
+  and one every 500 ms held for 45 s. So the client enforces all three first (the 1025th stream is
+  refused with nothing sent), and `docs/MUTANTS.md`'s socket-pace row holds the interval.
+- **`StreamName` is the only way to name a stream**, because Binance acknowledges every `SUBSCRIBE`,
+  an unknown symbol, an unknown stream type and an uppercase symbol included, and an uppercase
+  symbol delivers nothing. It refuses an uppercase ASCII letter in a symbol and an explicit
+  `@250ms` depth, and spells a symbol's ASCII letters in lowercase and every other character as it
+  is (`币安人生usdt@miniTicker`, held by `stream_non_ascii_miniTicker.json`). `!ticker@arr` is
+  acknowledged and delivers nothing, so it is not a `StreamName`; `!miniTicker@arr` is.
+- **Two frames carry less than the rest.** A partial-depth frame and a `bookTicker` frame have no
+  event type, and partial depth has no symbol: both take their stream from the combined envelope,
+  so `PartialDepthEvent::symbol` is read from the envelope's `stream` and not serialised back. A
+  single-symbol frame whose `e` is not its stream's is `Payload::Unknown`. The keys Binance
+  documents as "Ignore", `M` on `trade` and `aggTrade` and `B` in the kline, are not modelled:
+  `wire_agreement_spot_ws`'s `IGNORED` names them, and
+  `tests/live_spot_ws.rs::live_frames_carry_no_unmodelled_keys` is the drift detector.
+- **The error** `SpotWsError` has `UsdmWsError`'s variants, docs and `Classify` rows but
+  `WrongPath`, which one path cannot produce, and `spot::ws::StopCause` is its own. A path that
+  stops on an error ends the stream after yielding it, and `close()` and later membership calls
+  answer `SpotWsError::Stopped { cause }`, as `usdm`'s do (above).
+- **The scripted file is shared.** `src/usdm/ws/scripted.rs` names nothing of either product, so
+  `spot::ws`'s unit tests and `tests/supervision_spot.rs` include it with `#[path]`: moving it
+  would lose a test-context file and copying it would keep two. The `test-server` feature, with
+  `spot-ws`, exposes the captured frames as `spot::ws::fixtures`, which the CLI's tests import.
+  The frames are captured, never written by hand, by `scripts/capture_binance_spot.py ws`: one
+  connection and one `SUBSCRIBE`.
+- **The production socket is a shared address.** Binance bans an address it disconnects
+  repeatedly, and the live suites and other sessions on a host share the address. No test,
+  capture or probe against production sends faster than the client paces, and none sends an
+  over-limit request on purpose.
+- The CLI's `binance spot stream` (`polyoxide-cli/src/commands/binance/spot.rs`, `cli.md`) streams
+  through the supervised tier.

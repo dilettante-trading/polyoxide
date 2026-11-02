@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Polyoxide is a multi-venue Rust SDK toolkit, one crate per venue: `polyoxide-polymarket` for Polymarket's APIs (CLOB trading, market data from Gamma, user data, gasless relay transactions, perps market data, and the crypto price and sports streams), `polyoxide-binance` for Binance's USDⓈ-M futures market data and streams and its spot market data, and `polyoxide-kalshi` for Kalshi's event-contract market data and its order-book, ticker and trade streams, under a `polyoxide` umbrella with a module per venue. It also provides Python bindings for Polymarket and a standalone CLI for Polymarket and Binance. Hard fork of [polyte](https://github.com/roushou/polyte).
+Polyoxide is a multi-venue Rust SDK toolkit, one crate per venue: `polyoxide-polymarket` for Polymarket's APIs (CLOB trading, market data from Gamma, user data, gasless relay transactions, perps market data, and the crypto price and sports streams), `polyoxide-binance` for Binance's USDⓈ-M futures and spot market data and the market streams of both, and `polyoxide-kalshi` for Kalshi's event-contract market data and its order-book, ticker and trade streams, under a `polyoxide` umbrella with a module per venue. It also provides Python bindings for Polymarket and a standalone CLI for Polymarket and for Binance's streams (`polyoxide binance usdm stream`, `polyoxide binance spot stream`). Hard fork of [polyte](https://github.com/roushou/polyte).
 
 ## Where the rules live
 
@@ -37,7 +37,7 @@ This file holds the commands, the CI gates and the rules that cut across crates.
 | `polymarket-perps.md` | perps REST, its market-data impl and its sockets |
 | `polymarket-rtds.md` | the RTDS price streams |
 | `polymarket-sports.md` | the sports feed |
-| `binance.md` | Binance: the `shared` plumbing, USDⓈ-M and spot, their weight budgets, policy and market-data impls, and USDⓈ-M's streams |
+| `binance.md` | Binance: the `shared` plumbing, USDⓈ-M and spot, their weight budgets, policy and market-data impls, and the streams of both products |
 | `kalshi.md` | Kalshi: credentials, its market-data impl, the archive and its socket |
 
 - A rule stands until the commit that supersedes it lands, and that commit edits the rule's text, here or in its rules file (AD-21). `.github/scripts/tests/test_claude_rules.py` fails when a rules file names no `paths:` globs (it would load into every session), when a glob matches no file, or when this table and the directory disagree.
