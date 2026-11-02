@@ -7,16 +7,19 @@ mod task;
 use std::{
     future::Future,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::Stream;
+use polyoxide_rt::{default_runtime, Runtime};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
+    default_socket_transport,
     tungstenite::{self, handshake::client::Request, Message},
-    Connection, Socket, Timing, WsError,
+    BoxSocket, Connection, SocketTransport, Timing, WsError,
 };
 use task::{Command, Receiver, Start, Task};
 
@@ -148,21 +151,24 @@ pub trait Protocol: Send + Sized + 'static {
     /// Open the connection for one attempt, within `timeout`.
     ///
     /// The [`Supervisor`] calls it for every attempt, the first and each
-    /// reconnect, with [`Timing::connect_timeout`]. By default it builds
+    /// reconnect, with its [`SocketTransport`] and runtime and
+    /// [`Timing::connect_timeout`]. By default it builds
     /// [`handshake`](Self::handshake)'s request first, so a failure there is
-    /// the attempt's, and dials it with the kit's [`connect`](crate::connect).
-    /// A protocol that dials its venue a step at a time, such as a venue that
-    /// tries each resolved address in turn, overrides it: it bounds each step
-    /// by `timeout` itself, upgrades with [`connect_over`](crate::connect_over),
-    /// and may keep `handshake` for the request it upgrades with. An error is a
+    /// the attempt's, and dials it through the transport. A protocol that
+    /// wants another dial injects a transport that makes it, such as one that
+    /// tries each resolved address in turn
+    /// ([`TungsteniteTransport::per_address`](crate::TungsteniteTransport::per_address));
+    /// it overrides this only to shape the transport's error. An error is a
     /// failed attempt, which [`recover`](Self::recover) decides on.
     fn connect(
         &mut self,
+        transport: Arc<dyn SocketTransport>,
+        runtime: Arc<dyn Runtime>,
         timeout: Duration,
-    ) -> impl Future<Output = Result<Socket, Self::Error>> + Send {
+    ) -> impl Future<Output = Result<BoxSocket, Self::Error>> + Send {
         let request = self.handshake();
         async move {
-            let socket = crate::connect(request?, timeout).await?;
+            let socket = transport.connect(request?, timeout, runtime).await?;
             Ok::<_, Self::Error>(socket)
         }
     }
@@ -352,6 +358,10 @@ pub trait Protocol: Send + Sized + 'static {
 /// bounded by [`Timing::connect_timeout`]. The task logs under the
 /// `polyoxide_ws` target.
 ///
+/// The task runs on the injected [`runtime`](Self::runtime) and dials through
+/// the injected [`socket_transport`](Self::socket_transport), each the
+/// target's default when none is given.
+///
 /// The basis is one socket crate's former supervised tier (`ws/supervised.rs`,
 /// deleted in Story 4.6), with another socket crate's former loop (replaced
 /// in Story 4.7 by a router over one supervisor per path) for rotation,
@@ -361,12 +371,44 @@ pub trait Protocol: Send + Sized + 'static {
 pub struct Supervisor<P: Protocol> {
     protocol: P,
     timing: Timing,
+    runtime: Option<Arc<dyn Runtime>>,
+    transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl<P: Protocol> Supervisor<P> {
-    /// A supervisor for `protocol` on `timing`.
+    /// A supervisor for `protocol` on `timing`, on the target's default runtime
+    /// and socket transport until [`runtime`](Self::runtime) and
+    /// [`socket_transport`](Self::socket_transport) say otherwise.
     pub fn new(protocol: P, timing: Timing) -> Self {
-        Self { protocol, timing }
+        Self {
+            protocol,
+            timing,
+            runtime: None,
+            transport: None,
+        }
+    }
+
+    /// Run the task's timers, clock reads and spawn on `runtime`.
+    pub fn runtime(mut self, runtime: Arc<dyn Runtime>) -> Self {
+        self.runtime = Some(runtime);
+        self
+    }
+
+    /// Dial every attempt through `transport`.
+    pub fn socket_transport(mut self, transport: Arc<dyn SocketTransport>) -> Self {
+        self.transport = Some(transport);
+        self
+    }
+
+    /// The runtime and transport this supervisor runs on: the injected ones,
+    /// or the target's defaults.
+    fn injected(&self) -> (Arc<dyn Runtime>, Arc<dyn SocketTransport>) {
+        (
+            self.runtime.clone().unwrap_or_else(default_runtime),
+            self.transport
+                .clone()
+                .unwrap_or_else(default_socket_transport),
+        )
     }
 
     /// Connect, replay `membership`, and start supervising. Any failure of
@@ -376,8 +418,16 @@ impl<P: Protocol> Supervisor<P> {
         mut self,
         mut membership: P::Membership,
     ) -> Result<Supervised<P>, P::Error> {
-        let live = task::attempt(&mut self.protocol, &self.timing, &mut membership).await?;
-        Ok(self.spawn(membership, Start::Up(Box::new(live))))
+        let (runtime, transport) = self.injected();
+        let live = task::attempt(
+            &mut self.protocol,
+            &self.timing,
+            &mut membership,
+            &transport,
+            &runtime,
+        )
+        .await?;
+        Ok(self.spawn(membership, Start::Up(Box::new(live)), runtime, transport))
     }
 
     /// As [`connect`](Self::connect), except that a first failure
@@ -386,25 +436,48 @@ impl<P: Protocol> Supervisor<P> {
     /// backoff and the attempts that follow. Only a failure it would
     /// [`Stop`](Recovery::Stop) on is returned.
     pub async fn start(mut self, mut membership: P::Membership) -> Result<Supervised<P>, P::Error> {
-        match task::attempt(&mut self.protocol, &self.timing, &mut membership).await {
-            Ok(live) => Ok(self.spawn(membership, Start::Up(Box::new(live)))),
+        let (runtime, transport) = self.injected();
+        match task::attempt(
+            &mut self.protocol,
+            &self.timing,
+            &mut membership,
+            &transport,
+            &runtime,
+        )
+        .await
+        {
+            Ok(live) => Ok(self.spawn(membership, Start::Up(Box::new(live)), runtime, transport)),
             Err(err) => match self.protocol.recover(&err) {
                 Recovery::Stop => Err(err),
                 Recovery::Reconnect | Recovery::Skip => {
-                    Ok(self.spawn(membership, Start::Outage(err)))
+                    Ok(self.spawn(membership, Start::Outage(err), runtime, transport))
                 }
             },
         }
     }
 
-    fn spawn(self, membership: P::Membership, start: Start<P>) -> Supervised<P> {
+    fn spawn(
+        self,
+        membership: P::Membership,
+        start: Start<P>,
+        runtime: Arc<dyn Runtime>,
+        transport: Arc<dyn SocketTransport>,
+    ) -> Supervised<P> {
         let (events, receiver) = task::queue(self.protocol.queue());
         let (commands, commands_rx) = mpsc::channel(COMMANDS);
-        let task = Task::new(self.protocol, self.timing, membership, events, commands_rx);
+        let task = Task::new(
+            self.protocol,
+            self.timing,
+            membership,
+            events,
+            commands_rx,
+            Arc::clone(&runtime),
+            transport,
+        );
         Supervised {
             events: receiver,
             commands,
-            task: tokio::spawn(task.run(start)),
+            task: polyoxide_rt::spawn(runtime.as_ref(), task.run(start)),
         }
     }
 }
@@ -420,7 +493,7 @@ pub struct Supervised<P: Protocol> {
     events: Receiver<task::Item<P>>,
     commands: mpsc::Sender<Command<P>>,
     /// Whether the task stopped on an error.
-    task: tokio::task::JoinHandle<bool>,
+    task: polyoxide_rt::Task<bool>,
 }
 
 impl<P: Protocol> std::fmt::Debug for Supervised<P> {
@@ -454,8 +527,8 @@ impl<P: Protocol> Supervised<P> {
         drop(events);
         drop(commands);
         match task.await {
-            Ok(false) => Ok(()),
-            Ok(true) | Err(_) => Err(P::stopped()),
+            Some(false) => Ok(()),
+            Some(true) | None => Err(P::stopped()),
         }
     }
 }

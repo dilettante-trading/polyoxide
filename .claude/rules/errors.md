@@ -102,6 +102,9 @@ its decode, a core `Response` it keeps included. A zero is no wait anywhere (DRI
   `ConnectTimeout { url, timeout }`, and a host that resolves to no address is an I/O failure,
   `Network`. So a 451 refusal is each one's one transport non-fault.
 - No crate matches over `tungstenite::Error`: every socket error is on the one socket table.
+- `Kind::Unsupported`, an operation the transport cannot perform (a handshake header or a control
+  frame on a transport that has none), is `InvalidRequest` on the socket table and not retriable,
+  so a recovery that follows the class stops on it.
 - A refused upgrade follows `class_for_handshake_status` with its `Retry-After` read unclamped; a
   server close follows `class_for_close_code`; only a 451 refusal is not a fault. Every refusal's
   `Retry-After`, whatever its status, is the error's `retry_after()`, as HTTP's `ErrorResponse`

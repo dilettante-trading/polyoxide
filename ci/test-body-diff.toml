@@ -430,3 +430,99 @@ file = "polyoxide-test-support/tests/failure_tags.rs"
 item = "network_timeout"
 row = "R22"
 sha256 = "d65b466db8ff77bebde309a54acedd60ea9ea2312fade7a861910cf86d0a0341"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connection_tests::a_dns_miss_is_a_network_failure"
+row = "R22"
+sha256 = "4f8b28f3acba6ffe4d2cc408f476d6541d53594eafd7b5f77be3261033a845bf"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connect_tests::addr"
+row = "R22"
+sha256 = "035dcceb6c9abca5e20b1baee5e6a7219d7e8161a49b34222a3c57c3a97e5b23"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connect_tests::address_families_are_interleaved"
+row = "R22"
+sha256 = "73cbca14c19ede0635ae6bf99c467ca46d0571e0698328df00dd0b7cd222f60c"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connect_tests::single_family_lists_pass_through_unchanged"
+row = "R22"
+sha256 = "48c277e6768a43d968fca2c7d9561d999ea3a8cbbcd1bc8c80982452cced1839"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_sports.rs"
+item = "connect_raw"
+row = "R22"
+sha256 = "f63c4ed40e7476423007f93240581170c3ef44d75de9e475d0661b689ba41bc9"
+
+[[drift]]
+file = "polyoxide-venue/tests/ws_classification.rs"
+item = "every_other_kind"
+row = "R22"
+sha256 = "cd6f015ec150b6174aed3f73e6baa7e2f9ef4acad583bdf3de4d2c6c211987bd"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_503_upgrade_is_worth_retrying_and_a_404_is_not"
+row = "R22"
+sha256 = "d2e6b95476530117af28fc1072418d0f28614c54d7bcd1353dafcf92cdc15205"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_failure_that_replays_on_every_attempt_is_not_retried"
+row = "R22"
+sha256 = "5e7d94abe38dcb1b03dfb75a17b8aabbf47e5b1cc5a864acf068594166b5daab"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_hung_handshake_times_out_at_the_default"
+row = "R22"
+sha256 = "0dd7d8c127c8ca48c6aeaa68a3ac1fe1376da931416acf4dedc8418843fad412"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_refused_upgrade_keeps_its_status_and_retry_after"
+row = "R22"
+sha256 = "da76532632306f605c0838b9d3aa599194889b96b424d24a088a0c48f01848d9"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::connect_over_is_bounded_by_with_timeout"
+row = "R22"
+sha256 = "7444acf0fe17b79ae7aded8eb469361bb3f65d8cb6e526f2226c5626654c2a7c"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::connect_over_keeps_a_refusals_status_and_retry_after"
+row = "R22"
+sha256 = "e5048743819dac1be76429955092955237f8fdca72db3e39e740a565978dcac1"
+
+[[drift]]
+file = "polyoxide-ws/src/error.rs"
+item = "tests::every_transport_error_has_its_kind"
+row = "R22"
+sha256 = "666c82e6a6cd385024f331e50b3ba57dcdac4d9a2ce8365f1546c9eac1140ee1"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/tests.rs"
+item = "actions_and_recorders::a_refused_upgrade_carries_its_status_and_headers"
+row = "R22"
+sha256 = "dd6f3b93b08aa9f0c8d8554706cec0459e45bce254a4eb53046e294215a5820c"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/tests.rs"
+item = "actions_and_recorders::a_stalled_handshake_never_completes"
+row = "R22"
+sha256 = "634a7e28ee828553dfd7b45d5e56bd4f2234b4529b5018bc29a6fae60b20443a"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/tests.rs"
+item = "as_rtds_used_it::reject_handshake_fails_the_connection_attempt_recoverably"
+row = "R22"
+sha256 = "06dab212886dbf7e71330fb17c5cb1af135a99911ebda21c043777103a8f1001"

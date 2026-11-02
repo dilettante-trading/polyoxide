@@ -185,7 +185,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 56 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 72 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -223,7 +223,17 @@ stage does not hold, printing each one's key to copy there.
   `raw` (Kalshi's live suite is newer than the baseline, so it takes no entry). Story 4 also fixes
   core's `mock_request` `retries_on_429_then_succeeds`, which mockito answered from its success
   mock first so it never retried: the 429 mock now goes first with `expect(1)`, the retry
-  happens, and the entry cites R22 too.
+  happens, and the entry cites R22 too. The test bodies story 5 changed cite R22 as well:
+  `Kind::Unsupported`'s row, added to `every_other_kind`, to the kit's
+  `every_transport_error_has_its_kind` and to `a_failure_that_replays_on_every_attempt_is_not_retried`;
+  the kit's connect and test-server tests (`polyoxide-ws`'s `connect` tests and the test server's
+  `a_refused_upgrade_carries_its_status_and_headers`, `a_stalled_handshake_never_completes` and
+  `reject_handshake_fails_the_connection_attempt_recoverably`), whose `expect_err` became
+  `.err().expect(..)` since a `BoxSocket` is not `Debug`; the CLOB's `a_dns_miss_is_a_network_failure`,
+  whose body changed with its dial, and the three address tests that moved with that dial into the
+  kit, gated to native (`connect_tests::addr`, `address_families_are_interleaved` and
+  `single_family_lists_pass_through_unchanged`); and `live_sports`' `connect_raw`, returning a
+  `BoxSocket`.
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

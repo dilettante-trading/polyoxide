@@ -199,7 +199,8 @@ mod as_rtds_used_it {
 
         let err = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
-            .expect_err("a dropped handshake must not succeed");
+            .err()
+            .expect("a dropped handshake must not succeed");
 
         assert!(retrying_can_fix(&err, |_| false), "{err:?}");
         assert_eq!(server.connection_count(), 1);
@@ -505,7 +506,8 @@ mod actions_and_recorders {
         .await;
         let err = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
-            .expect_err("refused");
+            .err()
+            .expect("refused");
         assert_eq!(
             err.kind(),
             Kind::Refused {
@@ -522,7 +524,8 @@ mod actions_and_recorders {
         let after = Duration::from_millis(200);
         let err = connect(server.url.as_str(), after)
             .await
-            .expect_err("stalled");
+            .err()
+            .expect("stalled");
         assert_eq!(err.kind(), Kind::ConnectTimeout { after });
         assert_eq!(server.connection_count(), 1);
         assert_eq!(server.handshake_count(), 0);

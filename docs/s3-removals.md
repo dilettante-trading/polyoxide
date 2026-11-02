@@ -44,6 +44,12 @@ To remove a public item in a PR:
 - `polyoxide-core inherent_method_changed: ErrorResponse::read (src/error.rs)` Story 4: it takes a `polyoxide_core::Response`; read an error response from a raw reqwest one with `ErrorResponse::new(status, headers, body)`.
 - `polyoxide-core inherent_method_changed: ApiError::from_response (src/error.rs)` Story 4: it takes a `polyoxide_core::Response`; from a raw reqwest response, build `ErrorResponse::new(status, headers, body)` and convert it with `ApiError::from`.
 - `polyoxide-core function_changed: retry_after_header (src/client.rs)` Story 4: it takes `&HeaderMap`, not a response; pass `response.headers()`.
+- `polyoxide_ws::Socket`: Story 5 of the wasm32 plan removed the alias; a connection is a `polyoxide_ws::BoxSocket`, which `connect` and `connect_over` return and `Connection::new` takes.
+- `polyoxide_ws::connect`: Story 5 re-typed its return, from `Socket` to `BoxSocket`; it dials through the target's default `SocketTransport` and runtime.
+- `polyoxide_ws::connect_over`: Story 5 re-typed its return, from `Socket` to `BoxSocket`, and made it native only.
+- `polyoxide_ws::Connection::new`: Story 5 re-typed its `socket` parameter, from `Socket` to `BoxSocket`; `Connection::with_runtime` also takes the runtime.
+- `polyoxide_ws::Connection::last_inbound`: Story 5 re-typed its return, from `tokio::time::Instant` to `polyoxide_rt::Instant`, which is `std::time::Instant` on native.
+- `polyoxide_ws::Protocol::connect`: Story 5 changed its parameters, from `(timeout)` to `(transport, runtime, timeout)`, and its return, from `Socket` to `BoxSocket`; a protocol that dialled for itself chooses a transport that makes its dial.
 
 ## Doc-hidden paths consumers import
 

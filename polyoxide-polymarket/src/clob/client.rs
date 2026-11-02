@@ -933,7 +933,9 @@ impl ClobBuilder {
     /// its timing. The default is `UserWsBuilder::new()`, the CLOB's own host.
     ///
     /// The builder holds no credential: a stream builds them from the account
-    /// when it opens its socket.
+    /// when it opens its socket. Its `runtime` and `socket_transport` setters
+    /// choose the runtime and the dial of the stream's socket, which does not
+    /// follow the client's own runtime.
     #[cfg(feature = "clob-ws")]
     pub fn user_socket(mut self, socket: crate::clob::ws::UserWsBuilder) -> Self {
         self.user_socket = socket;

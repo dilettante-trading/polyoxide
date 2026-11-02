@@ -3,18 +3,17 @@
 
 use std::{
     collections::VecDeque,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::StreamExt;
-use tokio::{
-    sync::{mpsc, oneshot},
-    time::Instant,
-};
+use polyoxide_rt::{timeout, Instant, Runtime};
+use tokio::sync::{mpsc, oneshot};
 
 use super::{Decoded, Offline, Outage, Protocol, Queue, Recovery};
-use crate::{Backoff, Connection, Kind, Mode, Timing, WsError};
+use crate::{Backoff, Connection, Kind, Mode, SocketTransport, Timing, WsError};
 
 /// How long a polite close may take before the connection is dropped: a peer
 /// that has stopped reading would otherwise hold it.
@@ -165,8 +164,7 @@ struct Clock {
 }
 
 impl Clock {
-    fn new() -> Self {
-        let now = Instant::now();
+    fn new(now: Instant) -> Self {
         Self {
             opened: now,
             last_ping: now,
@@ -184,18 +182,31 @@ pub(super) async fn attempt<P: Protocol>(
     protocol: &mut P,
     timing: &Timing,
     membership: &mut P::Membership,
+    transport: &Arc<dyn SocketTransport>,
+    runtime: &Arc<dyn Runtime>,
 ) -> Result<Connection, P::Error> {
-    let socket = protocol.connect(timing.connect_timeout).await?;
-    let mut connection = protocol.configure(Connection::new(socket, Mode::All));
+    let socket = protocol
+        .connect(
+            Arc::clone(transport),
+            Arc::clone(runtime),
+            timing.connect_timeout,
+        )
+        .await?;
+    let mut connection = protocol.configure(Connection::with_runtime(
+        socket,
+        Mode::All,
+        Arc::clone(runtime),
+    ));
     protocol.reset();
-    match tokio::time::timeout(
+    match timeout(
+        runtime.as_ref(),
         timing.stale_after,
         protocol.replay(&mut connection, membership),
     )
     .await
     {
-        Ok(replayed) => replayed.map(|()| connection),
-        Err(_) => Err(P::stalled(timing.stale_after)),
+        Some(replayed) => replayed.map(|()| connection),
+        None => Err(P::stalled(timing.stale_after)),
     }
 }
 
@@ -221,6 +232,7 @@ fn record<P: Protocol>(
 /// request read its close or its failed read: the next read ends it with the
 /// server's close, where a send would fail on the dead socket and hide it.
 async fn ping<P: Protocol>(
+    runtime: &dyn Runtime,
     protocol: &mut P,
     timing: &Timing,
     connection: &mut Connection,
@@ -231,9 +243,9 @@ async fn ping<P: Protocol>(
     let Some(ping) = protocol.ping(connection) else {
         return Ok(());
     };
-    match tokio::time::timeout(timing.stale_after, connection.send(ping)).await {
-        Ok(sent) => sent.map_err(P::Error::from),
-        Err(_) => Err(P::stalled(timing.stale_after)),
+    match timeout(runtime, timing.stale_after, connection.send(ping)).await {
+        Some(sent) => sent.map_err(P::Error::from),
+        None => Err(P::stalled(timing.stale_after)),
     }
 }
 
@@ -245,6 +257,7 @@ async fn ping<P: Protocol>(
 /// frame is the last item the connection yields and leaves it finished, so
 /// the decode of a close prompts no send on the dead socket to hide it.
 async fn follow_up<P: Protocol>(
+    runtime: &dyn Runtime,
     protocol: &mut P,
     timing: &Timing,
     connection: &mut Connection,
@@ -255,15 +268,16 @@ async fn follow_up<P: Protocol>(
     let Some(frame) = protocol.follow_up() else {
         return Ok(());
     };
-    match tokio::time::timeout(timing.stale_after, connection.send(frame)).await {
-        Ok(sent) => sent.map_err(P::Error::from),
-        Err(_) => Err(P::stalled(timing.stale_after)),
+    match timeout(runtime, timing.stale_after, connection.send(frame)).await {
+        Some(sent) => sent.map_err(P::Error::from),
+        None => Err(P::stalled(timing.stale_after)),
     }
 }
 
 /// Send a close frame, but not wait on a peer that has stopped reading.
-async fn close_politely(connection: &mut Connection) {
-    let _ = tokio::time::timeout(CLOSE_WAIT, connection.close()).await;
+/// Send a close frame, but not wait on a peer that has stopped reading.
+async fn close_politely(runtime: &dyn Runtime, connection: &mut Connection) {
+    let _ = timeout(runtime, CLOSE_WAIT, connection.close()).await;
 }
 
 pub(super) struct Task<P: Protocol> {
@@ -279,6 +293,11 @@ pub(super) struct Task<P: Protocol> {
     /// Changes made during an outage that the protocol held, applied in
     /// order on the next connection.
     held: VecDeque<Command<P>>,
+    /// The runtime every wait, clock read and timeout of the task goes
+    /// through.
+    runtime: Arc<dyn Runtime>,
+    /// How each attempt dials.
+    transport: Arc<dyn SocketTransport>,
 }
 
 impl<P: Protocol> Task<P> {
@@ -288,6 +307,8 @@ impl<P: Protocol> Task<P> {
         membership: P::Membership,
         events: Events<Item<P>>,
         commands: mpsc::Receiver<Command<P>>,
+        runtime: Arc<dyn Runtime>,
+        transport: Arc<dyn SocketTransport>,
     ) -> Self {
         Self {
             protocol,
@@ -298,7 +319,14 @@ impl<P: Protocol> Task<P> {
             commands,
             pending: VecDeque::new(),
             held: VecDeque::new(),
+            runtime,
+            transport,
         }
+    }
+
+    /// The time since `at` on the task's runtime.
+    fn since(&self, at: Instant) -> Duration {
+        self.runtime.now().saturating_duration_since(at)
     }
 
     /// Supervise until the consumer goes, the membership is no longer wanted,
@@ -350,16 +378,16 @@ impl<P: Protocol> Task<P> {
             let end = self.pump(&mut connection, &mut delivered).await;
             match end {
                 End::Gone => {
-                    close_politely(&mut connection).await;
+                    close_politely(self.runtime.as_ref(), &mut connection).await;
                     return false;
                 }
                 End::NotWanted => {
-                    close_politely(&mut connection).await;
+                    close_politely(self.runtime.as_ref(), &mut connection).await;
                     self.flush().await;
                     return false;
                 }
                 End::Rotation => {
-                    close_politely(&mut connection).await;
+                    close_politely(self.runtime.as_ref(), &mut connection).await;
                     tracing::debug!("rotating the WebSocket connection at its maximum age");
                     self.backoff.after_connection_ended(delivered);
                     self.declare(Outage::Rotation);
@@ -430,8 +458,7 @@ impl<P: Protocol> Task<P> {
             if !P::wanted(&self.membership) {
                 return Recovered::NotWanted;
             }
-            let sleep = tokio::time::sleep(delay);
-            tokio::pin!(sleep);
+            let mut sleep = self.runtime.sleep(delay);
             loop {
                 tokio::select! {
                     biased;
@@ -459,7 +486,13 @@ impl<P: Protocol> Task<P> {
             let attempted = tokio::select! {
                 biased;
                 () = self.events.closed() => return Recovered::Gone,
-                attempted = attempt(&mut self.protocol, &self.timing, &mut self.membership) => attempted,
+                attempted = attempt(
+                    &mut self.protocol,
+                    &self.timing,
+                    &mut self.membership,
+                    &self.transport,
+                    &self.runtime,
+                ) => attempted,
             };
             match attempted {
                 Ok(connection) => return Recovered::Up(Box::new(connection)),
@@ -484,7 +517,7 @@ impl<P: Protocol> Task<P> {
     /// rotation comes first. Pending items go to the queue before anything
     /// more is read.
     async fn pump(&mut self, connection: &mut Connection, delivered: &mut bool) -> End<P::Error> {
-        let mut clock = Clock::new();
+        let mut clock = Clock::new(self.runtime.now());
         while let Some(command) = self.held.pop_front() {
             if let Some(end) = self.apply(connection, command, &clock).await {
                 return end;
@@ -500,25 +533,34 @@ impl<P: Protocol> Task<P> {
             // now would lose them, and they may be the liveness it lacks.
             let kept = connection.has_kept();
             if let Some(age) = self.timing.max_connection_age {
-                if !kept && clock.opened.elapsed() >= age {
+                if !kept && self.since(clock.opened) >= age {
                     return End::Rotation;
                 }
             }
             if let Some(interval) = self.timing.ping_interval {
-                if clock.last_ping.elapsed() >= interval {
-                    if let Err(err) = ping(&mut self.protocol, &self.timing, connection).await {
+                if self.since(clock.last_ping) >= interval {
+                    if let Err(err) = ping(
+                        self.runtime.as_ref(),
+                        &mut self.protocol,
+                        &self.timing,
+                        connection,
+                    )
+                    .await
+                    {
                         return End::Failed(err);
                     }
-                    clock.last_ping = Instant::now();
+                    clock.last_ping = self.runtime.now();
                 }
             }
-            let silent = clock.last_live.elapsed();
+            let silent = self.since(clock.last_live);
             if !kept && silent >= self.timing.stale_after {
                 return End::Stale(silent);
             }
-            let wait =
-                self.timing
-                    .next_wait(clock.last_ping.elapsed(), silent, clock.opened.elapsed());
+            let wait = self.timing.next_wait(
+                self.since(clock.last_ping),
+                silent,
+                self.since(clock.opened),
+            );
             tokio::select! {
                 biased;
                 () = self.events.closed() => return End::Gone,
@@ -530,10 +572,10 @@ impl<P: Protocol> Task<P> {
                         }
                     }
                 },
-                next = tokio::time::timeout(wait, connection.next()) => match next {
+                next = timeout(self.runtime.as_ref(), wait, connection.next()) => match next {
                     // A deadline fell due; the top of the loop sees to it.
-                    Err(_) => {}
-                    Ok(None) => {
+                    None => {}
+                    Some(None) => {
                         // A read that failed inside a request ends the stream
                         // with no close; it reads as an end with no code.
                         let closed = connection
@@ -541,11 +583,11 @@ impl<P: Protocol> Task<P> {
                             .unwrap_or_else(|| WsError::closed(None, String::new()));
                         return End::Closed(closed);
                     }
-                    Ok(Some(Err(err))) => return End::Failed(err.into()),
-                    Ok(Some(Ok(frame))) => {
+                    Some(Some(Err(err))) => return End::Failed(err.into()),
+                    Some(Some(Ok(frame))) => {
                         let decoded = self.protocol.decode(&frame);
                         if self.protocol.is_live(&frame, &decoded) {
-                            clock.last_live = Instant::now();
+                            clock.last_live = self.runtime.now();
                         }
                         if self.protocol.delivered(&frame, &decoded) {
                             *delivered = true;
@@ -561,7 +603,13 @@ impl<P: Protocol> Task<P> {
                                 Recovery::Reconnect | Recovery::Stop => return End::Failed(err),
                             },
                         }
-                        let sent = follow_up(&mut self.protocol, &self.timing, connection).await;
+                        let sent = follow_up(
+                            self.runtime.as_ref(),
+                            &mut self.protocol,
+                            &self.timing,
+                            connection,
+                        )
+                        .await;
                         if let Err(err) = sent {
                             return End::Failed(err);
                         }
@@ -585,17 +633,18 @@ impl<P: Protocol> Task<P> {
         let applied = tokio::select! {
             biased;
             () = self.events.closed() => return Some(End::Gone),
-            applied = tokio::time::timeout(
+            applied = timeout(
+                self.runtime.as_ref(),
                 self.timing.stale_after,
                 self.protocol.apply(connection, &mut self.membership, change),
             ) => applied,
         };
         match applied {
-            Ok(answer) => {
+            Some(answer) => {
                 let _ = reply.send(answer);
             }
-            Err(_) => {
-                let silent = clock.last_live.elapsed();
+            None => {
+                let silent = self.since(clock.last_live);
                 let _ = reply.send(Err(P::stalled(silent)));
                 return Some(End::Stale(silent));
             }
@@ -620,11 +669,11 @@ impl<P: Protocol> Task<P> {
             let Some(item) = self.events.try_send(item).map_err(|Gone| End::Gone)? else {
                 continue;
             };
-            let blocked = Instant::now();
+            let blocked = self.runtime.now();
             let mut waiting = Some(item);
             while let Some(item) = waiting.take() {
                 let next_ping = match (self.timing.ping_interval, &lost) {
-                    (Some(interval), None) => interval.saturating_sub(clock.last_ping.elapsed()),
+                    (Some(interval), None) => interval.saturating_sub(self.since(clock.last_ping)),
                     _ => Duration::MAX,
                 };
                 tokio::select! {
@@ -633,16 +682,23 @@ impl<P: Protocol> Task<P> {
                         Ok(slot) => slot.send(item),
                         Err(Gone) => return Err(End::Gone),
                     },
-                    () = tokio::time::sleep(next_ping) => {
+                    () = self.runtime.sleep(next_ping) => {
                         waiting = Some(item);
-                        if let Err(err) = ping(&mut self.protocol, &self.timing, connection).await {
+                        if let Err(err) = ping(
+                            self.runtime.as_ref(),
+                            &mut self.protocol,
+                            &self.timing,
+                            connection,
+                        )
+                        .await
+                        {
                             lost = Some(err);
                         }
-                        clock.last_ping = Instant::now();
+                        clock.last_ping = self.runtime.now();
                     }
                 }
             }
-            clock.last_live += blocked.elapsed();
+            clock.last_live += self.since(blocked);
         }
         match lost {
             Some(err) => Err(End::Failed(err)),

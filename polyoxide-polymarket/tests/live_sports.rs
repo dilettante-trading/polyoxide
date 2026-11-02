@@ -30,7 +30,7 @@ use polyoxide_polymarket::sports::{
 use polyoxide_test_support::{environmental, fail, transient, ResultExt};
 use polyoxide_ws::{
     tungstenite::{protocol::CloseFrame, Message},
-    Kind, Socket, WsError,
+    BoxSocket, Kind, WsError,
 };
 use serde_json::Value;
 use tokio::time::{timeout, timeout_at, Instant};
@@ -52,7 +52,7 @@ fn connect_failed<T>(error: SportsError) -> T {
 /// Open a raw socket through the kit's connect, which installs the TLS
 /// provider (DRIFT R9) and is bounded like the crate's own connects. A
 /// timeout fails as the crate reports one.
-async fn connect_raw() -> Socket {
+async fn connect_raw() -> BoxSocket {
     polyoxide_ws::connect(SPORTS_WS_URL, CONNECT_TIMEOUT)
         .await
         .unwrap_or_else(|source| match source.kind() {

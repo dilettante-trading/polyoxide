@@ -14,6 +14,16 @@ they would otherwise each carry:
   `with_timeout` bounds a connect of the caller's own, and
   `retrying_can_fix` says whether a reconnect can help after one failed, by a
   status rule the caller passes in.
+- The transport seam decides how a connection is dialled: `SocketTransport` is
+  the dial, `BoxSocket` the connection it returns, and `Capabilities` says
+  what the transport's sockets can do (send pings, see the server's pings,
+  carry handshake headers). `TungsteniteTransport` is the native dial and
+  `default_socket_transport` the target's choice. `transport_setters!` gives a
+  builder its `runtime` and `socket_transport` setters, `Connection::with_runtime`
+  and the `Supervisor`'s `runtime` and `socket_transport` setters put a
+  connection's and a supervisor's clocks, timers and spawns on the injected
+  runtime and its dial on the injected transport, and a transport that cannot
+  do what a caller asks fails as `Kind::Unsupported`.
 - `Connection` is the bare tier: one connection as a `Stream` of its frames,
   in `Mode::Data` (text and binary) or `Mode::All` (every frame). It answers
   the server's close with the RFC 6455 reply, says how the server closed, and

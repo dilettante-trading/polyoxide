@@ -59,9 +59,11 @@ rules: `sockets.md`.
   `ClobWsError::Authentication` stops the stream; a connection used after it closed reconnects
   (D19), though its class is `InvalidRequest`; any other failure reconnects exactly when its class
   is retriable, with no match over `tungstenite::Error`.
-- The connection is dialled by clob's per-address `dial` through `Protocol::connect` (D20), so
-  every address of a blackholed route is tried within `connect_timeout` per step under supervision
-  too.
+- The connection is dialled by the kit's `TungsteniteTransport::per_address()` (D20), the default
+  `socket_transport` of the market and user builders and of the bare tier's, so every address of a
+  blackholed route is tried within `connect_timeout` per step under supervision too. Their
+  `Protocol::connect` only maps a timed-out step to `ClobWsError::ConnectTimeout`. A
+  `socket_transport` set on the builder replaces the dial.
 - The URL is `wss://`, or `ws://` to a loopback host, which `MarketWsBuilder::url` enforces.
 - A change through `MarketMembership` (on the kit's `MembershipHandle<ClobMarketProtocol>`) is
   recorded before its frame is sent and sends the ids that change, once each. One whose connection

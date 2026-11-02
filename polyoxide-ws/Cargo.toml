@@ -16,6 +16,9 @@ categories = ["api-bindings", "web-programming::websocket"]
 # normal tree, and CI's scripts job fails on any crate outside it.
 [dependencies]
 futures-util = { workspace = true, features = ["sink"] }
+# `Box<S>: Sink` is behind futures-sink's `alloc`, which futures-util does not
+# turn on, and `BoxSocket` is a boxed sink.
+futures-sink = { version = "0.3", default-features = false, features = ["alloc"] }
 # The injected runtime every timer, clock read and spawn of the kit goes through.
 polyoxide-rt = { workspace = true }
 # Needed only to install a process-default CryptoProvider; see `tls.rs`.

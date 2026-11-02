@@ -1144,8 +1144,10 @@ impl Protocol for Dialer {
 
     fn connect(
         &mut self,
+        transport: Arc<dyn SocketTransport>,
+        runtime: Arc<dyn Runtime>,
         timeout: Duration,
-    ) -> impl Future<Output = Result<crate::Socket, TestError>> + Send {
+    ) -> impl Future<Output = Result<BoxSocket, TestError>> + Send {
         let dial = self.dials.fetch_add(1, Ordering::SeqCst);
         let failure = self.failing.contains(&dial).then_some(self.failure);
         let url = self.feed.url.clone();
@@ -1154,7 +1156,7 @@ impl Protocol for Dialer {
                 return Err(failure());
             }
             let request = url.as_str().into_client_request().map_err(WsError::from)?;
-            let socket = crate::connect(request, timeout).await?;
+            let socket = transport.connect(request, timeout, runtime).await?;
             Ok::<_, TestError>(socket)
         }
     }

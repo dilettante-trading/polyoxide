@@ -62,9 +62,9 @@ mod transport;
 
 pub use backoff::{Backoff, MIN_BACKOFF};
 pub use bare::{Connection, Mode};
-pub use connect::{
-    connect, connect_over, retrying_can_fix, with_timeout, Socket, DEFAULT_CONNECT_TIMEOUT,
-};
+#[cfg(not(target_arch = "wasm32"))]
+pub use connect::connect_over;
+pub use connect::{connect, retrying_can_fix, with_timeout, DEFAULT_CONNECT_TIMEOUT};
 pub use error::{Kind, WsError};
 pub use request::Correlated;
 pub use supervisor::{
