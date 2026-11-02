@@ -11,3 +11,5 @@ pub(crate) mod policy;
 pub(crate) mod request;
 pub(crate) mod symbol;
 pub(crate) mod weight;
+#[cfg(feature = "usdm-ws")]
+pub(crate) mod ws;
