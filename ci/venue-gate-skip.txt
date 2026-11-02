@@ -2,5 +2,8 @@
 # though a venue may name a product after one: in the foundation crates they
 # are ordinary words (`data` for a payload, `events` for a stream's items).
 # One word per line; `#` starts a comment.
+# `spot` is also a product class (`ProductClass::Spot`) and the name a made-up
+# product takes in the foundation crates' tests.
 data
 events
+spot

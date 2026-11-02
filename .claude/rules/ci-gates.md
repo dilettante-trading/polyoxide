@@ -109,10 +109,10 @@ on the PR that introduces it rather than halfway through a release.
 - each venue id, as a substring;
 - each product id, as an identifier segment (split at `_`, `-`, `.`, `::` and case boundaries, so
   `clob` in `clob_default` and `perps` in `PERPS_GENERAL`), less the generic words of
-  `ci/venue-gate-skip.txt` (`data` and `events`);
+  `ci/venue-gate-skip.txt` (`data`, `events` and `spot`);
 - each `<venue>.<product>:` prefix;
-- each venue's `identifiers` (Polymarket's `Poly-RateLimit`; Binance's `fapi`, `fstream` and
-  `X-MBX`, its hosts and weight header);
+- each venue's `identifiers` (Polymarket's `Poly-RateLimit`; Binance's `fapi`, `fstream`,
+  `X-MBX` and `api/v3`, its hosts, weight header and spot's path prefix);
 
 all read from cargo metadata. A hit passes only through a `gate_exceptions` entry,
 `{ path, term, reason }`, in the metadata of a crate of the hit's venue, and an entry that matches

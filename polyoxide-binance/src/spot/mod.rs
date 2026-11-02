@@ -24,12 +24,14 @@
 
 pub mod api;
 pub mod error;
+pub mod key;
 mod policy;
 pub mod request;
 pub mod types;
 pub mod weight;
 
 pub use error::SpotError;
+pub use key::key;
 pub use weight::WeightBudget;
 
 use polyoxide_core::{ClientConfig, HttpClient};

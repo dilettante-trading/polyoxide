@@ -27,6 +27,8 @@ rules file.
 - Each venue crate implements `KeySpace` once per product, in one place:
   - Binance's `usdm::key`: `UsdmKeys`, over `Symbol` (uppercases ASCII); `usdm::key(&symbol)`,
     `key::parse`, `key::symbol`.
+  - Binance's `spot::key`: `SpotKeys`, over `Symbol` (uppercases ASCII); `spot::key(&symbol)`,
+    `key::parse`, `key::symbol`.
   - Polymarket's `shared::keys`: `ClobKeys`, over `TokenId` (1 to 78 decimal digits, no leading
     zero), built with any of `clob`, `gamma` and `data`, since gamma and data name the clob's
     outcomes; `PerpsKeys`, over `InstrumentId` (written without leading zeros), built with `perps`.
@@ -40,8 +42,9 @@ rules file.
   `polyoxide::parse_key` hands a `RawKey` to the constructors of whichever enabled product it
   names. Every `KeyError` is an `InvalidRequest`.
 - Each `KeySpace` declares its product's `ProductClass` as `CLASS` (ADR 0001): `EventContract`
-  (the clob, Kalshi's `predictions`), `PerpetualFuture` (perps, USDⓈ-M) or `Spot` (no product yet),
-  `#[non_exhaustive]`, a variant added only when a product of that class lands. Every key carries it as
+  (the clob, Kalshi's `predictions`), `PerpetualFuture` (perps, USDⓈ-M) or `Spot` (Binance's
+  `spot`), `#[non_exhaustive]`, a variant added only when a product of that class lands. Every key
+  carries it as
   `MarketKey::class()`; it follows from the venue and product, so the text form, `Eq` and `Hash`
   are unchanged.
 - Each venue crate's `the_ids_are_the_ones_the_crate_registers` test holds its `VENUE`, product and

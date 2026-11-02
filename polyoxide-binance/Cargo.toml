@@ -194,12 +194,12 @@ features = ["usdm", "usdm-ws", "spot"]
 # the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`"
+readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`) and `spot` (spot market data); re-exported by the umbrella as `polyoxide::binance`"
 venue = "binance"
-products = ["usdm"]
-classes = { usdm = "perpetual-future" }
+products = ["usdm", "spot"]
+classes = { usdm = "perpetual-future", spot = "spot" }
 mirrors = ["binance"]
-identifiers = ["fapi", "fstream", "X-MBX"]
+identifiers = ["fapi", "fstream", "X-MBX", "api/v3"]
 
 [package.metadata.polyoxide.live.live_usdm]
 suite = "usdm"
