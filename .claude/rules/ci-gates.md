@@ -2,7 +2,7 @@
 paths:
   - ".github/workflows/ci.yml"
   - ".github/scripts/tests/**"
-  - "scripts/{api_removals,test_body_diff,venue_gate,gen_registry,public_api}.py"
+  - "scripts/{api_removals,test_body_diff,venue_gate,runtime_gate,gen_registry,public_api}.py"
   - "ci/**"
   - "**/Cargo.toml"
   - "docs/{s1-removals,s3-removals,s3-migration,rename-manifest,MUTANTS}.md"
@@ -95,6 +95,8 @@ on the PR that introduces it rather than halfway through a release.
   `rtds`, whose guide is its `mod.rs` docs); an entry fails once its module has a README.
 - `test_venue_gate.py` runs `scripts/venue_gate.py` (CAP-7) on the real tree, and on v0.39.0's
   core, which it must catch, so the job checks out every tag.
+- `test_runtime_gate.py` runs `scripts/runtime_gate.py` on the real tree, which must stay clean,
+  and on synthetic trees for each banned path, each skip and the opt-out.
 - `test_claude_rules.py` holds `.claude/rules/` to its contract (CLAUDE.md, "Where the rules
   live").
 - `test_gen_registry.py`, `test_spec_docs.py` (the endpoint counts CLAUDE.md and the spec indexes
@@ -119,6 +121,21 @@ nothing fails, so an exception never outlives what it excuses. Only a protected 
 probe that measured one venue's host, takes an exception, in that venue's crate (today the ws
 suites' `mod perps`, `mod binance` and their kin, excepted by `polyoxide-polymarket` and
 `polyoxide-binance`).
+
+## The runtime gate
+
+`scripts/runtime_gate.py` (no arguments; exit 0 when clean, 1 on a hit, each hit printed as
+`<path>:<line>: <banned path>`) holds every timer, monotonic clock read and spawn in the
+`src/**/*.rs` of `polyoxide-venue`, `-core`, `-ws`, `-polymarket`, `-binance` and `-kalshi` to the
+injected `polyoxide_rt::Runtime`, so a browser build can supply its own. It fails on
+`tokio::spawn`, `tokio::task::spawn`, any `tokio::time` path, `Instant::now(` and
+`SystemTime::now(`, and not clippy, whose `disallowed-methods` would also fire in every test and
+example, which use tokio legitimately. It skips an item under a `cfg` that names `test` outside a
+`not(..)`, the file a `mod x;` under one declares, `polyoxide-ws/src/test_server/` and every
+`scripted.rs`; `polyoxide-rt` implements the runtime and is not scanned. A line ending
+`// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is: the two in tree are the
+wall-clock reads, `UnixMillis::now` and `shared::auth::current_timestamp`, which are never
+injected. The scripts job runs it through `test_runtime_gate.py`.
 
 ## removals
 
