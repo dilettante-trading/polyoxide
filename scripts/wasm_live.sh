@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The nightly's browser job (spec D14, D17). It runs polyoxide-wasm-smoke's `browser_live` in
 # headless Chrome through wasm-bindgen-test-runner and writes what the nightly classifier reads:
-# libtest-json, since the classifier was written for nextest. A test that failed carries the
-# runner's output for it, with the `polyoxide-class=<tag>` line the tags print.
+# libtest-json, since the classifier was written for nextest (.github/scripts/wasm_live_convert.py).
+# A test that failed carries the runner's output for it, with the `polyoxide-class=<tag>` line the
+# tags print.
 #
 #   target/wasm-live/first-pass.json   every test, as ok or failed
 #   target/wasm-live/retry.json        the tests the classifier called transient, run once more
@@ -17,6 +18,13 @@ out=target/wasm-live
 binary='polyoxide-wasm-smoke::browser_live'
 mkdir -p "$out"
 rm -rf "$out"/*.log "$out"/*.json "$out"/probe "$out"/first-pass
+
+# The runner reads Chrome's arguments from polyoxide-wasm-smoke/webdriver.json (`--no-sandbox` among
+# them: a hosted runner restricts unprivileged user namespaces, and Chrome would not start).
+if [ ! -f polyoxide-wasm-smoke/webdriver.json ]; then
+  echo "wasm_live: polyoxide-wasm-smoke/webdriver.json is missing; the runner would start Chrome with its own arguments" >&2
+  exit 1
+fi
 
 for tool in wasm-bindgen wasm-bindgen-test-runner; do
   if ! command -v "$tool" >/dev/null; then
@@ -74,69 +82,17 @@ run() {
   shift
   RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
   CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
-  WASM_BINDGEN_TEST_TIMEOUT=800 \
+  WASM_BINDGEN_TEST_TIMEOUT=450 \
     cargo test -p polyoxide-wasm-smoke --target wasm32-unknown-unknown \
       --features live --test browser_live -- "$@" >"$log" 2>&1 </dev/null || true
   cat "$log" >&2
 }
 
-# convert <log> <json>: the runner's report as libtest-json events. A failed test's block is
-# dedented, and the panic report the hook leaves is given the `thread '...' panicked at` shape the
-# classifier looks for, so the tag line stays just above it.
+# convert <log> <json>: the runner's report as libtest-json events, by .github/scripts/
+# wasm_live_convert.py. It exits 1 (and so does this script) unless the runner's own summary counts
+# the tests it parsed: a test that never reported would read as a pass.
 convert() {
-  python3 -I - "$1" "$2" <<'PY'
-import json
-import re
-import sys
-
-log, out = sys.argv[1], sys.argv[2]
-BINARY = "polyoxide-wasm-smoke::browser_live"
-# The runner spells a failure `FAIL`; libtest's `FAILED` is read too.
-RESULT = re.compile(r"^test (\S+) \.\.\. (ok|FAILED|FAIL|ignored)\s*$")
-HEADING = re.compile(r"^---- (\S+) output ----\s*$")
-PANIC = re.compile(r"^panicked at ")
-
-lines = open(log, encoding="utf-8", errors="replace").read().splitlines()
-
-results = {}
-for line in lines:
-    found = RESULT.match(line.strip())
-    if found:
-        results[found[1]] = found[2]
-
-blocks, current = {}, None
-for line in lines:
-    heading = HEADING.match(line.strip())
-    if heading:
-        current = heading[1]
-        blocks[current] = []
-        continue
-    if current is None:
-        continue
-    text = line.strip()
-    if text.startswith(("failures:", "test result:")):
-        current = None
-        continue
-    if PANIC.match(text):
-        text = "thread 'main' " + text
-    blocks[current].append(text)
-
-if not results:
-    sys.exit("wasm_live: the runner printed no test results; the build or the runner failed")
-
-with open(out, "w", encoding="utf-8") as sink:
-    for name, outcome in results.items():
-        if outcome == "ignored":
-            continue
-        event = {
-            "type": "test",
-            "name": f"{BINARY}${name.rsplit('::', 1)[-1]}",
-            "event": "ok" if outcome == "ok" else "failed",
-        }
-        if outcome != "ok":
-            event["stdout"] = "\n".join(blocks.get(name, [])) + "\n"
-        sink.write(json.dumps(event) + "\n")
-PY
+  python3 -I .github/scripts/wasm_live_convert.py "$1" "$2"
 }
 
 # classify <json> <dir>: the classifier's own first pass, which writes retry-tests.txt and
@@ -164,8 +120,12 @@ if [ -s "$out/first-pass/retry-tests.txt" ]; then
   n=0
   while IFS= read -r name; do
     n=$((n + 1))
-    run "$out/retry-$n.log" "${name#*\$}"
+    run "$out/retry-$n.log" --exact "${name#*\$}"
     convert "$out/retry-$n.log" "$out/retry-$n.json"
+    if [ "$(wc -l <"$out/retry-$n.json")" -ne 1 ]; then
+      echo "wasm_live: the retry of ${name#*\$} did not run exactly that one test" >&2
+      exit 1
+    fi
     cat "$out/retry-$n.json" >>"$out/retry.json"
   done <"$out/first-pass/retry-tests.txt"
 fi
