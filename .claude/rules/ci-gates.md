@@ -197,8 +197,8 @@ It refuses a `wasm-bindgen-cli` whose version is not the `wasm-bindgen` one `Car
 since the runner rejects a module built by another. The suite covers `BrowserRuntime` (sleep,
 `sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, a sleep past
 `i32::MAX` ms), `FetchTransport` (a 200, a timeout, both 429s read through `ErrorResponse`) and
-`WebSocketTransport` (a text echo, a close with its code, a refused handshake header and ping
-frame). Three browser-only paths no host test reaches have a test each: a CLOB auth signature
+`WebSocketTransport` (a text echo, a close with its code, a send before the close is yielded and
+one after it, a refused handshake header and ping frame). Three browser-only paths no host test reaches have a test each: a CLOB auth signature
 through `Account::sign_clob_auth`, byte-equal to the host's py-clob-client golden vector, which
 drives the wasm32 `SendWrapper` arm of `sign_digest` in `clob/core/eip712.rs` around alloy's
 `?Send` `sign_hash` future (the smoke crate's browser dev-dependency on `polyoxide-polymarket`
@@ -208,6 +208,8 @@ it as one (reqwest's wasm client reports that cut-short read as a decode error);
 wait that paces on the runtime's clock, shown with a runtime running four times fast since quanta
 reads the same `performance.now()` in a Worker and a real-clock test cannot tell the two apart. Each
 test's failure was shown by breaking the one thing it pins, so a new test comes with the same proof.
+The send test pins only the after-close half: Chrome on localhost never holds the closing window, so
+the drop while closing is pinned by the host `send_state` tests alone.
 
 CI's job installs the wasm32 target and `wasm-bindgen-cli` at the locked version, and uses the
 runner's Chrome and chromedriver. Locally, the flake provides chromium, chromedriver (Linux) and

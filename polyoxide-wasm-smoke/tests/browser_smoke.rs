@@ -440,15 +440,16 @@ mod socket {
         );
     }
 
-    /// A send while the browser is closing is dropped, not failed: a supervisor reads
-    /// `AlreadyClosed` as the end of the stream, where a server's close should reconnect.
+    /// A send before the close is yielded succeeds, and one after it fails with
+    /// `AlreadyClosed`.
     ///
-    /// The window (the browser has the close frame, the close event is not yet read) is the
-    /// platform's to open, so this keeps sending between short polls until the close arrives:
-    /// every send before it must succeed, whichever side of the window it lands on, and the one
-    /// after it must fail. It cannot make the window open, but it never fails by a race.
+    /// This does not pin the drop while the browser is closing: Chrome on localhost never holds
+    /// that window open, so a send here lands before or after it, never in it. The host
+    /// `send_state` tests in `polyoxide-ws` pin the drop. What this pins is the end of the
+    /// stream: sends between short polls must all succeed until the close arrives, and the one
+    /// after it must fail, so it never fails by a race.
     #[wasm_bindgen_test]
-    async fn a_send_while_the_server_closes_is_dropped_and_one_after_the_close_fails() {
+    async fn a_send_before_the_close_is_yielded_succeeds_and_one_after_fails() {
         let mut socket = open(None).await.expect("the socket opens");
         socket
             .send(Message::Text("close".into()))
