@@ -328,7 +328,16 @@ change. The private items `usdm`'s unit tests use keep their names and signature
 `UsdmProtocol` and `Change` become aliases of the generic types (under `#[cfg(test)]`, since
 only the tests name them), and `UsdmWs::open`, `UsdmWs::close_frame` and the builder's
 `base_url` and `timing` fields stay. `Answer`, which no unit test names, moves to
-`shared::ws::request` (plan time, 2026-11-02).
+`shared::ws::request` (plan time, 2026-11-02). One hook cannot keep its body:
+`UsdmWs::close_frame`'s v0.40.0 body reads `self.connection`, which now lives inside
+`shared::ws::bare::Bare`, so that body moves unchanged to `Bare::close_frame` and the hook
+delegates to it; it takes a `[[drift]]` entry in `ci/test-body-diff.toml` (the new body's sha256)
+with a DRIFT row in `_bmad-output/specs/spec-venue-extensibility/divergences.md` saying so, the
+one exception to §5.2's "no new entry" (owner, 2026-11-02). A crate-private type in `shared::ws`
+that names `polyoxide_ws::WsError` without being a classified socket error (the `Shape` view's
+`Connect(&WsError)`, a test-only error) is named under its own spelling and takes an explicit,
+commented exemption in `.github/scripts/tests/test_classify_coverage.py`, never an import alias
+that hides it from the fence (owner, 2026-11-02).
 `supervision_usdm*` and `wire_agreement_usdm_ws` are its regression guard, unchanged, with
 `usdm`'s unit tests.
 
