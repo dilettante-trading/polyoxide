@@ -62,3 +62,9 @@ const _: fn() = || {
     fn bundle<T: polyoxide_venue::PerpetualMarket>() {}
     bundle::<usdm::Usdm>();
 };
+
+#[cfg(feature = "spot")]
+const _: fn() = || {
+    fn bundle<T: polyoxide_venue::SpotMarket>() {}
+    bundle::<spot::Spot>();
+};

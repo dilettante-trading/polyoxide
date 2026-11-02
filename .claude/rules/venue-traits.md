@@ -110,7 +110,8 @@ code that holds trait objects holds one per member. A bundle holds only what def
 capability other classes share, such as `Candles`, stays out, so a bundle never has to lose a
 member. Each venue crate's `lib.rs` pins its products to their bundles in a `const _` beside its
 `Classify` assertions: `Perps` (`perps`) and `Usdm` (`usdm`) to `PerpetualMarket`, `Clob`
-(`all(clob, gamma)`) and `Predictions` (`predictions`) to `EventContractMarket`.
+(`all(clob, gamma)`) and `Predictions` (`predictions`) to `EventContractMarket`, and `Spot`
+(`spot`) to `SpotMarket`.
 `polyoxide/tests/parse_key.rs` checks every product's class.
 
 ## The trading trait (feature `trading`, which turns on `market`; AD-3, AD-5, amendment A7-1)
