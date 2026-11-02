@@ -11,7 +11,7 @@
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Server};
-use polyoxide_core::reqwest::{Method, StatusCode};
+use polyoxide_core::http::{Method, StatusCode};
 use polyoxide_core::{
     ApiError, AttemptInfo, CapacityBucket, Charge, Cost, Hold, HttpClient, HttpClientBuilder,
     LayerCharge, LayerId, Refused, RequestMeta, RequestParts, ResponseMeta, Throttle,

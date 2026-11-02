@@ -11,7 +11,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::reqwest::StatusCode;
+use polyoxide_core::http::StatusCode;
 use polyoxide_core::{ApiError, ErrorResponse};
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
