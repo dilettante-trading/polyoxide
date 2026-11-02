@@ -292,7 +292,7 @@ def test_the_allowlists_exist() -> None:
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
 def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
     # The rules admit the HTTP stack with an HTTP module, alloy with clob or
-    # relay, keyring with keychain, Binance's socket stack with usdm-ws,
+    # relay, keyring with keychain, Binance's socket stack with usdm-ws or spot-ws,
     # Kalshi's HTTP stack with predictions and its socket stack with
     # predictions-ws; if no file held them, a rule that never refuses
     # anything could not be told from one that holds.
@@ -461,12 +461,14 @@ def test_binances_rest_module_may_not_build_the_socket_stack() -> None:
 
 
 def test_binances_rest_and_test_server_features_do_not_turn_on_the_streams() -> None:
-    # The real table: a `usdm` or `test-server` that came to imply `usdm-ws`
-    # would admit the socket stack, and `@usdm` would pass listing it.
+    # The real table: a `usdm`, `spot` or `test-server` that came to imply `usdm-ws`
+    # or `spot-ws` would admit the socket stack, and `@usdm` would pass listing it.
     table = feature_table(BINANCE)
-    for feature in ("usdm", "test-server"):
+    for feature in ("usdm", "spot", "test-server"):
         assert "usdm-ws" not in enabled((feature,), table), feature
+        assert "spot-ws" not in enabled((feature,), table), feature
     assert "usdm" in enabled(("usdm-ws",), table)
+    assert "spot" in enabled(("spot-ws",), table)
 
 
 # A trimmed stand-in for Kalshi's `[features]`: `predictions` is the REST module, and
@@ -605,7 +607,7 @@ def test_the_umbrellas_binance_spot_feature_is_http_only_and_part_of_binance_and
 
 def test_binances_spot_allowlist_is_the_rest_tree_and_builds_no_socket_stack() -> None:
     # `spot` is an HTTP module like `usdm`: it builds core and reqwest, and none of
-    # the socket stack, which only `usdm-ws` admits. The file must list core, or a
+    # the socket stack, which only `usdm-ws` or `spot-ws` admits. The file must list core, or a
     # rule that admitted nothing could not be told from one that holds.
     path = ALLOWLISTS / "polyoxide-binance@spot.txt"
     assert path.exists(), "run `uv run python -m tests.test_dep_allowlists --write`"
