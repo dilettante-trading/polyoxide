@@ -154,4 +154,5 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
   reads a second measured clean, less a tenth). A keyed client's public reads draw on a second
   bucket sized as the unsigned client's, so only `GET /account/limits` draws on the key's bucket,
   which holds its published capacity like the signer buckets (the signed probe ran on the demo
-  host; production signed public reads are unmeasured).
+  host; production signed public reads are unmeasured). Both buckets share one `Hold` on the
+  client's runtime (`PredictionsThrottle::new_on`).

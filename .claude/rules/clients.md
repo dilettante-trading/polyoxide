@@ -20,9 +20,10 @@ paths:
   Binance and Kalshi 4; clob 8) and gets its six transport setters, `base_url`, `timeout_ms`,
   `pool_size`, `with_retry_config`, `max_concurrent` and `runtime`, from
   `polyoxide_core::client_config_setters!`; `runtime` names `polyoxide_rt::Runtime`, which core
-  does not re-export, so the venue crate declares `polyoxide-rt` itself. Its `build` starts from
-  `ClientConfig::http_builder()` and adds the throttle and retry policy the venue installs; the
-  config sets no `gzip`.
+  does not re-export, so the venue crate declares `polyoxide-rt` itself. Its `build` resolves the
+  runtime once with `ClientConfig::runtime_or_default()`, starts from
+  `ClientConfig::http_builder()` and gives it `HttpClientBuilder::runtime`, and adds the throttle
+  (built on the same runtime) and retry policy the venue installs; the config sets no `gzip`.
 - A venue's own knobs stay on its builder:
   - data: `pnl_base_url`, `rankings_base_url`;
   - perps: `with_rate_limiter`;

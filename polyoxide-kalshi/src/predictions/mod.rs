@@ -189,10 +189,12 @@ impl PredictionsBuilder {
                 "the base URL must be a scheme and host with no path: {base}"
             ))));
         }
-        let throttle = PredictionsThrottle::new();
+        let runtime = self.config.runtime_or_default();
+        let throttle = PredictionsThrottle::new_on(runtime.clone());
         let http = self
             .config
             .http_builder()
+            .runtime(runtime)
             .with_throttle(throttle.clone())
             .build()?;
         Ok(Predictions {
@@ -210,6 +212,20 @@ impl PredictionsBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_builders_runtime_is_the_clients_and_the_throttles() {
+        let runtime: Arc<dyn polyoxide_rt::Runtime> = Arc::new(polyoxide_rt::TokioRuntime);
+        let kalshi = Predictions::builder()
+            .runtime(runtime.clone())
+            .build()
+            .unwrap();
+        assert!(Arc::ptr_eq(kalshi.inner.http.runtime(), &runtime));
+        assert!(Arc::ptr_eq(
+            kalshi.inner.throttle.bucket().hold().runtime(),
+            &runtime
+        ));
+    }
 
     #[test]
     fn the_default_client_targets_production_and_the_demo_host_is_a_builder_away() {
