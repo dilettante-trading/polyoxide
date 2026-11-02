@@ -3,7 +3,7 @@
 Upstream API documentation for Claude, one directory per host of each venue polyoxide
 reads. Source of truth for endpoint contracts, rate limits, auth schemes, and response
 schemas: Polymarket's as Polymarket documents them, and Binance's, which publishes no spec
-for USDⓈ-M, as its hosts were observed to behave, and Kalshi's, which publishes an OpenAPI and an AsyncAPI, as it publishes them, with what its hosts were observed to do beside them ([Other venues](#other-venues)).
+for USDⓈ-M and none current for spot, as its hosts were observed to behave, and Kalshi's, which publishes an OpenAPI and an AsyncAPI, as it publishes them, with what its hosts were observed to do beside them ([Other venues](#other-venues)).
 
 The specs are sourced from https://docs.polymarket.com (Polymarket's) and https://docs.kalshi.com (Kalshi's), and the OpenAPI specs at:
 <!-- generated:begin index-upstream -->

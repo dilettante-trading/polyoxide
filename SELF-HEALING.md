@@ -5,7 +5,7 @@ changes, new endpoints, and behavioral tweaks without notice; this document
 describes the machinery that detects that drift every night and reports it
 without a human in the loop. Polymarket publishes specs, so its drift shows two
 ways, in the live tests and against the vendored mirrors, and so does Kalshi's drift; Binance publishes none
-for USDⓈ-M, so its live suites are its only drift check.
+for USDⓈ-M and none current for spot, so its live suites are its only drift check.
 
 ## The loop at a glance
 

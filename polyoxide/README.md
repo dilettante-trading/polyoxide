@@ -8,7 +8,7 @@ behind features named for the venue and its modules.
 | `polyoxide::venue` | `polyoxide-venue`: the vocabulary every venue shares, such as the error classes and `Classify`, and, with any module that implements them, the market-data traits (`MarketData` and its capabilities) | always on |
 | `polyoxide::parse_key` | Reads a market key, `venue.product:id`, through the constructors of the enabled product it names | any module with keys |
 | `polyoxide::polymarket` | `polyoxide-polymarket`: [Polymarket](https://polymarket.com)'s CLOB, Gamma, Data, Relay, Perps, RTDS and Sports modules, and the unified `Polymarket` client | `polymarket` and `polymarket-<module>` |
-| `polyoxide::binance` | `polyoxide-binance`: Binance's USDⓈ-M futures market data and streams | `binance` and `binance-<module>` |
+| `polyoxide::binance` | `polyoxide-binance`: Binance's USDⓈ-M futures market data and streams, and its spot market data | `binance` and `binance-<module>` |
 | `polyoxide::kalshi` | `polyoxide-kalshi`: Kalshi's Predictions market data, candles and streams | `kalshi` and `kalshi-<module>` |
 | `polyoxide::prelude` | A selection of the enabled modules' clients, errors and stream types | |
 
@@ -43,6 +43,9 @@ cargo add polyoxide --no-default-features --features polymarket-data
 # Binance USDⓈ-M futures market data and its streams
 cargo add polyoxide --no-default-features --features binance-usdm-ws
 
+# Binance spot market data
+cargo add polyoxide --no-default-features --features binance-spot
+
 # Kalshi event-contract market data and its streams
 cargo add polyoxide --no-default-features --features kalshi-predictions-ws
 
@@ -66,9 +69,10 @@ A `-ws` feature turns its module's own feature on.
 | `polymarket-perps-ws` | no | Perps WebSocket streaming via `polyoxide-polymarket`'s `perps-ws` feature |
 | `polymarket-rtds` | no | RTDS crypto price streams via `polyoxide-polymarket`'s `rtds` module |
 | `polymarket-sports` | no | Live sports scores via `polyoxide-polymarket`'s `sports` module |
-| `binance` | no | `binance-usdm`, `polyoxide-binance`'s defaults |
+| `binance` | no | `binance-usdm` + `binance-spot`, `polyoxide-binance`'s defaults |
 | `binance-usdm` | no | Binance USDⓈ-M futures market data via `polyoxide-binance`'s `usdm` module |
 | `binance-usdm-ws` | no | Binance USDⓈ-M market streams via `polyoxide-binance`'s `usdm-ws` feature |
+| `binance-spot` | no | Binance spot market data via `polyoxide-binance`'s `spot` module |
 | `kalshi` | no | `kalshi-predictions`, `polyoxide-kalshi`'s defaults |
 | `kalshi-predictions` | no | Kalshi event-contract market data and candles via `polyoxide-kalshi`'s `predictions` module |
 | `kalshi-predictions-ws` | no | Kalshi order-book, ticker and trade streams via `polyoxide-kalshi`'s `predictions-ws` feature |
