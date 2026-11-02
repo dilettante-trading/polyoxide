@@ -265,9 +265,9 @@ exclude = "The surface is almost entirely absent from the published CLOB and rel
 [workspace.metadata.polyoxide.mirrors.binance]
 name = "Binance USDⓈ-M and spot"
 section = "other-venue"
-base_urls = ["https://fapi.binance.com", "https://api.binance.com", "wss://fstream.binance.com"]
-description = "Futures and spot public market data, and the futures market streams. No published spec, so not a mirror"
-crate_note = "streams behind `usdm-ws`"
+base_urls = ["https://fapi.binance.com", "https://api.binance.com", "wss://fstream.binance.com", "wss://stream.binance.com:9443"]
+description = "Futures and spot public market data, and the futures and spot market streams. No published spec, so not a mirror"
+crate_note = "streams behind `usdm-ws` and `spot-ws`"
 exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; spot's `spot_api.yaml` (in `binance-api-swagger`) was last released on 2024-10-08 and lacks fields the wire sends today, so a diff of it would never fire. The live suites in `polyoxide-binance` are the drift check."
 
 [workspace.metadata.polyoxide.mirrors.kalshi]

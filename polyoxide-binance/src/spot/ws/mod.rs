@@ -1,17 +1,39 @@
 //! Spot market streams on `stream.binance.com`.
 //!
-//! Spot has one combined-stream path, `/stream`, on `SPOT_WS_BASE`. Binance
-//! acknowledges every `SUBSCRIBE`, including a stream type that does not exist,
-//! an uppercase symbol and an unknown symbol, and none of those deliver
-//! anything, so a stream is named only through `StreamName`, which builds the
-//! spellings Binance serves. A frame is an `Update`: the stream it arrived on
-//! and its `Payload`.
+//! Binance serves spot's streams on one combined path, `/stream`: every
+//! [`StreamName`] is a name on it, the bare [`SpotWs`] holds one connection,
+//! and the supervised tier ([`SpotWsBuilder`]) keeps that connection up,
+//! reconnecting, replaying its streams and replacing it before Binance's
+//! 24-hour cutoff.
 //!
-//! Binance enforces its connection rules by closing the connection, so the
-//! clients hold them first: at most `MAX_STREAMS_PER_CONNECTION` streams,
-//! `MAX_NAMES_PER_REQUEST` names per request and one request per
-//! `MIN_REQUEST_INTERVAL`. The measurements are in
-//! `docs/specs/binance/OBSERVED.md`, under `## Spot`.
+//! Binance acknowledges every `SUBSCRIBE` and enforces its connection rules by
+//! closing the connection, so both tiers enforce them before sending: at most
+//! [`MAX_STREAMS_PER_CONNECTION`] streams, [`MAX_NAMES_PER_REQUEST`] names per
+//! request, and one request per [`MIN_REQUEST_INTERVAL`]. The host closes a
+//! connection that receives more than five messages a second, requests, pings
+//! and pongs counted, and bans an address it disconnects repeatedly, so the
+//! pace is not a knob: a request every 250 ms was closed with 1008 "Too many
+//! requests" where one every 500 ms held. The measurements are in
+//! `docs/specs/binance/OBSERVED.md`.
+//!
+//! ```no_run
+//! use futures_util::StreamExt;
+//! use polyoxide_binance::spot::{types::Symbol, ws::{Event, SpotWsBuilder, StreamName}};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let btc = Symbol::new("BTCUSDT")?;
+//! let mut feed = SpotWsBuilder::new()
+//!     .streams([StreamName::AggTrade(btc.clone()), StreamName::BookTicker(btc)])
+//!     .connect()
+//!     .await?;
+//! while let Some(event) = feed.next().await {
+//!     if let Event::Update(update) = event? {
+//!         println!("{}", update.stream);
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
 
 // The test-only `scripted` below is a second `mod` item over `usdm::ws`'s scripted
 // server; the allow sits here, not on the item, because the test-bodies gate reads an

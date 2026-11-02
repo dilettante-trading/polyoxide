@@ -69,7 +69,7 @@ jobs:
         with:
           crate: polyoxide-binance
           suite: spot
-          flags: "--no-default-features --features spot --test live_spot"
+          flags: "--no-default-features --features spot,spot-ws --test live_spot --test live_spot_ws"
 
   live-polyoxide-kalshi-predictions:
     name: Live tests (polyoxide-kalshi, predictions)
