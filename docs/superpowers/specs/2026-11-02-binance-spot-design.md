@@ -325,8 +325,10 @@ Each product's public types (`UsdmWs`, `UsdmWsBuilder`, `SupervisedUsdmWs`, `Mem
 `Event`, `DisconnectReason`, its error and `StopCause`) stay its own structs and enums, wrapping
 or feeding the generic code, so `usdm`'s public paths, names, signatures and docs' meaning do not
 change. The private items `usdm`'s unit tests use keep their names and signatures:
-`UsdmProtocol` and `Change` become aliases of the generic types, and `UsdmWs::open`,
-`UsdmWs::close_frame`, `Answer` and the builder's `base_url` and `timing` fields stay.
+`UsdmProtocol` and `Change` become aliases of the generic types (under `#[cfg(test)]`, since
+only the tests name them), and `UsdmWs::open`, `UsdmWs::close_frame` and the builder's
+`base_url` and `timing` fields stay. `Answer`, which no unit test names, moves to
+`shared::ws::request` (plan time, 2026-11-02).
 `supervision_usdm*` and `wire_agreement_usdm_ws` are its regression guard, unchanged, with
 `usdm`'s unit tests.
 
