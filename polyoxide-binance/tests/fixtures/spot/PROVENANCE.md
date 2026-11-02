@@ -21,3 +21,23 @@ Captured 2026-11-02 from `https://api.binance.com` by `scripts/capture_binance_s
 | `book_ticker.json` | `GET /api/v3/ticker/bookTicker?symbol=BTCUSDT` | as fetched |
 | `book_tickers.json` | `GET /api/v3/ticker/bookTicker` | `BTCUSDT`, `ETHUSDT`, `币安人生USDT` |
 | `error_invalid_symbol.json` | `GET /api/v3/exchangeInfo?symbol=NOPEUSDT` | the body of the `400` reply (`code` -1121), as fetched |
+
+## Streams (ws/)
+
+Captured 2026-11-02 from `wss://stream.binance.com:9443/stream` by `scripts/capture_binance_spot.py ws`. No credentials. One connection and one `SUBSCRIBE` (`id` 1) of the 11 names below, answered `{"result":null,"id":1}`; the first combined-stream envelope (`{"stream", "data"}`) of each, within 30 s, every key kept.
+
+| File | Stream | Trimmed to |
+|---|---|---|
+| `stream_btcusdt_aggTrade.json` | `btcusdt@aggTrade` | as fetched |
+| `stream_btcusdt_trade.json` | `btcusdt@trade` | as fetched |
+| `stream_btcusdt_kline_1m.json` | `btcusdt@kline_1m` | as fetched |
+| `stream_btcusdt_miniTicker.json` | `btcusdt@miniTicker` | as fetched |
+| `stream_all_miniTicker_arr.json` | `!miniTicker@arr` | `data`: the first two rows |
+| `stream_btcusdt_ticker.json` | `btcusdt@ticker` | as fetched |
+| `stream_btcusdt_bookTicker.json` | `btcusdt@bookTicker` | as fetched |
+| `stream_btcusdt_depth5.json` | `btcusdt@depth5` | as fetched |
+| `stream_btcusdt_depth20_100ms.json` | `btcusdt@depth20@100ms` | `bids` and `asks`: the first three levels each |
+| `stream_btcusdt_avgPrice.json` | `btcusdt@avgPrice` | as fetched |
+| `stream_non_ascii_miniTicker.json` | `币安人生usdt@miniTicker` | as fetched |
+
+The non-ASCII stream is for `币安人生USDT`, the first `TRADING` symbol in `GET /api/v3/exchangeInfo` with a non-ASCII character, its ASCII letters lowercased in the stream name (`币安人生usdt@miniTicker`).
