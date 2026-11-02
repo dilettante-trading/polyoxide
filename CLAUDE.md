@@ -92,7 +92,7 @@ Run the jobs a change touches before pushing (inside `nix develop`); `-D warning
 ## Workspace
 
 <!-- generated:begin claude-crate-count -->
-Eleven crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
+Twelve crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
 <!-- generated:end claude-crate-count -->
 <!-- generated:begin claude-graph -->
 - `polyoxide-rt` — The runtime seam: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them; needs: nothing in the workspace; names no venue, which `scripts/venue_gate.py` holds, and builds futures-channel, futures-util and web-time on every target, tokio (`rt` and `time`) on a host, and getrandom, gloo-timers, send_wrapper and wasm-bindgen-futures on `wasm32`
@@ -106,6 +106,7 @@ Eleven crates, in publish order, each with the workspace crates its build needs.
 - `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`, without default features), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features), `polyoxide-venue` (under `keychain`); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
 - `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-polymarket` (with `clob`, `gamma`, `data`, without default features), `polyoxide-venue`
 - `polyoxide-test-support` — Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`); needs: `polyoxide-core` (with `keychain`), `polyoxide-venue`; a path-only dev-dependency of the crates whose tests use it; it names no venue
+- `polyoxide-wasm-smoke` — The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push (`publish = false`); needs: `polyoxide-ws` (with `test-server`); published after `polyoxide-core`, a versioned dev-dependency; native server, wasm32 tests; nothing depends on it
 <!-- generated:end claude-graph -->
 <!-- generated:begin claude-cli-deps -->
 Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depends directly on the component crates — `polyoxide-binance` (with `usdm-ws`, without default features) and `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features) — plus `polyoxide-core` (with `keychain`) and `polyoxide-venue` only under the optional `keychain` feature.

@@ -4225,6 +4225,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-wasm-smoke"
+version = "0.44.0"
+dependencies = [
+ "futures-util",
+ "mockito",
+ "polyoxide-core",
+ "polyoxide-ws",
+ "tokio",
+ "tungstenite",
+]
+
+[[package]]
 name = "polyoxide-ws"
 version = "0.44.0"
 dependencies = [

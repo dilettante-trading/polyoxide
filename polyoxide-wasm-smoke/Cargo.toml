@@ -1,0 +1,33 @@
+[package]
+name = "polyoxide-wasm-smoke"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push"
+# Never published: it is a test harness, and nothing depends on it.
+publish = false
+
+# The message vocabulary, in the server (native) and the browser tests (wasm32).
+[dependencies]
+tungstenite = { version = "0.26", default-features = false }
+
+# The server is native only, and its socket is the kit's scripted test server.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mockito = { workspace = true }
+polyoxide-ws = { workspace = true, features = ["test-server"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+# The server's own tests read it as a client: core's re-exported reqwest for the routes,
+# the kit's `connect` for the socket.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+futures-util = { workspace = true, features = ["sink"] }
+polyoxide-core = { workspace = true }
+
+# Registration, read by scripts/gen_registry.py: the README line and the notes CLAUDE.md's
+# crate list carries. Run `python3 scripts/gen_registry.py --write` after an edit.
+[package.metadata.polyoxide]
+readme = "The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push (`publish = false`)"
+notes = ["native server, wasm32 tests; nothing depends on it"]

@@ -10,6 +10,7 @@ members = [
   "polyoxide-rt",
   "polyoxide-test-support",
   "polyoxide-venue",
+  "polyoxide-wasm-smoke",
   "polyoxide-ws",
 ]
 exclude = ["tombstones"]
