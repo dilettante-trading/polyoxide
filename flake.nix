@@ -66,6 +66,15 @@
               pkgs.cargo-nextest
               pkgs.uv
               pkgs.python3
+              # The browser smoke suite (scripts/wasm_smoke.sh): the runner must be the
+              # wasm-bindgen version Cargo.lock pins, which the script checks.
+              pkgs.wasm-bindgen-cli
+            ]
+            # nixpkgs has no chromium for darwin; there the installed Chrome and a chromedriver
+            # on PATH (or CHROMEDRIVER) do.
+            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+              pkgs.chromium
+              pkgs.chromedriver
             ];
           };
         }

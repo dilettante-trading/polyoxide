@@ -26,6 +26,15 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 futures-util = { workspace = true, features = ["sink"] }
 polyoxide-core = { workspace = true }
 
+# The browser tests: the three implementations, and the vocabulary to drive them.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+futures-util = { workspace = true, features = ["sink"] }
+polyoxide-core = { workspace = true }
+polyoxide-rt = { workspace = true }
+polyoxide-ws = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen-test = "0.3"
+
 # Registration, read by scripts/gen_registry.py: the README line and the notes CLAUDE.md's
 # crate list carries. Run `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
