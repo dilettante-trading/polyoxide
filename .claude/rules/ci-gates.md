@@ -268,6 +268,9 @@ stage does not hold, printing each one's key to copy there.
   kit, gated to native (`connect_tests::addr`, `address_families_are_interleaved` and
   `single_family_lists_pass_through_unchanged`); and `live_sports`' `connect_raw`, returning a
   `BoxSocket`.
+- `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
+  `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
+  that code off the browser build, which changes what gates its tests and nothing they assert.
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

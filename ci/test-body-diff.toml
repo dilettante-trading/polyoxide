@@ -88,6 +88,13 @@
 # Add each [[drift]] or [[retired]] entry below as its own table. S2's entries
 # went with the switch to S3, whose baseline is the S2 release.
 
+# The kit's host-only code is gated off wasm32 (the wasm32 seams' story 7): the scripted
+# test server and the TLS install sit under `not(target_arch = "wasm32")`, which changes no
+# test's body, only what gates it, so the gate is dropped at HEAD.
+[gates]
+"polyoxide-ws/src/test_server" = 'not(target_arch = "wasm32")'
+"polyoxide-ws/src/tls.rs" = 'not(target_arch = "wasm32")'
+
 [[drift]]
 file = "polyoxide-polymarket/tests/mock_gamma.rs"
 item = "get_many_fans_out_closed_true_and_false"
