@@ -23,7 +23,7 @@ const FAR_FUTURE: Duration = Duration::from_secs(86_400 * 365 * 30);
 /// release all of them early. [`wait`](Self::wait) re-reads the deadline
 /// after waking, so a hold extended mid-wait is honoured in full.
 ///
-/// A hold keeps time on a [`Runtime`](polyoxide_rt::Runtime): it reads its
+/// A hold keeps time on a [`Runtime`]: it reads its
 /// deadline off the runtime's clock and its waits sleep on the runtime.
 /// [`unbounded`](Self::unbounded) and [`with_ceiling`](Self::with_ceiling)
 /// take the target's default runtime, [`unbounded_on`](Self::unbounded_on) and

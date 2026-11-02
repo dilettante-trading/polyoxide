@@ -479,6 +479,9 @@ pub struct WindowQuotaTable {
     buckets: Vec<Arc<Bucket>>,
     rows: Vec<EndpointLimit>,
     hold: Hold,
+    /// Whether [`with_hold`](Self::with_hold) replaced the table's own hold,
+    /// which [`with_runtime`](Self::with_runtime) would undo.
+    hold_shared: bool,
 }
 
 impl WindowQuotaTable {
@@ -495,6 +498,7 @@ impl WindowQuotaTable {
             buckets: Vec::new(),
             rows: Vec::new(),
             hold: Hold::unbounded(),
+            hold_shared: false,
         };
         table.bucket(count, period);
         table
@@ -573,6 +577,7 @@ impl WindowQuotaTable {
     /// The limiter keeps time on the hold's runtime.
     pub fn with_hold(&mut self, hold: Hold) -> &mut Self {
         self.hold = hold;
+        self.hold_shared = true;
         self
     }
 
@@ -581,7 +586,16 @@ impl WindowQuotaTable {
     /// replacing the one it has, so call it before
     /// [`with_hold`](Self::with_hold), whose hold brings its own runtime.
     /// Default: the target's default runtime.
+    ///
+    /// # Panics
+    ///
+    /// In a debug build, when [`with_hold`](Self::with_hold) was called
+    /// first, since this would silently undo the shared hold.
     pub fn with_runtime(&mut self, runtime: Arc<dyn Runtime>) -> &mut Self {
+        debug_assert!(
+            !self.hold_shared,
+            "WindowQuotaTable::with_runtime called after with_hold: it would replace the shared hold; call with_runtime first"
+        );
         self.hold = Hold::unbounded_on(runtime);
         self
     }
@@ -1184,5 +1198,14 @@ mod tests {
         assert!(!check("/trades/123"), "sub-path should not match");
         assert!(!check("/trades?limit=10"), "query params should not match");
         assert!(!check("/traded"), "different word should not match");
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "with_runtime called after with_hold")]
+    fn with_runtime_after_with_hold_is_refused() {
+        let mut table = WindowQuotaTable::new(10, Duration::from_secs(1));
+        table.with_hold(Hold::unbounded());
+        table.with_runtime(polyoxide_rt::default_runtime());
     }
 }
