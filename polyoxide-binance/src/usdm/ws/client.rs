@@ -291,7 +291,7 @@ impl UsdmWs {
             return Err(UsdmWsError::from(WsError::from(
                 polyoxide_ws::tungstenite::Error::Io(std::io::Error::new(
                     std::io::ErrorKind::Unsupported,
-                    "a ping frame is not supported by this transport",
+                    "a ping frame is not supported by the browser transport",
                 )),
             )));
         }
