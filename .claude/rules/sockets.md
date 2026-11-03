@@ -144,6 +144,12 @@ it; each venue keeps only its protocol's answer and its fixtures.
   replies, pongs, pings received, accept times and end counts. `wait_for` polls for 5 s.
 - Helpers: `fast()` (a `Timing` of 50 ms pings, 300 ms staleness and 10 to 20 ms backoff),
   `next_item`, `next_event` and `drain`.
+- `browser_like()` (`BrowserLike`) is the one test transport that behaves as the browser's does:
+  it dials as `TungsteniteTransport` does, reports all-`false` capabilities, drops the server's
+  pings before the reader, and refuses a ping, pong or raw frame it is asked to send with the
+  browser transport's own `Kind::Unsupported` error (`browser.rs`'s `outgoing` decides, so the two
+  refuse alike). A suite that tests how a protocol adapts to a browser (Binance's keepalive,
+  sports' staleness) uses it, so a protocol that sends a frame a browser cannot fails the test.
 
 ## The browser transport (`src/browser.rs`)
 

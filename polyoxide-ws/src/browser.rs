@@ -7,8 +7,11 @@
 //! send, which frames it cannot) is plain Rust, built on every target so the
 //! host's tests pin it.
 
-#[cfg(any(target_arch = "wasm32", test))]
-mod plain {
+// The test server's browser-like transport (`test-server`) refuses a frame by
+// `outgoing`, so the two refuse alike; the rest is wasm32's and the tests'.
+#[cfg(any(target_arch = "wasm32", test, feature = "test-server"))]
+#[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
+pub(crate) mod plain {
     use std::io;
 
     use crate::tungstenite::{
@@ -102,7 +105,7 @@ mod plain {
 
     /// A frame the browser can send, with the form it takes there.
     #[derive(Debug, PartialEq, Eq)]
-    pub(super) enum Outgoing<'a> {
+    pub(crate) enum Outgoing<'a> {
         Text(&'a str),
         Binary(&'a [u8]),
         Close { code: u16, reason: &'a str },
@@ -111,7 +114,7 @@ mod plain {
     /// What sending `message` means to the browser, or why it cannot.
     // The error is tungstenite's, the type `SocketIo` and `WsError` take.
     #[allow(clippy::result_large_err)]
-    pub(super) fn outgoing(message: &Message) -> Result<Outgoing<'_>, Error> {
+    pub(crate) fn outgoing(message: &Message) -> Result<Outgoing<'_>, Error> {
         match message {
             Message::Text(text) => Ok(Outgoing::Text(text.as_str())),
             Message::Binary(bytes) => Ok(Outgoing::Binary(bytes.as_ref())),

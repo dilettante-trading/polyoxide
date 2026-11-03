@@ -717,34 +717,7 @@ async fn supervision_logs_under_the_polyoxide_ws_target() {
     ws.close().await.unwrap();
 }
 
-use polyoxide_rt::{BoxFuture, Runtime};
-use polyoxide_ws::{
-    tungstenite::http, BoxSocket, Capabilities, SocketTransport, TungsteniteTransport, WsError,
-};
-
-/// A transport that reports what a browser's socket can do (no protocol pings
-/// either way, no handshake headers) and dials as the native one does.
-#[derive(Debug)]
-struct BrowserLike(TungsteniteTransport);
-
-impl SocketTransport for BrowserLike {
-    fn connect(
-        &self,
-        request: http::Request<()>,
-        timeout: Duration,
-        runtime: Arc<dyn Runtime>,
-    ) -> BoxFuture<Result<BoxSocket, WsError>> {
-        self.0.connect(request, timeout, runtime)
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities::new(false, false, false)
-    }
-}
-
-fn browser_like() -> Arc<dyn SocketTransport> {
-    Arc::new(BrowserLike(TungsteniteTransport::new()))
-}
+use polyoxide_ws::{test_server::browser_like, TungsteniteTransport};
 
 /// The requests the server received whose method is `method`, in order.
 fn requests_of(server: &ScriptedServer, method: &str) -> Vec<serde_json::Value> {
