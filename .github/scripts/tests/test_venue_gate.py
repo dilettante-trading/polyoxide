@@ -278,7 +278,7 @@ def test_a_product_with_a_digit_is_caught(tmp_path: Path) -> None:
 
 
 def test_the_skip_list_holds_the_generic_words() -> None:
-    assert gate.read_skip(REPO) == {"data", "events"}
+    assert gate.read_skip(REPO) == {"data", "events", "spot"}
 
 
 def test_the_real_tree_passes_and_every_exception_matches() -> None:

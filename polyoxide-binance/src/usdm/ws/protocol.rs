@@ -1,342 +1,56 @@
-//! Binance's socket protocol for one routed path, as the kit's `Supervisor`
-//! drives it. The supervised tier runs one supervisor per path.
+//! USDⓈ-M's stream set for Binance's socket protocol, which lives in
+//! `shared::ws` and is generic over it. The supervised tier runs one
+//! supervisor per path.
 
-use std::{future::Future, sync::Arc, time::Duration};
+use std::time::Duration;
 
-use polyoxide_rt::Runtime;
-use polyoxide_venue::{class_for_handshake_status, Classify};
-use polyoxide_ws::{
-    retrying_can_fix,
-    tungstenite::{client::IntoClientRequest, handshake::client::Request as Handshake, Message},
-    BoxSocket, Connection, Decoded, Kind, Offline, Outage, Protocol, Queue, Recovery,
-    SocketTransport, WsError,
+use polyoxide_ws::Outage;
+#[cfg(test)]
+use polyoxide_ws::{tungstenite::Message, Decoded, Offline, Protocol, Recovery, WsError};
+
+use crate::{
+    shared::ws::StreamSet,
+    usdm::ws::{
+        error::UsdmWsError,
+        event::Update,
+        stream::StreamName,
+        supervised::{DisconnectReason, Event},
+        StreamPath, MAX_NAMES_PER_REQUEST, MIN_REQUEST_INTERVAL,
+    },
 };
 
-use crate::usdm::ws::{
-    client::{request, request_frame, Answer},
-    error::UsdmWsError,
-    event::Update,
-    stream::StreamName,
-    supervised::{DisconnectReason, Event},
-    StreamPath, MAX_NAMES_PER_REQUEST, MAX_STREAMS_PER_CONNECTION, MIN_REQUEST_INTERVAL,
-};
+/// USDⓈ-M's streams: two paths, `/market` and `/public`, 200 names a request
+/// and one request per 200 ms.
+pub(crate) struct UsdmStreams;
 
-/// One change to a path's streams.
-#[derive(Debug, Clone)]
-pub(crate) enum Change {
-    /// Subscribe to these streams; one already subscribed is skipped.
-    Subscribe(Vec<StreamName>),
-    /// Unsubscribe from these streams; one not subscribed is skipped.
-    Unsubscribe(Vec<StreamName>),
-}
-
-/// Binance's protocol on one routed path.
-///
-/// Its membership is the path's streams, replayed on every fresh connection
-/// at most 200 names a request, one request per 200 ms, with the 1024-stream
-/// cap checked first (D9). Its divergence rows:
-///
-/// - **D4, the ping:** an empty protocol `Ping` on the wall clock; on a
-///   transport that cannot send one (`Capabilities::client_pings` false, a
-///   browser's) a `LIST_SUBSCRIPTIONS` request under an id of its own, paced
-///   as every request is (a tick inside `MIN_REQUEST_INTERVAL` of the last
-///   request sends nothing, and the next tick sends), whose answer is a frame
-///   like any other and so is liveness (D9).
-/// - **D5, liveness:** every frame, the server's pings and the pongs to the
-///   client's own included.
-/// - **D6, a delivered connection:** one that decoded an update.
-/// - **D8:** `Disconnected { path, reason }`, then `Reconnected { path }`.
-/// - **D9:** rotation at 23 h 50 min (the builder's `max_connection_age`)
-///   and the paced replay.
-/// - **D19:** a connection used after it closed reconnects.
-/// - **Outages:** a change made during one is recorded and answered at once,
-///   and the replay applies it.
-/// - **Not wanted:** a path with no streams; unsubscribing its last sends
-///   nothing, and the supervisor closes the connection politely.
-///
-/// A change is recorded before it is sent, as the old loop recorded it, so a
-/// change whose connection dies under it is answered `Ok` and replayed. Its
-/// queue holds one event: the supervised tier forwards each path's events
-/// into the one queue of 1024 the consumer reads.
-#[derive(Debug)]
-pub(crate) struct UsdmProtocol {
-    base_url: String,
-    path: StreamPath,
-    /// Whether the transport of the connection last dialled can send protocol
-    /// pings; read from its capabilities in `connect`.
-    client_pings: bool,
-}
-
-impl UsdmProtocol {
-    pub(crate) fn new(base_url: String, path: StreamPath) -> Self {
-        Self {
-            base_url,
-            path,
-            client_pings: true,
-        }
-    }
-
-    fn too_many(&self) -> UsdmWsError {
-        UsdmWsError::TooManyStreams {
-            path: self.path,
-            limit: MAX_STREAMS_PER_CONNECTION,
-        }
-    }
-
-    /// The streams of `add` not already in `streams`, once each, refused
-    /// before anything is recorded or sent if they would pass the cap.
-    fn new_streams(
-        &self,
-        streams: &[StreamName],
-        add: Vec<StreamName>,
-    ) -> Result<Vec<StreamName>, UsdmWsError> {
-        let mut new: Vec<StreamName> = Vec::new();
-        for stream in add {
-            if !streams.contains(&stream) && !new.contains(&stream) {
-                new.push(stream);
-            }
-        }
-        // The server answers the 1025th stream with an error and then closes
-        // the connection, losing all 1024.
-        if streams.len() + new.len() > MAX_STREAMS_PER_CONNECTION {
-            return Err(self.too_many());
-        }
-        Ok(new)
-    }
-}
-
-/// The streams of `remove` that `streams` carries, once each.
-fn gone_streams(streams: &[StreamName], remove: Vec<StreamName>) -> Vec<StreamName> {
-    let mut gone: Vec<StreamName> = Vec::new();
-    for stream in remove {
-        if streams.contains(&stream) && !gone.contains(&stream) {
-            gone.push(stream);
-        }
-    }
-    gone
-}
-
-impl Protocol for UsdmProtocol {
-    type Event = Event;
+impl StreamSet for UsdmStreams {
+    type Name = StreamName;
+    type Path = StreamPath;
+    type Update = Update;
     type Error = UsdmWsError;
-    type Membership = Vec<StreamName>;
-    type Change = Change;
-    /// The path's streams after the change.
-    type Ack = Vec<StreamName>;
+    type Event = Event;
 
-    fn handshake(&mut self) -> Result<Handshake, UsdmWsError> {
-        Ok(self
-            .path
-            .url(&self.base_url)
-            .into_client_request()
-            .map_err(WsError::from)?)
+    const PATHS: &'static [StreamPath] = StreamPath::ALL;
+    const MAX_NAMES_PER_REQUEST: usize = MAX_NAMES_PER_REQUEST;
+    const MIN_REQUEST_INTERVAL: Duration = MIN_REQUEST_INTERVAL;
+
+    fn path(name: &StreamName) -> StreamPath {
+        name.path()
     }
 
-    /// Dials the handshake through the transport, as the default does, and
-    /// reads from the transport whether it can send a protocol ping (D9),
-    /// which `ping` acts on for this connection.
-    fn connect(
-        &mut self,
-        transport: Arc<dyn SocketTransport>,
-        runtime: Arc<dyn Runtime>,
-        timeout: Duration,
-    ) -> impl Future<Output = Result<BoxSocket, UsdmWsError>> + Send {
-        self.client_pings = transport.capabilities().client_pings;
-        let request = self.handshake();
-        async move {
-            let socket = transport.connect(request?, timeout, runtime).await?;
-            Ok::<_, UsdmWsError>(socket)
-        }
+    fn url(base: &str, path: StreamPath) -> String {
+        path.url(base)
     }
 
-    /// Requests no faster than one per 200 ms. No answer timeout: the
-    /// supervisor bounds each replay and change by `stale_after` (L2-D1).
-    fn configure(&self, connection: Connection) -> Connection {
-        connection.min_request_interval(MIN_REQUEST_INTERVAL)
+    fn decode(text: &str) -> Result<Update, UsdmWsError> {
+        Update::from_json(text)
     }
 
-    /// Every stream, 200 names a request; the cap is checked first. A stream
-    /// refused on a fresh connection stops the path, as retrying replays it.
-    async fn replay(
-        &mut self,
-        connection: &mut Connection,
-        streams: &Vec<StreamName>,
-    ) -> Result<(), UsdmWsError> {
-        if streams.len() > MAX_STREAMS_PER_CONNECTION {
-            return Err(self.too_many());
-        }
-        for batch in streams.chunks(MAX_NAMES_PER_REQUEST) {
-            request(connection, "SUBSCRIBE", Some(batch)).await?;
-        }
-        Ok(())
+    fn update(update: Update) -> Event {
+        Event::Update(Box::new(update))
     }
 
-    /// A subscribe or an unsubscribe on the live connection, recorded before
-    /// it is sent. A refused batch is undone, with those after it, which were
-    /// never sent; the batches answered before it stay. A request the
-    /// connection dies under leaves the change recorded and answers it `Ok`:
-    /// the next read ends the connection, and the replay applies the change.
-    async fn apply(
-        &mut self,
-        connection: &mut Connection,
-        streams: &mut Vec<StreamName>,
-        change: Change,
-    ) -> Result<Vec<StreamName>, UsdmWsError> {
-        let before = streams.clone();
-        let (subscribing, names) = match change {
-            Change::Subscribe(add) => {
-                let new = self.new_streams(streams, add)?;
-                streams.extend(new.iter().cloned());
-                (true, new)
-            }
-            Change::Unsubscribe(remove) => {
-                let gone = gone_streams(streams, remove);
-                streams.retain(|s| !gone.contains(s));
-                if streams.is_empty() {
-                    // The path's last stream left: nothing is sent, and the
-                    // connection is closed as no longer wanted.
-                    return Ok(Vec::new());
-                }
-                (false, gone)
-            }
-        };
-        let method = if subscribing {
-            "SUBSCRIBE"
-        } else {
-            "UNSUBSCRIBE"
-        };
-        for (n, batch) in names.chunks(MAX_NAMES_PER_REQUEST).enumerate() {
-            match request(connection, method, Some(batch)).await {
-                Ok(_) => {}
-                Err(err @ UsdmWsError::Refused { .. }) => {
-                    let answered = &names[..n * MAX_NAMES_PER_REQUEST];
-                    *streams = if subscribing {
-                        before.into_iter().chain(answered.iter().cloned()).collect()
-                    } else {
-                        before
-                            .into_iter()
-                            .filter(|s| !answered.contains(s))
-                            .collect()
-                    };
-                    return Err(err);
-                }
-                Err(err) => {
-                    tracing::debug!(%err, path = %self.path, "the connection failed under a change; it is recorded for the replay");
-                    break;
-                }
-            }
-        }
-        Ok(streams.clone())
-    }
-
-    /// A change during an outage is recorded and answered at once; the
-    /// replay applies it.
-    fn record(
-        &mut self,
-        streams: &mut Vec<StreamName>,
-        change: Change,
-    ) -> Offline<Change, Vec<StreamName>, UsdmWsError> {
-        match change {
-            Change::Subscribe(add) => match self.new_streams(streams, add) {
-                Ok(new) => streams.extend(new),
-                Err(err) => return Offline::Recorded(Err(err)),
-            },
-            Change::Unsubscribe(remove) => {
-                let gone = gone_streams(streams, remove);
-                streams.retain(|s| !gone.contains(s));
-            }
-        }
-        Offline::Recorded(Ok(streams.clone()))
-    }
-
-    fn decode(&mut self, frame: &Message) -> Decoded<Event, UsdmWsError> {
-        // A Binary frame is not part of the protocol (D12), and the kit
-        // answers the server's Ping and its Close.
-        let Message::Text(text) = frame else {
-            return Decoded::Nothing;
-        };
-        match Update::from_json(text) {
-            Ok(update) => Decoded::Event(Event::Update(Box::new(update))),
-            // An answer nobody awaits, such as one to a request that
-            // outlived the staleness window.
-            Err(_) if Answer::parse(text).is_some() => Decoded::Nothing,
-            Err(err) => Decoded::Error(err),
-        }
-    }
-
-    fn is_live(&self, _frame: &Message, _decoded: &Decoded<Event, UsdmWsError>) -> bool {
-        true
-    }
-
-    fn delivered(&self, _frame: &Message, decoded: &Decoded<Event, UsdmWsError>) -> bool {
-        matches!(decoded, Decoded::Event(Event::Update(_)))
-    }
-
-    /// An empty protocol `Ping`; on a transport that cannot send one,
-    /// `LIST_SUBSCRIPTIONS` under an id taken from the connection, so a late
-    /// answer is never taken for the answer to a later request. The id is the
-    /// connection's paced one (`take_paced_id`): a tick that comes within the
-    /// connection's minimum request interval of the last request, the
-    /// replay's included, sends nothing, and the next tick sends, as every
-    /// request waits that interval (D9). The answer decodes to nothing and
-    /// counts as liveness, as every frame does.
-    fn ping(&mut self, connection: &mut Connection) -> Option<Message> {
-        if self.client_pings {
-            return Some(Message::Ping(Vec::new().into()));
-        }
-        let id = connection.take_paced_id()?;
-        Some(request_frame("LIST_SUBSCRIPTIONS", None, id))
-    }
-
-    fn wanted(streams: &Vec<StreamName>) -> bool {
-        !streams.is_empty()
-    }
-
-    fn is_retriable(err: &UsdmWsError) -> bool {
-        err.is_retriable()
-    }
-
-    /// Binance's own recovery, not the class's: a server close of any code,
-    /// a lost or timed out connection, an unanswered replay and a malformed
-    /// answer reconnect; a frame that does not decode is skipped; a refusal
-    /// and the client's own refusals stop.
-    fn recover(&self, err: &UsdmWsError) -> Recovery {
-        match err {
-            UsdmWsError::Connect(err) => match err.kind() {
-                // D19: a connection used after it closed reconnects Binance;
-                // so does a frame or header past tungstenite's limits.
-                Kind::AlreadyClosed | Kind::Capacity => Recovery::Reconnect,
-                // A handshake refused with 408, 425, 429 or 5xx is the host
-                // being unwell or throttling, by venue's status rule; any
-                // other status, a bad URL or TLS name, or an attack detection
-                // is our request. Everything else is retried.
-                _ if retrying_can_fix(err, |status| {
-                    class_for_handshake_status(status).is_retriable()
-                }) =>
-                {
-                    Recovery::Reconnect
-                }
-                _ => Recovery::Stop,
-            },
-            UsdmWsError::ConnectTimeout(_)
-            | UsdmWsError::Closed { .. }
-            | UsdmWsError::NoAnswer { .. }
-            | UsdmWsError::Response { .. } => Recovery::Reconnect,
-            UsdmWsError::Frame { .. } => Recovery::Skip,
-            UsdmWsError::Refused { .. }
-            | UsdmWsError::TooManyStreams { .. }
-            | UsdmWsError::WrongPath { .. }
-            | UsdmWsError::Stopped { .. } => Recovery::Stop,
-        }
-    }
-
-    /// A refused handshake's `Retry-After`, as Binance's class reads it,
-    /// which the reconnect waits out up to the backoff's ceiling (DRIFT R11).
-    fn retry_after(&self, err: &UsdmWsError) -> Option<Duration> {
-        err.retry_after()
-    }
-
-    fn disconnected(&mut self, outage: Outage<UsdmWsError>) -> Option<Event> {
+    fn disconnected(path: StreamPath, outage: Outage<UsdmWsError>) -> Event {
         let reason = match outage {
             Outage::Closed { code, reason } => DisconnectReason::Closed { code, reason },
             Outage::Error(err) => DisconnectReason::Error(err),
@@ -344,35 +58,22 @@ impl Protocol for UsdmProtocol {
             // `Stale`, and any outage a later kit adds.
             _ => DisconnectReason::Stale,
         };
-        Some(Event::Disconnected {
-            path: self.path,
-            reason,
-        })
+        Event::Disconnected { path, reason }
     }
 
-    fn reconnected(&mut self) -> Event {
-        Event::Reconnected { path: self.path }
-    }
-
-    fn queue(&self) -> Queue {
-        Queue::Bounded(1)
-    }
-
-    /// A replay or a change the server left unanswered for the staleness
-    /// window. The supervised tier answers a change so left `Ok`, as it is
-    /// recorded and the replay applies it.
-    fn stalled(silent: Duration) -> UsdmWsError {
-        UsdmWsError::NoAnswer {
-            id: 0,
-            timeout: silent,
-        }
-    }
-
-    /// The kit's task stopped; the router adds the cause it saw.
-    fn stopped() -> UsdmWsError {
-        UsdmWsError::Stopped { cause: None }
+    fn reconnected(path: StreamPath) -> Event {
+        Event::Reconnected { path }
     }
 }
+
+/// Binance's protocol on one routed path of USDⓈ-M's streams. Only the unit
+/// tests name it.
+#[cfg(test)]
+pub(crate) type UsdmProtocol = crate::shared::ws::protocol::BinanceProtocol<UsdmStreams>;
+
+/// One change to a path's streams. Only the unit tests name it.
+#[cfg(test)]
+pub(crate) type Change = crate::shared::ws::protocol::Change<StreamName>;
 
 #[cfg(test)]
 mod tests {

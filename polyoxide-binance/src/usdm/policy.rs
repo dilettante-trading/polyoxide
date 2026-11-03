@@ -1,14 +1,15 @@
 //! [`UsdmRetryPolicy`]: what follows each USDⓈ-M response.
 
-use std::time::Duration;
+use polyoxide_core::{AttemptInfo, Decision, ResponseMeta, RetryConfig, RetryPolicy};
 
+use crate::usdm::weight::WeightBudget;
+
+#[cfg(test)]
 use polyoxide_core::http::StatusCode;
-use polyoxide_core::{AttemptInfo, Decision, Outcome, ResponseMeta, RetryConfig, RetryPolicy};
-
-use crate::usdm::{
-    error::retry_after_secs,
-    weight::{WeightBudget, DEFAULT_BAN},
-};
+#[cfg(test)]
+use polyoxide_core::Outcome;
+#[cfg(test)]
+use std::time::Duration;
 
 /// Binance's retry policy, over the [`WeightBudget`] whose minute it reads.
 ///
@@ -18,12 +19,13 @@ use crate::usdm::{
 ///   the next UTC minute when it has none: sending again into a spent minute
 ///   is how a `429` becomes a `418` ban.
 /// - A `418` (the IP is banned) fails, and holds for its `Retry-After`, or
-///   [`DEFAULT_BAN`] when it has none.
+///   [`DEFAULT_BAN`](crate::usdm::weight::DEFAULT_BAN) when it has none.
 /// - A 2xx is done. Everything else fails with no hold, a `425` included:
 ///   Binance does not document it as retriable.
 ///
 /// A `Retry-After` is clamped to [`MAX_COOLDOWN`](crate::usdm::weight::MAX_COOLDOWN),
-/// the longest ban Binance documents.
+/// the longest ban Binance documents. The decision is `shared::policy::decide`,
+/// which every Binance product's policy calls.
 #[derive(Debug, Clone)]
 pub(crate) struct UsdmRetryPolicy {
     pub(crate) budget: WeightBudget,
@@ -36,35 +38,8 @@ impl RetryPolicy for UsdmRetryPolicy {
         attempt: &AttemptInfo,
         schedule: &RetryConfig,
     ) -> Decision {
-        let asked = retry_after_secs(response.retry_after());
-        match response.status {
-            StatusCode::TOO_MANY_REQUESTS if attempt.retries_left > 0 => Decision {
-                // The loop's floor is the attempt's backoff; the hold makes
-                // every other request wait at least as long.
-                outcome: Outcome::Retry(Duration::ZERO),
-                hold: Some(
-                    schedule
-                        .retry_delay(attempt.attempt, response.retry_after())
-                        .max(asked.unwrap_or_default()),
-                ),
-            },
-            StatusCode::TOO_MANY_REQUESTS => Decision {
-                outcome: Outcome::Fail,
-                hold: Some(asked.unwrap_or_else(|| self.budget.until_next_minute())),
-            },
-            StatusCode::IM_A_TEAPOT => Decision {
-                outcome: Outcome::Fail,
-                hold: Some(asked.unwrap_or(DEFAULT_BAN)),
-            },
-            status if status.is_success() => Decision {
-                outcome: Outcome::Done,
-                hold: None,
-            },
-            _ => Decision {
-                outcome: Outcome::Fail,
-                hold: None,
-            },
-        }
+        let until_next_minute = self.budget.until_next_minute();
+        crate::shared::policy::decide(response, attempt, schedule, until_next_minute)
     }
 }
 

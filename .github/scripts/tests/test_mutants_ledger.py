@@ -30,9 +30,9 @@ SNIPPETS = {
     ("polyoxide-polymarket/tests/send_loop.rs", 299): "async fn a_429_with_no_retry_left_still_holds(",
     ("polyoxide-polymarket/tests/send_loop.rs", 322): "async fn the_429_hold_is_retry_delay_zero_not_the_attempts_wait(",
     ("polyoxide-polymarket/tests/send_loop.rs", 580): "fn a_429_with_no_retry_left_is_fail_with_its_hold(",
-    ("polyoxide-binance/src/usdm/policy.rs", 53): "hold: Some(asked.unwrap_or_else(|| self.budget.until_next_minute())),",
-    ("polyoxide-binance/src/usdm/policy.rs", 57): "hold: Some(asked.unwrap_or(DEFAULT_BAN)),",
-    ("polyoxide-binance/src/usdm/policy.rs", 185): "fn a_418_without_retry_after_holds_two_minutes(",
+    ("polyoxide-binance/src/shared/policy.rs", 47): "hold: Some(asked.unwrap_or(until_next_minute)),",
+    ("polyoxide-binance/src/shared/policy.rs", 51): "hold: Some(asked.unwrap_or(DEFAULT_BAN)),",
+    ("polyoxide-binance/src/usdm/policy.rs", 160): "fn a_418_without_retry_after_holds_two_minutes(",
     ("polyoxide-binance/tests/mock_usdm.rs", 707): "async fn every_usdm_on_one_budget_is_held_by_one_ban(",
     ("polyoxide-binance/tests/mock_usdm.rs", 616): "fn a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request(",
     ("polyoxide-binance/tests/mock_usdm.rs", 652): "fn a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute(",
@@ -103,6 +103,15 @@ SNIPPETS = {
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-polymarket/src/sports/supervised.rs", 484):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
+    ("polyoxide-binance/src/spot/api/market.rs", 167): ".route(Route::Depth { limit: Some(limit) })",
+    ("polyoxide-binance/src/spot/ws/mod.rs", 85): "pub const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(500);",
+    ("polyoxide-binance/src/spot/ws/mod.rs", 146): "fn the_limits_are_the_measured_ones(",
+    ("polyoxide-binance/src/spot/ws/protocol.rs", 131): "fn the_stream_set_is_one_path_with_the_measured_limits(",
+    ("polyoxide-binance/src/spot/ws/client.rs", 183): "fn the_documented_limits_are_the_measured_ones(",
+    ("polyoxide-binance/src/spot/ws/client.rs", 230): "async fn requests_are_paced_at_500_ms(",
+    ("polyoxide-binance/tests/supervision_spot.rs", 187): "async fn a_membership_change_waits_500_ms_for_the_one_before(",
+    ("polyoxide-binance/tests/mock_spot.rs", 923): "fn every_market_builder_charges_its_route(",
+    ("polyoxide-binance/tests/mock_spot.rs", 977): "async fn a_deep_depth_is_charged_its_band(",
 }
 
 

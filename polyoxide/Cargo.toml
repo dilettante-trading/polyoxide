@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Multi-venue Rust toolkit: Polymarket (CLOB, Gamma, Data, Relay, Perps, RTDS, Sports), Binance USDⓈ-M futures and Kalshi's event-contract market data, each venue behind features named for it"
+description = "Multi-venue Rust toolkit: Polymarket (CLOB, Gamma, Data, Relay, Perps, RTDS, Sports), Binance USDⓈ-M futures and spot and Kalshi's event-contract market data, each venue behind features named for it"
 keywords = ["polymarket", "binance", "prediction-markets", "trading", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
@@ -29,9 +29,11 @@ polymarket-perps = ["dep:polyoxide-polymarket", "polyoxide-polymarket/perps", "p
 polymarket-perps-ws = ["polymarket-perps", "polyoxide-polymarket/perps-ws"]
 polymarket-rtds = ["dep:polyoxide-polymarket", "polyoxide-polymarket/rtds"]
 polymarket-sports = ["dep:polyoxide-polymarket", "polyoxide-polymarket/sports"]
-binance = ["binance-usdm"]
+binance = ["binance-usdm", "binance-spot"]
 binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm", "polyoxide-venue/market"]
 binance-usdm-ws = ["binance-usdm", "polyoxide-binance/usdm-ws"]
+binance-spot = ["dep:polyoxide-binance", "polyoxide-binance/spot", "polyoxide-venue/market"]
+binance-spot-ws = ["binance-spot", "polyoxide-binance/spot-ws"]
 kalshi = ["kalshi-predictions"]
 kalshi-predictions = ["dep:polyoxide-kalshi", "polyoxide-kalshi/predictions", "polyoxide-venue/market"]
 kalshi-predictions-ws = ["kalshi-predictions", "polyoxide-kalshi/predictions-ws"]
@@ -49,6 +51,8 @@ full = [
     "binance",
     "binance-usdm",
     "binance-usdm-ws",
+    "binance-spot",
+    "binance-spot-ws",
     "kalshi",
     "kalshi-predictions",
     "kalshi-predictions-ws",
@@ -85,12 +89,12 @@ required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kal
 
 [[test]]
 name = "live_venue"
-required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "binance-spot", "kalshi-predictions"]
 
 # `parse_key` across the three venues' products.
 [[test]]
 name = "parse_key"
-required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "binance-spot", "kalshi-predictions"]
 
 [[test]]
 name = "venue_neutral"
@@ -110,5 +114,5 @@ readme = "The multi-venue umbrella: `polyoxide::polymarket`, `polyoxide::binance
 [package.metadata.polyoxide.live.live_venue]
 suite = "venue"
 timeout = 15
-features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "kalshi-predictions"]
+features = ["polymarket-clob", "polymarket-perps", "binance-usdm", "binance-spot", "kalshi-predictions"]
 secrets = []

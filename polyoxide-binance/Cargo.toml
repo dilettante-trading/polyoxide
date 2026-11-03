@@ -6,16 +6,31 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Rust client library for Binance USDⓈ-M futures market data and streams"
-keywords = ["binance", "futures", "perpetuals", "market-data"]
+description = "Rust client library for Binance USDⓈ-M futures and spot market data and streams"
+keywords = ["binance", "futures", "spot", "perpetuals", "market-data"]
 categories = ["api-bindings", "web-programming::http-client"]
 
 # One feature per module (Story 5.6), as polyoxide-polymarket has: `usdm`, the
 # USDⓈ-M futures REST client and its weight budget, and `usdm-ws`, its market
-# streams, which turns `usdm` on.
+# streams, which turns `usdm` on; `spot`, the spot REST client, which turns
+# neither on and is built without either.
 [features]
-default = ["usdm"]
+default = ["usdm", "spot"]
 usdm = [
+    "dep:polyoxide-core",
+    "polyoxide-venue/decimal",
+    "polyoxide-venue/market",
+    "dep:rust_decimal",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:url",
+]
+# Spot public market data on `api.binance.com`: the same optional dependencies
+# and venue features as `usdm`, on the crate's shared REST plumbing.
+spot = [
     "dep:polyoxide-core",
     "polyoxide-venue/decimal",
     "polyoxide-venue/market",
@@ -29,8 +44,11 @@ usdm = [
 ]
 # The USDⓈ-M market streams, `usdm::ws`, on the socket kit.
 usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/macros"]
-# Exposes the captured frames, `usdm::ws::fixtures`, for downstream tests, with
-# `usdm-ws`; it turns no module on. Not for consumers.
+# The spot market streams, `spot::ws`, on the same kit.
+spot-ws = ["spot", "dep:polyoxide-ws", "dep:futures-util", "tokio/macros"]
+# Exposes the captured frames, `usdm::ws::fixtures` with `usdm-ws` and
+# `spot::ws::fixtures` with `spot-ws`, for downstream tests; it turns no module
+# on. Not for consumers.
 test-server = []
 
 [dependencies]
@@ -40,7 +58,7 @@ polyoxide-core = { workspace = true, optional = true }
 # side both read it.
 polyoxide-rt = { workspace = true }
 polyoxide-venue = { workspace = true }
-# The socket kit (`usdm-ws`): connect, the bare tier, the socket error and the
+# The socket kit (`usdm-ws`, `spot-ws`): connect, the bare tier, the socket error and the
 # supervisor. It owns the transport, tokio-tungstenite and rustls.
 polyoxide-ws = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
@@ -56,9 +74,9 @@ url = { workspace = true, optional = true }
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
-# The shared scripted WebSocket server the `usdm-ws` suites run on, with
-# Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo strips it on
-# publish.
+# The shared scripted WebSocket server the `usdm-ws` and `spot-ws` suites run
+# on, with Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo
+# strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 futures-util = "0.3"
 mockito = { workspace = true }
@@ -76,25 +94,57 @@ path = "examples/weight_probe.rs"
 test = true
 required-features = ["usdm"]
 
-# The usdm module's suites (Story 5.6). The socket suites import the captured
+# The spot module's probe. Its own example, not a `--product` of the one above:
+# that example is `test = true`, so the test-bodies gate counts every item in it.
+[[example]]
+name = "weight_probe_spot"
+path = "examples/weight_probe_spot.rs"
+test = true
+required-features = ["spot"]
+
+# The usdm and spot modules' suites. The socket suites import the captured
 # frames, which only `test-server` exposes outside the unit tests;
 # `required-features` keeps a plain `cargo test --all-targets` from building
 # them without it.
 [[test]]
+name = "ban_log_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "ban_log_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "error_classes_spot"
+required-features = ["spot"]
 
 [[test]]
 name = "error_classes_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "failure_tags_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "failure_tags_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "headers_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "headers_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "live_spot"
+required-features = ["spot"]
+
+[[test]]
+name = "live_spot_ws"
+required-features = ["spot-ws"]
 
 [[test]]
 name = "live_usdm"
@@ -105,12 +155,24 @@ name = "live_usdm_ws"
 required-features = ["usdm-ws"]
 
 [[test]]
+name = "mock_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "mock_usdm"
 required-features = ["usdm"]
 
 [[test]]
+name = "query_setters_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "query_setters_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "supervision_spot"
+required-features = ["spot-ws", "test-server"]
 
 [[test]]
 name = "supervision_usdm"
@@ -125,8 +187,20 @@ name = "supervision_usdm_kit"
 required-features = ["usdm-ws", "test-server"]
 
 [[test]]
+name = "venue_spot"
+required-features = ["spot"]
+
+[[test]]
 name = "venue_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "wire_agreement_spot"
+required-features = ["spot"]
+
+[[test]]
+name = "wire_agreement_spot_ws"
+required-features = ["spot-ws", "test-server"]
 
 [[test]]
 name = "wire_agreement_usdm"
@@ -136,10 +210,10 @@ required-features = ["usdm"]
 name = "wire_agreement_usdm_ws"
 required-features = ["usdm-ws", "test-server"]
 
-# docs.rs documents the module and its streams; `test-server` stays out of the
-# docs.
+# docs.rs documents both modules and the streams of each, `usdm-ws` and
+# `spot-ws`; `test-server` stays out of the docs.
 [package.metadata.docs.rs]
-features = ["usdm", "usdm-ws"]
+features = ["usdm", "usdm-ws", "spot", "spot-ws"]
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, one entry per live test target,
@@ -147,12 +221,12 @@ features = ["usdm", "usdm-ws"]
 # the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`"
+readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`) and `spot` (spot market data, with its streams under `spot-ws`); re-exported by the umbrella as `polyoxide::binance`"
 venue = "binance"
-products = ["usdm"]
-classes = { usdm = "perpetual-future" }
+products = ["usdm", "spot"]
+classes = { usdm = "perpetual-future", spot = "spot" }
 mirrors = ["binance"]
-identifiers = ["fapi", "fstream", "X-MBX"]
+identifiers = ["fapi", "fstream", "X-MBX", "api/v3", "stream.binance.com"]
 
 [package.metadata.polyoxide.live.live_usdm]
 suite = "usdm"
@@ -164,6 +238,18 @@ secrets = []
 suite = "usdm"
 timeout = 15
 features = ["usdm-ws"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_spot]
+suite = "spot"
+timeout = 15
+features = ["spot"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_spot_ws]
+suite = "spot"
+timeout = 15
+features = ["spot-ws"]
 secrets = []
 
 # The foundation crates' protected test names that still name Binance (S2 may

@@ -62,7 +62,7 @@ A venue describes its socket as a `Protocol` and gets a `Supervised<P>` stream w
   `SocketTransport` and runtime (by default it dials the handshake's request through the
   transport; a venue that tries each address defaults its builder's transport to
   `TungsteniteTransport::per_address()` instead of dialling for itself); `configure` of each
-  fresh connection, such as Binance's 200 ms request pacing;
+  fresh connection, such as Binance's request pacing (200 ms on USDⓈ-M, 500 ms on spot);
 - `replay` and `apply` of its membership over the connection's request correlation; `decode` of
   every frame into `Decoded` events; its liveness (D5) and delivered (D6) predicates; its ping
   (D4); `wanted`;
@@ -92,8 +92,9 @@ What the task guarantees (`src/supervisor/tests.rs` pins each rule):
 
 ## Which socket runs on what
 
-- On the `Supervisor`: perps (`PerpsProtocol`), Binance (one supervisor per routed path, behind a
-  router), Kalshi (`PredictionsProtocol`), and the CLOB's supervised market and user sockets.
+- On the `Supervisor`: perps (`PerpsProtocol`), Binance (`shared::ws`'s `BinanceProtocol`, one for
+  both products: one supervisor per routed path, behind a router; spot has the one path),
+  Kalshi (`PredictionsProtocol`), and the CLOB's supervised market and user sockets.
 - On the blocks, each keeping its own supervision shape (D7):
   - rtds: TLS, `Backoff`, connect with a timeout, `retrying_can_fix`, the bare tier's close reply
     and the test server;
@@ -167,7 +168,8 @@ beyond those tungstenite generates (a `Sec-WebSocket-Protocol` becomes the subpr
 refused before dialling, and sending a ping, pong or raw frame is refused, each as
 `Kind::Unsupported` with the message `a handshake header`, `a ping frame`, `a pong frame` or
 `a raw frame` followed by `is not supported by the browser transport`; the ping's text is
-`polyoxide_ws::PING_UNSUPPORTED`, which `UsdmWs::ping` builds its refusal from. A refused upgrade shows no
+`polyoxide_ws::PING_UNSUPPORTED`, which Binance's bare tier (`shared::ws`'s `Bare::ping`, under
+`UsdmWs::ping` and `SpotWs::ping`) builds its refusal from. A refused upgrade shows no
 status to a page, so it arrives as a lost connection, never `Kind::Refused`.
 
 What the transport decides (`dial_plan`, `close_code`, `close_reason`, `outgoing`, `send_state`) is plain Rust

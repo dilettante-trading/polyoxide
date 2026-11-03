@@ -35,7 +35,8 @@ on the PR that introduces it rather than halfway through a release.
    never unify: `cargo test -p polyoxide-polymarket --no-default-features --features <m> --test
    headers_<m>`
    for clob, gamma, data, relay and perps; `cargo test -p polyoxide-binance --no-default-features
-   --features usdm --test headers_usdm`;
+   --features usdm --test headers_usdm` and `cargo test -p polyoxide-binance --no-default-features
+   --features spot --test headers_spot`;
    `cargo test -p polyoxide-kalshi --no-default-features --features predictions --test
    headers_predictions`.
    The pin test derives the HTTP modules from cargo metadata: a venue crate's products whose
@@ -83,15 +84,18 @@ on the PR that introduces it rather than halfway through a release.
     `@sports,test-server`; `@perps` must hold `reqwest`, `@clob` and `@relay` `alloy`, and
     `@clob,keychain` `keyring`, so no rule can pass vacuously.
   - `polyoxide-binance`: `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with
-    `usdm-ws` (files `@usdm` and `@usdm-ws`; `@usdm-ws` must hold `polyoxide-ws`). `rustls` is not
-    on the rule, since core's HTTP client builds it for TLS.
+    `usdm-ws` or `spot-ws` (files `@usdm`, `@usdm-ws`, `@spot` and `@spot-ws`; `@usdm-ws` and
+    `@spot-ws` must each hold `polyoxide-ws`, and `@spot` must hold `polyoxide-core` and
+    `reqwest`). `rustls` is not on the
+    rule, since core's HTTP client builds it for TLS.
   - `polyoxide-kalshi`: `reqwest`, `polyoxide-core`, `governor` and `sha2` only with
     `predictions`, which every file names; `alloy*`, `hmac` and `keyring` never; `polyoxide-ws`,
     `tokio-tungstenite` and `tungstenite` only with `predictions-ws` (files `@predictions` and
     `@predictions-ws`; the latter must hold `polyoxide-ws`).
   - `polyoxide`, per feature on its own names: the HTTP stack only with an HTTP module of any
-    venue (`polymarket-clob`, `-gamma`, `-data`, `-relay`, `-perps`, `binance-usdm` or
-    `kalshi-predictions`); `alloy*` and `hmac` only with `polymarket-clob` or `polymarket-relay`;
+    venue (`polymarket-clob`, `-gamma`, `-data`, `-relay`, `-perps`, `binance-usdm`,
+    `binance-spot` or `kalshi-predictions`); `alloy*` and `hmac` only with `polymarket-clob` or
+    `polymarket-relay`;
     `keyring` only with `keychain`. `@polymarket-rtds` and `@polymarket-sports` are the
     socket-only tree, `@polymarket-perps` and `@kalshi-predictions` must hold `reqwest`, and
     `@kalshi-predictions-ws` holds the socket kit.
@@ -128,10 +132,11 @@ on the PR that introduces it rather than halfway through a release.
 - each venue id, as a substring;
 - each product id, as an identifier segment (split at `_`, `-`, `.`, `::` and case boundaries, so
   `clob` in `clob_default` and `perps` in `PERPS_GENERAL`), less the generic words of
-  `ci/venue-gate-skip.txt` (`data` and `events`);
+  `ci/venue-gate-skip.txt` (`data`, `events` and `spot`);
 - each `<venue>.<product>:` prefix;
-- each venue's `identifiers` (Polymarket's `Poly-RateLimit`; Binance's `fapi`, `fstream` and
-  `X-MBX`, its hosts and weight header);
+- each venue's `identifiers` (Polymarket's `Poly-RateLimit`; Binance's `fapi`, `fstream`,
+  `X-MBX`, `api/v3` and `stream.binance.com`, its futures hosts, weight header, spot's path prefix
+  and spot's stream host);
 
 all read from cargo metadata. A hit passes only through a `gate_exceptions` entry,
 `{ path, term, reason }`, in the metadata of a crate of the hit's venue, and an entry that matches
@@ -283,7 +288,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 73 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 74 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -338,6 +343,9 @@ stage does not hold, printing each one's key to copy there.
   `BoxSocket`. R23 is `polymarket_throttle`'s `the_hold_survives_a_tier_change`, which takes its
   start instant before the hold it measures, since a stall between the two shortened its reading
   under load.
+  R24 is `polyoxide-binance`'s `UsdmWs::close_frame`, whose body moved unchanged to `shared::ws`'s
+  `Bare::close_frame`, the hook delegating (numbered R22 on the spot branch, renumbered when the
+  wasm32 seams' R22 merged with it).
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.

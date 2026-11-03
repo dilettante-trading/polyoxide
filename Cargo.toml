@@ -84,6 +84,17 @@ pyo3 = { version = "0.28", features = ["abi3-py39"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 pythonize = "0.28"
 
+# Debug info was ~80% of every dev test binary (305 of 381 MB), and each loom
+# worktree keeps one per feature set it has built, so a single worktree's
+# target/debug reached 131 GB. Line tables keep file:line in backtraces;
+# dependencies need none. CI's CARGO_PROFILE_TEST_DEBUG=0 still wins for
+# `cargo test` there.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -283,12 +294,12 @@ description = "Order signature type 3, session signers and the relayer's `type: 
 exclude = "The surface is almost entirely absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the SDK-generated fixtures are the drift check."
 
 [workspace.metadata.polyoxide.mirrors.binance]
-name = "Binance USDⓈ-M"
+name = "Binance USDⓈ-M and spot"
 section = "other-venue"
-base_urls = ["https://fapi.binance.com", "wss://fstream.binance.com"]
-description = "Futures public market data and market streams. No published spec, so not a mirror"
-crate_note = "streams behind `usdm-ws`"
-exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites in `polyoxide-binance` are the drift check."
+base_urls = ["https://fapi.binance.com", "https://api.binance.com", "wss://fstream.binance.com", "wss://stream.binance.com:9443"]
+description = "Futures and spot public market data, and the futures and spot market streams. No published spec, so not a mirror"
+crate_note = "streams behind `usdm-ws` and `spot-ws`"
+exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; spot's `spot_api.yaml` (in `binance-api-swagger`) was last released on 2024-10-08 and lacks fields the wire sends today, so a diff of it would never fire. The live suites in `polyoxide-binance` are the drift check."
 
 [workspace.metadata.polyoxide.mirrors.kalshi]
 name = "Kalshi"

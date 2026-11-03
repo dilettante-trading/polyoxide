@@ -189,3 +189,17 @@ async fn best_bid_ask_reads_kalshi_predictions() {
         "the order book had both sides"
     );
 }
+
+#[tokio::test]
+#[ignore = "hits the live hosts"]
+async fn best_bid_ask_reads_binance_spot() {
+    use polyoxide::binance::spot::{self, types::Symbol, Spot};
+
+    let venue = DynMarketData::new_arc(Spot::new().or_fail("build the spot client"));
+    let key = spot::key(&Symbol::new("BTCUSDT").or_fail("name BTCUSDT"));
+    let (bid, ask) = read(venue, &key).await;
+    assert!(
+        bid.is_some() && ask.is_some(),
+        "BTCUSDT always has both sides"
+    );
+}

@@ -5,7 +5,7 @@ changes, new endpoints, and behavioral tweaks without notice; this document
 describes the machinery that detects that drift every night and reports it
 without a human in the loop. Polymarket publishes specs, so its drift shows two
 ways, in the live tests and against the vendored mirrors, and so does Kalshi's drift; Binance publishes none
-for USDⓈ-M, so its live suites are its only drift check.
+for USDⓈ-M and none current for spot, so its live suites are its only drift check.
 
 ## The loop at a glance
 
@@ -49,10 +49,10 @@ others. It needs no secrets.
 <!-- generated:begin selfheal-behavioral -->
 | Crate | Test binaries |
 |-------|---------------|
-| polyoxide-binance | `live_usdm` (built with `--features usdm`), `live_usdm_ws` (built with `--features usdm-ws`) |
+| polyoxide-binance | `usdm`: `live_usdm` (built with `--features usdm`), `live_usdm_ws` (built with `--features usdm-ws`); `spot`: `live_spot` (built with `--features spot`), `live_spot_ws` (built with `--features spot-ws`) |
 | polyoxide-kalshi | `live_predictions` (built with `--features predictions`), `live_predictions_account` (built with `--features predictions`), `live_predictions_venue` (built with `--features predictions`), `live_predictions_ws` (built with `--features predictions-ws`) |
 | polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_trading` (built with `--features clob-ws,data,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
-| polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm,kalshi-predictions`) |
+| polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm,binance-spot,kalshi-predictions`) |
 | polyoxide-cli | `live_api` |
 | polyoxide-wasm-smoke | `browser_live` (built with `--features live`; wasm-bindgen-test in headless Chrome through scripts/wasm_live.sh, no secrets; 15-minute budget) |
 <!-- generated:end selfheal-behavioral -->
@@ -160,9 +160,11 @@ Actions open pull requests anyway.
   surface is almost entirely absent from the published CLOB and relayer OpenAPI
   (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the
   SDK-generated fixtures are the drift check.
-- **Binance USDⓈ-M** (`docs/specs/binance/`) — Not a Polymarket host, and
-  Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites
-  in `polyoxide-binance` are the drift check.
+- **Binance USDⓈ-M and spot** (`docs/specs/binance/`) — Not a Polymarket host,
+  and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; spot's
+  `spot_api.yaml` (in `binance-api-swagger`) was last released on 2024-10-08 and
+  lacks fields the wire sends today, so a diff of it would never fire. The live
+  suites in `polyoxide-binance` are the drift check.
 <!-- generated:end selfheal-exclusions -->
 
 ## Failure taxonomy — what goes where

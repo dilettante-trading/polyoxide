@@ -2,12 +2,18 @@
 
 use std::time::Duration;
 
-use polyoxide_core::{truncate_for_log, ApiError, ErrorResponse};
-use polyoxide_venue::{class_for_status, Class, Classify};
-use serde::Deserialize;
+use polyoxide_core::{truncate_for_log, ApiError};
+use polyoxide_venue::{Class, Classify};
 use thiserror::Error;
 
+use crate::shared::error::{decode, venue_class, Decoded};
+
+#[cfg(test)]
+use crate::shared::error::retry_after_secs;
+#[cfg(test)]
 use crate::usdm::weight::MAX_COOLDOWN;
+#[cfg(test)]
+use polyoxide_core::ErrorResponse;
 
 /// Error type for USDⓈ-M futures API operations.
 #[derive(Error, Debug)]
@@ -60,12 +66,6 @@ pub enum UsdmError {
     },
 }
 
-#[derive(Deserialize)]
-struct VenueBody {
-    code: i64,
-    msg: String,
-}
-
 impl UsdmError {
     /// Binance's error code, for a [`Venue`](Self::Venue) error.
     pub fn code(&self) -> Option<i64> {
@@ -92,63 +92,18 @@ impl UsdmError {
 /// naming the path.
 impl From<ApiError> for UsdmError {
     fn from(err: ApiError) -> Self {
-        match err {
-            ApiError::Response(response) => Self::from_response(*response),
-            other => Self::Api(other),
-        }
-    }
-}
-
-impl UsdmError {
-    fn from_response(mut response: ErrorResponse) -> Self {
-        let status = response.status.as_u16();
-        let retry_after = retry_after_secs(
-            response
-                .headers
-                .get(polyoxide_core::http::header::RETRY_AFTER)
-                .and_then(|value| value.to_str().ok()),
-        );
-        match status {
-            418 => {
-                tracing::warn!("418: IP banned: {}", truncate_for_log(&response.body));
+        match decode(err) {
+            Decoded::Api(err) => Self::Api(err),
+            Decoded::Venue { status, code, msg } => Self::Venue { status, code, msg },
+            Decoded::RateLimited { retry_after } => Self::RateLimited { retry_after },
+            Decoded::IpBanned { retry_after, body } => {
+                tracing::warn!("418: IP banned: {}", truncate_for_log(&body));
                 Self::IpBanned { retry_after }
             }
-            429 => Self::RateLimited { retry_after },
-            451 => Self::RegionBlocked {
-                msg: clip(&response.body),
-            },
-            403 => Self::Forbidden {
-                msg: clip(&response.body),
-            },
-            _ => match serde_json::from_str::<VenueBody>(&response.body) {
-                Ok(venue) => Self::Venue {
-                    status,
-                    code: venue.code,
-                    msg: clip(&venue.msg),
-                },
-                // Core read the whole body for its `error` or `message`
-                // field; only what is kept is clipped. The wait is Binance's
-                // reading, clamped as the other arms clamp it.
-                Err(_) => {
-                    response.message = clip(&response.message);
-                    response.body = clip(&response.body);
-                    response.retry_after = retry_after;
-                    Self::Api(response.into())
-                }
-            },
+            Decoded::RegionBlocked { msg } => Self::RegionBlocked { msg },
+            Decoded::Forbidden { msg } => Self::Forbidden { msg },
         }
     }
-}
-
-/// Parses `Retry-After` with [`polyoxide_venue::parse_retry_after`], clamped
-/// to [`MAX_COOLDOWN`]: seconds, whole or fractional, and `None` for zero,
-/// negative, non-finite and unparsable values.
-pub(crate) fn retry_after_secs(value: Option<&str>) -> Option<Duration> {
-    value.and_then(|value| polyoxide_venue::parse_retry_after(value, MAX_COOLDOWN))
-}
-
-fn clip(text: &str) -> String {
-    truncate_for_log(text).into_owned()
 }
 
 /// `Api` delegates, and `Venue` follows the status rule with Binance's code
@@ -166,9 +121,7 @@ impl Classify for UsdmError {
     fn class(&self) -> Class {
         match self {
             Self::Api(err) => err.class(),
-            Self::Venue { status, code, .. } => class_for_status(*status)
-                .unwrap_or(Class::Decode)
-                .with_code(code.to_string()),
+            Self::Venue { status, code, .. } => venue_class(*status, *code),
             Self::RateLimited { retry_after } => {
                 Class::RateLimited { retry_after: None }.with_retry_after(*retry_after)
             }

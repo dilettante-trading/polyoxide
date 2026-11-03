@@ -1,11 +1,13 @@
 //! # polyoxide-binance
 //!
-//! Rust client library for Binance's APIs, one feature per module: `usdm`.
+//! Rust client library for Binance's APIs, one feature per module: `usdm` and `spot`.
 //!
 //! `usdm` (feature `usdm`, on by default) reads USDⓈ-M futures public market
 //! data (`fapi.binance.com`), and with `usdm-ws` its market streams
-//! (`fstream.binance.com`). No credentials are needed. The module's own docs
-//! carry its example.
+//! (`fstream.binance.com`). `spot` (feature `spot`, on by default) reads spot
+//! public market data (`api.binance.com`), and with `spot-ws` its market
+//! streams (`stream.binance.com`). No credentials are needed. Each module's
+//! own docs carry its example.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `doctest` keeps this out of normal builds and `cargo doc`.
@@ -20,8 +22,18 @@ struct ReadmeDoctests;
 #[doc = include_str!("usdm/README.md")]
 struct UsdmReadmeDoctests;
 
+#[cfg(all(doctest, feature = "spot"))]
+#[doc = include_str!("spot/README.md")]
+struct SpotReadmeDoctests;
+
+#[cfg(any(feature = "usdm", feature = "spot"))]
+mod shared;
+
 #[cfg(feature = "usdm")]
 pub mod usdm;
+
+#[cfg(feature = "spot")]
+pub mod spot;
 
 // Every public error type implements `Classify`; one without it fails the
 // build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
@@ -37,10 +49,28 @@ const _: fn() = || {
     is::<usdm::ws::InvalidStreamName>();
 };
 
+// The spot module's error types, in the same assertion `usdm`'s are in.
+#[cfg(feature = "spot")]
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<spot::SpotError>();
+    is::<spot::types::InvalidSymbol>();
+    #[cfg(feature = "spot-ws")]
+    is::<spot::ws::SpotWsError>();
+    #[cfg(feature = "spot-ws")]
+    is::<spot::ws::InvalidStreamName>();
+};
+
 // Every product implements its class's bundle; one that drops a defining
 // capability fails the build here.
 #[cfg(feature = "usdm")]
 const _: fn() = || {
     fn bundle<T: polyoxide_venue::PerpetualMarket>() {}
     bundle::<usdm::Usdm>();
+};
+
+#[cfg(feature = "spot")]
+const _: fn() = || {
+    fn bundle<T: polyoxide_venue::SpotMarket>() {}
+    bundle::<spot::Spot>();
 };

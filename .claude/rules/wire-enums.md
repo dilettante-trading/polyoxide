@@ -6,6 +6,7 @@ paths:
   - "polyoxide-polymarket/src/relay/session_signers.rs"
   - "polyoxide-polymarket/src/clob/api/rewards.rs"
   - "polyoxide-binance/src/usdm/ws/mod.rs"
+  - "polyoxide-binance/src/spot/ws/mod.rs"
   - "**/tests/enum_wire_*.rs"
 ---
 
@@ -13,7 +14,8 @@ paths:
 
 `polyoxide-venue`'s macros declare the wire enums of gamma (`src/gamma/types.rs`), data v2
 (`src/data/v2/types/common.rs`), perps (`src/perps/types.rs`) and relay (`src/relay/types.rs`,
-`session_signers.rs`), all in `polyoxide-polymarket`, and of Binance (`usdm/types.rs`):
+`session_signers.rs`), all in `polyoxide-polymarket`, and of Binance (`usdm/types.rs` and
+`spot/types.rs`):
 
 - `wire_enum!` for a closed set the client sends: serde renames, `ALL`,
   `as_str(self) -> &'static str`, `Display`, and a `FromStr` whose error is
@@ -33,10 +35,11 @@ Rules for using them:
   every calling crate: data's closed enums pass
   `#[cfg_attr(feature = "specta", derive(specta::Type))]`, and gamma and data give their open
   enums a `String` shape with one `polyoxide_venue::specta_as_string!(..)`.
-- Perps and Binance keep separate `Interval` enums (D16).
+- Perps, Binance's `usdm` and Binance's `spot` keep separate `Interval` enums (D16).
 
 Still written by hand, one spelling per variant: clob's `OrderSide` (`src/clob/types.rs`) and
 `SortPosition`, `MultiMarketOrderBy` and `UserRewardMarketOrderBy` (`src/clob/api/rewards.rs`);
-relay's `WalletType`; Binance's `StreamPath` (`usdm/ws/mod.rs`); gamma's `ParentEntityType`; and
-data's v1 enums in `data/types.rs`, among them the `#[serde(other)] Unknown` ones (`TradeSide`,
-`ActivityType`, `ApprovalFeature`, `ApprovalStandard`, `ComboStatus`, `ComboLegStatus`).
+relay's `WalletType`; Binance's `StreamPath` (`usdm/ws/mod.rs`, `spot/ws/mod.rs`); gamma's
+`ParentEntityType`; and data's v1 enums in `data/types.rs`, among them the `#[serde(other)] Unknown`
+ones (`TradeSide`, `ActivityType`, `ApprovalFeature`, `ApprovalStandard`, `ComboStatus`,
+`ComboLegStatus`).

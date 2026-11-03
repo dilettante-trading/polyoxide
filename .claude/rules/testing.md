@@ -10,7 +10,8 @@ paths:
 - Suites are named `<kind>_<module>.rs` (`mock_clob.rs`, `live_usdm_ws.rs`, `venue_perps.rs`).
 - **Mock HTTP:** `mockito` (a workspace dev-dependency). Each HTTP module has a
   `tests/mock_<module>.rs`: `polyoxide-polymarket`'s `mock_clob`, `mock_gamma`, `mock_data` (v2 in
-  `mock_data_v2.rs` beside it), `mock_relay` and `mock_perps`; Binance's `mock_usdm`; Kalshi's
+  `mock_data_v2.rs` beside it), `mock_relay` and `mock_perps`; Binance's `mock_usdm` and
+  `mock_spot`; Kalshi's
   `mock_predictions`, whose later suites are files of their own named `mock_predictions_<what>`.
   Each has helpers like `test_public_clob(server)` that point clients at the mock server's URL.
 - The read-only modules build with `Gamma::builder().build()` and `DataApi::builder().build()`;
@@ -65,5 +66,5 @@ function called per request, so signing stays in each script; a non-JSON error b
 not raised), `require_ok`, `write_json`, `write_raw`, `stamp`, `provenance_table`,
 `write_provenance` and the async `ws_session`, which imports `websockets` lazily. Run a capture
 script as a file (`python3 scripts/capture_x.py` or `uv run scripts/capture_x.py`), never
-`python3 -I`, which keeps `scripts/` off `sys.path`. `scripts/capture_binance_usdm.py` is a PEP 723
-`uv run` script.
+`python3 -I`, which keeps `scripts/` off `sys.path`. `scripts/capture_binance_usdm.py` and
+`scripts/capture_binance_spot.py` are PEP 723 `uv run` scripts.

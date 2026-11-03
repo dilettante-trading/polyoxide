@@ -8,9 +8,10 @@
 //! that cannot do something does not implement its trait.
 //!
 //! A class bundle names what every product of a [`ProductClass`](crate::ProductClass)
-//! offers: [`PerpetualMarket`] is [`MarketData`] and [`Funding`], and
-//! [`EventContractMarket`] is [`MarketData`] and [`EventGroups`]. Each is
-//! implemented for every type that implements its members.
+//! offers: [`PerpetualMarket`] is [`MarketData`] and [`Funding`],
+//! [`EventContractMarket`] is [`MarketData`] and [`EventGroups`], and
+//! [`SpotMarket`] is [`MarketData`] alone. Each is implemented for every type
+//! that implements its members.
 //!
 //! Each method returns a [`ClassifiedError`], built with `?` from the module's
 //! own error; the native clients keep their typed errors. A key of another
@@ -210,6 +211,43 @@ impl<T: MarketData + Funding> PerpetualMarket for T {}
 pub trait EventContractMarket: MarketData + EventGroups {}
 
 impl<T: MarketData + EventGroups> EventContractMarket for T {}
+
+/// What every [`ProductClass::Spot`](crate::ProductClass::Spot) product
+/// offers: [`MarketData`], and nothing beyond it, so a function generic over
+/// products that trade the asset itself needs one bound.
+///
+/// Like [`PerpetualMarket`], it names only what defines its class, is
+/// implemented for every type that implements its members, and has no `Dyn`
+/// wrapper. Nothing beyond [`MarketData`] defines the class: a capability its
+/// products share with other classes, such as [`Candles`] or [`Trades`], stays
+/// out, so a product of the class that lacks one still has the bundle.
+///
+/// ```
+/// use polyoxide_venue::{ClassifiedError, MarketKey, Quote, SpotMarket};
+///
+/// /// The quote of one asset, on any venue that trades it outright.
+/// async fn quote_of<M: SpotMarket>(
+///     market: &M,
+///     key: &MarketKey,
+/// ) -> Result<Quote, ClassifiedError> {
+///     market.quote(key).await
+/// }
+/// ```
+///
+/// A type that is not [`MarketData`] is not one:
+///
+/// ```compile_fail
+/// use polyoxide_venue::SpotMarket;
+///
+/// struct Nothing;
+///
+/// fn needs_spot_market<M: SpotMarket>() {}
+///
+/// needs_spot_market::<Nothing>();
+/// ```
+pub trait SpotMarket: MarketData {}
+
+impl<T: MarketData> SpotMarket for T {}
 
 #[cfg(test)]
 mod tests {

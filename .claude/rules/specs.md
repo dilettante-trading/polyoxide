@@ -12,7 +12,8 @@ Upstream API documentation lives in `docs/specs/`, one directory per host, index
 `docs/specs/INDEX.md`. These are the source of truth for endpoint contracts, rate limits and
 response schemas. Polymarket's are mirrored from https://docs.polymarket.com and the official
 OpenAPI specs; Kalshi's OpenAPI and AsyncAPI are mirrored in `docs/specs/kalshi/`; Binance
-publishes none for USDⓈ-M, so `docs/specs/binance/` holds what its hosts were observed to do.
+publishes none for USDⓈ-M and none current for spot (spot's `spot_api.yaml` has been stale since
+2024-10-08 and is not watched), so `docs/specs/binance/` holds what its hosts were observed to do.
 
 - **A mirror stays byte-faithful.** Never edit a vendored OpenAPI or AsyncAPI file that
   `nightly-schema.yml` watches, or the drift check alarms forever.

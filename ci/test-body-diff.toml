@@ -547,3 +547,10 @@ file = "polyoxide-polymarket/tests/polymarket_throttle.rs"
 item = "the_hold_survives_a_tier_change"
 row = "R23"
 sha256 = "42df712360946e3af0baf097378aa751ea65dfb24ca078311e1c1e0a1bb2650e"
+
+[[drift]]
+file = "polyoxide-binance/src/usdm/ws/client.rs"
+item = "UsdmWs::close_frame"
+kind = "method"
+row = "R24"
+sha256 = "0d4a05039a271ac9bbdacec37f21429625b7552f7ad95f291b643c0b9f544c85"

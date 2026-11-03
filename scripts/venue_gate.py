@@ -11,7 +11,7 @@ case-insensitively, for
     and every other character that is not a letter or a digit, and at case
     boundaries, so `clob` is found in `clob_default`, `ClobThrottle` and `clob::`, and
     `perps` in `PERPS_GENERAL`, but not `clob` in `clobber`. The generic words of
-    ci/venue-gate-skip.txt (`data`, `events`) are not looked for;
+    ci/venue-gate-skip.txt (`data`, `events`, `spot`) are not looked for;
   - each `<venue>.<product>:` prefix, for each product its venue declares;
   - each venue's `identifiers`, as substrings: Polymarket's `Poly-RateLimit`.
 

@@ -43,8 +43,9 @@ anywhere makes the failure `real`, and so does no tag at all. Nothing reads the 
   and fail through `Missing::or_auth_gated()` as `auth-gated`.
 - `environmental(reason)` and `transient(reason)` tag what no error value carries.
 - Wrap a foreign error in the venue's own error first (`ApiError::Transport`,
-  `UsdmWsError::from(WsError::from(..))`, `RtdsError::from(WsError::from(..))`,
-  `ClobWsError::from(WsError::from(..))`, `SportsError::Transport { source: WsError::from(..) }`),
+  `UsdmWsError::from(WsError::from(..))`, `SpotWsError::from(WsError::from(..))`,
+  `RtdsError::from(WsError::from(..))`, `ClobWsError::from(WsError::from(..))`,
+  `SportsError::Transport { source: WsError::from(..) }`),
   and a raw socket's close frame likewise, so it takes its tag from the socket table.
 
 | Tag | Means | The nightly |
@@ -82,8 +83,8 @@ per-file `opted_out` count that may not rise without a hand edit a reviewer sees
 Each regex-era case is a row of `.github/scripts/tests/test_classify_failures.py`'s tag table, and
 each row naming an error the tests can build has a Rust twin in a failure-tags suite asserting the
 tag that error prints: `polyoxide-test-support`'s `tests/failure_tags.rs` (core's `ApiError`),
-`polyoxide-binance`'s `tests/failure_tags_usdm.rs`, and `polyoxide-polymarket`'s
-`tests/failure_tags_sports.rs` and `tests/failure_tags_rtds.rs`.
+`polyoxide-binance`'s `tests/failure_tags_usdm.rs` and `tests/failure_tags_spot.rs`, and
+`polyoxide-polymarket`'s `tests/failure_tags_sports.rs` and `tests/failure_tags_rtds.rs`.
 
 ## The browser job
 
