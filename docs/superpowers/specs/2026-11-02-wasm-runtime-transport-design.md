@@ -55,8 +55,11 @@ first, so it needs a spine amendment (D15).
   `ws.perpetuals`, `fstream`) upgrades (101). Kalshi production REST answers 403 to that Origin
   and 200 to `kalshi.com`; its socket answers 401 to both, since it requires signed handshake
   headers.
-- `getrandom` 0.3.4's `wasm_js` backend needs the `wasm_js` feature and, in the final binary,
-  `--cfg getrandom_backend="wasm_js"`; the feature alone is a compile error.
+- `getrandom` 0.3.4's `wasm_js` feature alone selects the browser backend on
+  `wasm32-unknown-unknown` (`src/backends.rs:188-192`; its error text, which says the feature is
+  insufficient, is stale). Corrected after the run (owner, 2026-11-03): this line first said the
+  feature alone was a compile error, which holds only for older 0.3.x. getrandom 0.2, reached
+  through alloy's `rand_core`, takes its `js` feature and no flag.
 - quanta 0.12.6 (governor's clock) reads `globalThis.performance`, so it works in a Worker.
 - prader-rs (HEAD `3c8acb698`) uses none of `send_raw`, `ErrorResponse::read`,
   `ApiError::from_response`, `retry_after_header` or `Pong::response`.
@@ -72,8 +75,9 @@ first, so it needs a spine amendment (D15).
   `polyoxide-py`, and every `keychain` feature. A Worker is the recommended context, because a
   hidden tab throttles main-thread timers (in Chrome to once a second, and to once a minute after
   five minutes), which breaks ping cadences. A threaded wasm build (atomics) is unsupported,
-  because the browser implementations' `SendWrapper` panics off its thread. The consumer's final
-  binary sets `--cfg getrandom_backend="wasm_js"`; polyoxide enables the feature (D10).
+  because the browser implementations' `SendWrapper` panics off its thread. polyoxide requires getrandom
+  0.3.4 and enables `wasm_js` (D10), so the consumer's final binary needs no
+  `--cfg getrandom_backend` flag (owner, 2026-11-03).
 
 - **D2. `polyoxide-rt`.** A new published crate, first in publish order, depending on nothing in
   the workspace and naming no venue (it joins `scripts/venue_gate.py`'s foundation list).
@@ -124,6 +128,11 @@ first, so it needs a spine amendment (D15).
   - `ClientConfig` carries `runtime: Option<Arc<dyn Runtime>>`; `client_config_setters!` adds
     `runtime(..)` to every HTTP builder; `HttpClientBuilder` gets `runtime(..)`; `HttpClient`
     holds the `Arc` and shares it with its `with_base_url` siblings, as it shares its throttle.
+    `PolymarketBuilder` gains `runtime(..)` and `http_transport(..)`, passed on to its CLOB,
+    Gamma and Data clients, and `ClobBuilder::build` gives `user_socket` the client's runtime
+    when the socket builder has none (owner, 2026-11-03). `client_config_setters!` names the
+    runtime through `$crate::__rt`, a `#[doc(hidden)] pub use polyoxide_rt as __rt` in core, so a
+    crate invoking it needs no `polyoxide-rt` dependency of its own.
   - Each socket builder (perps, Binance, the CLOB's market socket and `user_socket`, sports,
     rtds, Kalshi) gets `runtime(..)` and `socket_transport(..)` from a new
     `polyoxide_ws::transport_setters!`, beside `timing_setters!`.
@@ -147,6 +156,10 @@ first, so it needs a spine amendment (D15).
     `-binance` and `-kalshi`. It skips `#[cfg(test)]` modules, `polyoxide-ws/src/test_server/`
     and each crate's feature-gated `scripted.rs` fixtures. It fails on `tokio::spawn`,
     `tokio::task::spawn`, any `tokio::time::` path, `Instant::now(` and `SystemTime::now(`.
+    As built (Story 6's review), it also fails on every `tokio::spawn*` and `tokio::task::spawn*`
+    (`spawn_blocking` and `spawn_local` included), on `Instant::now` and `SystemTime::now` named
+    as function values, on grouped, aliased and `extern crate` renames of tokio, and it scans
+    code under `cfg(any(test, feature = ..))`.
     A line ending `// runtime-gate: <reason>` is exempt, as `live_unwraps.py`'s opt-out is.
     `polyoxide-rt` is not scanned, since it implements the runtime.
     `.github/scripts/tests/test_runtime_gate.py` runs it in CI's scripts job and proves it
@@ -246,7 +259,8 @@ first, so it needs a spine amendment (D15).
     `ensure_crypto_provider`; capabilities all `true`). `TungsteniteTransport::per_address()` is
     the CLOB's dial (D20) moved into ws unchanged: resolve, interleave IPv6 and IPv4, bound each
     address and each step by the timeout. The CLOB's builders default to it, so its native
-    behaviour does not change, and its own `Protocol::connect` override and `dial` are removed.
+    behaviour does not change. Its `Protocol::connect` override and `dial` shrink to thin
+    wrappers over it, kept only for the `ConnectTimeout` mapping below.
     An injected transport replaces the dial, D20 included. The CLOB keeps mapping a
     `Kind::ConnectTimeout` to its own `ConnectTimeout { url, timeout }`.
 
@@ -293,6 +307,8 @@ first, so it needs a spine amendment (D15).
     connection ends through the close event. `docs/specs/sports/OBSERVED.md` records the live
     capture's facts and says the quiet-hour gap and a quiet-hour text-ping answer are unmeasured.
     A browser socket left half-open goes undetected, which the README's browser gaps say.
+    With the check off, no timer is armed at all (`std::future::pending`), rather than a
+    `sleep(Duration::MAX)` re-armed on every frame (owner, 2026-11-03).
   - The CLOB (text `PING`) and perps (JSON `ping`) are unchanged. No in-scope socket sends a
     handshake header.
 
@@ -301,20 +317,23 @@ first, so it needs a spine amendment (D15).
   - Native only: tokio `rt` and `time` (`polyoxide-rt`), tokio `net`, tokio-tungstenite and
     rustls (`polyoxide-ws`), and with them `polyoxide-ws`'s `test-server` feature.
   - wasm32 only: `wasm-bindgen`, `wasm-bindgen-futures`, `js-sys`, `web-sys` (the socket and
-    event types), `gloo-timers` (`futures`), `send_wrapper` (`futures`), and `getrandom` 0.3 with
+    event types), `gloo-timers` (`futures`), `send_wrapper` (`futures`), and `getrandom` 0.3.4 or later with
     `wasm_js` (in `polyoxide-rt`, so feature unification reaches rand and tungstenite);
     `web-time` for `polyoxide-venue`.
   - Both: `tungstenite` (the message vocabulary; `polyoxide-ws` declares it directly),
     `futures-util`, tokio `sync` and `macros`, `web-time` in `polyoxide-rt`.
   - `polyoxide-polymarket`'s `clob-ws` stops enabling `tokio/net` (the dial lives in ws, D7), and
-    `polyoxide-binance`'s `usdm-ws` stops enabling `tokio/rt`. core drops tokio `time`.
+    `polyoxide-binance`'s `usdm-ws` stops enabling `tokio/rt`. core drops tokio `time`, and so do
+    the venue crates' normal dependencies, whose production code no longer uses it (owner,
+    2026-11-03).
   - `ci/dep-allowlists/` stays pinned to `x86_64-unknown-linux-gnu` and is regenerated for the
     native changes; a `wasm32-unknown-unknown` set is added for the supported crates' trees.
 
 - **D11. What breaks (0.45.0).** Each gets its `docs/s3-removals.md` line: `HttpClient::client`;
   `ApiError::Network`; `classify_reqwest`; `polyoxide_ws::Socket`; the return types of
   `HttpClient::send`, `Request::send_raw`, `ListOrders::send_raw`, `connect` and `connect_over`;
-  `Pong::response`'s type; the parameters of `ErrorResponse::read`, `ApiError::from_response`,
+  `Pong::response`'s type; the types of `Connection::new` and
+  `Connection::last_inbound`; the parameters of `ErrorResponse::read`, `ApiError::from_response`,
   `retry_after_header` and `Protocol::connect`. Everything added (`polyoxide-rt`, the transport
   traits and types, `Kind::Unsupported`, the setters, `Connection::with_runtime`,
   `polyoxide_core::http`) is additive. prader-rs uses none of the broken items (1.4).
@@ -337,16 +356,21 @@ first, so it needs a spine amendment (D15).
   covers a paused-clock test whose setup advances past a wait the runtime now sees. Story 4
   fixes core's `mock_request.rs` `retries_on_429_then_succeeds`, which mockito answers from the
   success mock first so it never retries: it reorders the mocks, proves the test red without
-  the retry, and takes a `[[drift]]` entry citing R22. Divergence row D20's text
+  the retry, and takes a `[[drift]]` entry citing R22. After the run (owner, 2026-11-03),
+  `polymarket_throttle`'s `the_hold_survives_a_tier_change` takes its start instant before
+  `throttle.hold(..)`, not after, since a scheduling stall between the two shortened its reading
+  under load. Its `[[drift]]` entry names a new DRIFT row, R23, for a test that measured from the
+  wrong instant. Divergence row D20's text
   moves the CLOB's dial into `TungsteniteTransport::per_address()`. Each moved or re-proved line
   in `docs/MUTANTS.md` moves with it.
 
 - **D13. The per-push `wasm` job** (the tenth CI job; the CLAUDE.md table gains its row).
   - `scripts/wasm_check.sh` (no arguments; stops at the first failure) runs `cargo check` and
     `cargo clippy -- -D warnings` for `wasm32-unknown-unknown` over D1's set, crate by crate
-    with their features named. It sets `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'` itself,
-    replacing any inherited value, since an inherited `RUSTFLAGS` (a host `target-cpu`) would
-    override a config file's and break the target. With `--target`, cargo does not pass
+    with their features named. It sets `RUSTFLAGS` empty itself, replacing any inherited value,
+    since an inherited `RUSTFLAGS` (a host `target-cpu`) would break the target. It sets no
+    getrandom flag, so the job proves `wasm_js` alone selects the backend (owner, 2026-11-03;
+    `scripts/wasm_smoke.sh` and `scripts/wasm_live.sh` likewise). With `--target`, cargo does not pass
     `RUSTFLAGS` to build scripts, so the host cache is untouched.
   - D3's `runtime_gate.py` runs in the existing CI scripts job.
   - `scripts/wasm_smoke.sh` starts the smoke server, exports its addresses, and runs
@@ -431,11 +455,15 @@ first, so it needs a spine amendment (D15).
   - The nightly browser job, per host: one GET (no preflight) bounded by 10 s, and one socket
     held until its first data frame or 20 s. Each check retries once after 5 s. A second
     failure is `real`, except a socket that opened and then dropped, which is `transient`. The
-    job's timeout is 15 minutes.
+    job's timeout is 15 minutes. As built and accepted (owner, 2026-11-03): `wasm_live.sh`
+    first reads Binance's status natively with one GET to `fapi`, so a 451 from a US runner is
+    tagged `environmental` (two `fapi` GETs on a night Binance answers), and its transient
+    retry pass may open a socket host that keeps dropping up to four times.
   - Story 8's `LIST_SUBSCRIPTIONS` live test: one socket on `fstream`'s `/market` path,
     subscribed to `btcusdt@markPrice@1s`, sending the request six times 20 s apart (well above
     the 200 ms pacing). Each answer is due within 5 s. An unanswered one selects D9's fallback,
-    and is recorded, not escalated.
+    and is recorded, not escalated. The test stays in `live_usdm_ws` and repeats nightly, as
+    the keepalive's drift check (owner, 2026-11-03).
   - Story 8's sports capture: one unauthenticated socket for 30 minutes, at a time the feed
     reports no game live, sending a text `ping` at minutes 10 and 20 and nothing else. A drop
     reconnects once and extends the capture by the time lost. A second drop, or a game live
@@ -456,5 +484,10 @@ first, so it needs a spine amendment (D15).
 
 - During story 8, nothing unless D17 stops it: the sports capture and the `LIST_SUBSCRIPTIONS`
   check use public, unauthenticated sockets.
+- Before the merge: CI's python job has been red on `main` since Data API v1 was retired
+  upstream (every v1 route 410, 2026-11-02). A separate session skips the v1 Python live tests,
+  and a later spec retires v1 across the crates. The 0.45.0 release needs it green.
+- After the merge: read the first nightly's `live-wasm-browser` job for a real Binance 451,
+  since the preflight's tagging was tested only on a forced one.
 - After the run: merge the spine amendment and regenerate `docs/ARCHITECTURE.md`; the 0.45.0
   version-bump commit on `main` and its release; prader-rs's bump to it.
