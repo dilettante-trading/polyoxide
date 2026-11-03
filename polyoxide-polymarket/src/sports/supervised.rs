@@ -164,9 +164,9 @@ impl SportsWsBuilder {
         // sees_server_pings`; a browser's does) leaves a quiet feed nothing to
         // count, since no data arrives when nothing is live, and no text ping
         // is known to be answered (`docs/specs/sports/OBSERVED.md`). The limit
-        // is off there, as `Duration::MAX` means never stale, and a lost
-        // connection ends through its close event. The transport read is the
-        // one dialled.
+        // is off there, as `Duration::MAX` means never stale and arms no
+        // timer, and a lost connection ends through its close event. The
+        // transport read is the one dialled.
         if !transport.capabilities().sees_server_pings {
             self.stale_after = Duration::MAX;
         }
@@ -206,12 +206,23 @@ enum State {
 
 impl State {
     fn reading(connection: Box<Connection>, stale_after: Duration) -> Self {
-        let stale = connection.runtime().sleep(stale_after);
+        let stale = stale_timer(&connection, stale_after);
         State::Reading {
             connection,
             stale,
             received: false,
         }
+    }
+}
+
+/// The timer that ends a silent connection: the runtime's sleep for
+/// `stale_after`, or, for `Duration::MAX` (never stale), a future that never
+/// resolves, so a connection with the check off arms no timer at all.
+fn stale_timer(connection: &Connection, stale_after: Duration) -> BoxFuture<()> {
+    if stale_after == Duration::MAX {
+        Box::pin(std::future::pending())
+    } else {
+        connection.runtime().sleep(stale_after)
     }
 }
 
@@ -383,9 +394,11 @@ fn poll_reading(
         // hour the server sends nothing else.
         if !matches!(inbound, Inbound::Closed(_)) {
             *received = true;
-            // A limit too large to add, such as `Duration::MAX`, means never
-            // stale: a runtime's `sleep` takes any duration.
-            *stale = connection.runtime().sleep(stale_after);
+            // `Duration::MAX` means never stale, and its timer never fires, so
+            // there is nothing to re-arm.
+            if stale_after != Duration::MAX {
+                *stale = stale_timer(connection, stale_after);
+            }
         }
         match inbound {
             Inbound::Update(update) => return Step::Yield(Ok(Event::Update(update))),
@@ -612,6 +625,62 @@ mod tests {
                 })
             ),
             "{item:?}"
+        );
+    }
+
+    /// A runtime that keeps every duration it is asked to sleep.
+    #[derive(Debug, Default)]
+    struct Sleeps {
+        inner: polyoxide_rt::TokioRuntime,
+        asked: std::sync::Mutex<Vec<Duration>>,
+    }
+
+    impl Runtime for Sleeps {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.asked.lock().unwrap().push(duration);
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
+
+    #[tokio::test]
+    async fn with_staleness_off_no_timer_is_armed_for_any_frame() {
+        use crate::sports::fixtures;
+        use polyoxide_ws::test_server::{Script, ScriptedServer};
+
+        let server = ScriptedServer::start(vec![Script::frames(&[
+            fixtures::SOCCER,
+            fixtures::ESPORTS,
+            fixtures::TENNIS_EVENT_STATE,
+        ])])
+        .await;
+        let runtime = Arc::new(Sleeps::default());
+        let mut feed = SportsWsBuilder::new()
+            .url(server.url.clone())
+            .stale_after(Duration::MAX)
+            .runtime(runtime.clone())
+            .connect()
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            let item = tokio::time::timeout(Duration::from_secs(3), feed.next())
+                .await
+                .expect("a frame within 3 s")
+                .expect("the feed is open");
+            assert!(matches!(item, Ok(Event::Update(_))), "{item:?}");
+        }
+        // The connect's own 10 s bound is the only timer asked for.
+        let asked = runtime.asked.lock().unwrap().clone();
+        assert!(
+            asked.iter().all(|duration| *duration < Duration::MAX),
+            "armed a never-stale timer: {asked:?}"
         );
     }
 }

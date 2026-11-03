@@ -101,7 +101,7 @@ SNIPPETS = {
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-polymarket/tests/supervision_rtds.rs", 327):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
-    ("polyoxide-polymarket/src/sports/supervised.rs", 468):
+    ("polyoxide-polymarket/src/sports/supervised.rs", 481):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
 }
 
