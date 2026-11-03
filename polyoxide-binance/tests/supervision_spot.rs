@@ -446,3 +446,36 @@ async fn a_refused_handshake_s_retry_after_is_waited_out() {
     assert!(waited >= Duration::from_millis(400), "{waited:?}");
     ws.close().await.unwrap();
 }
+
+/// The requests the server received whose method is `method`, in order.
+fn requests_of(server: &ScriptedServer, method: &str) -> Vec<serde_json::Value> {
+    server
+        .requests()
+        .into_iter()
+        .filter(|request| request["method"] == method)
+        .collect()
+}
+
+#[tokio::test]
+async fn the_builders_socket_transport_dials_the_connection() {
+    // `browser_like()` reports no client pings, so a connection it dialled
+    // keeps alive with `LIST_SUBSCRIPTIONS` and sends no protocol ping; one
+    // dialled by the default transport pings and sends no such request.
+    let server = ScriptedServer::start(vec![Script::default()]).await;
+    let mut ws = fast(&server)
+        .stale_after(Duration::from_millis(1500))
+        .socket_transport(polyoxide_ws::test_server::browser_like())
+        .streams([btc_mini()])
+        .connect()
+        .await
+        .unwrap();
+    let quiet = tokio::time::timeout(Duration::from_millis(1200), ws.next()).await;
+    assert!(quiet.is_err(), "the path went stale or ended: {quiet:?}");
+    assert_eq!(server.connection_count(), 1);
+    assert_eq!(server.ping_count(), 0, "a protocol ping reached the server");
+    assert!(
+        !requests_of(&server, "LIST_SUBSCRIPTIONS").is_empty(),
+        "the injected transport did not dial the connection"
+    );
+    ws.close().await.unwrap();
+}

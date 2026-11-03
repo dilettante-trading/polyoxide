@@ -107,7 +107,7 @@ async fn used_after(client: &polyoxide_core::reqwest::Client, path: &str) -> u32
         .await
         .unwrap_or_else(|e| panic!("{path}: {e}"));
     let status = response.status();
-    if status != polyoxide_core::reqwest::StatusCode::OK {
+    if status != polyoxide_core::http::StatusCode::OK {
         let retry_after = response
             .headers()
             .get("retry-after")

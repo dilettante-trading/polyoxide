@@ -121,10 +121,16 @@ impl SpotBuilder {
     /// paces every request instead. Its retry policy holds that budget on a
     /// `429` or a `418`, so every client sharing it waits.
     pub fn build(self) -> Result<Spot, SpotError> {
-        let budget = self.budget.unwrap_or_default();
+        // The client and the budget it makes keep time on one runtime. A budget
+        // passed to `weight_budget` brings its own, which then stands.
+        let runtime = self.config.runtime_or_default();
+        let budget = self
+            .budget
+            .unwrap_or_else(|| WeightBudget::new_on(runtime.clone()));
         let http = self
             .config
             .http_builder()
+            .runtime(runtime)
             .with_throttle(budget.clone())
             .with_retry_policy(SpotRetryPolicy {
                 budget: budget.clone(),
@@ -137,6 +143,18 @@ impl SpotBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_builders_runtime_is_the_clients_and_the_budgets() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let spot = Spot::builder().runtime(runtime.clone()).build().unwrap();
+        assert!(std::sync::Arc::ptr_eq(spot.http.runtime(), &runtime));
+        assert!(std::sync::Arc::ptr_eq(
+            spot.weight_budget().runtime(),
+            &runtime
+        ));
+    }
 
     #[test]
     fn default_builder_targets_the_production_host() {

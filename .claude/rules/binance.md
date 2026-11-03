@@ -47,8 +47,8 @@ builds each product without the other, so every item in it compiles under either
   layers and its own `Throttle` impl. The engine keeps time on its hold's `polyoxide_rt::Runtime`:
   its cooldown, its paced layer and its wait for the next minute sleep on it and the pace reads its
   clock, so no production code in `shared/` names `tokio::time` or `Instant::now`
-  (`runtime_gate.py` scans it, and `usdm` builds on wasm32). `usdm::WeightBudget::new_on` builds
-  its engine on a given runtime, and `UsdmBuilder` uses the client's.
+  (`runtime_gate.py` scans it, and `usdm` builds on wasm32). A product's `WeightBudget::new_on`
+  builds its engine on a given runtime, and its builder uses the client's.
 - `shared::policy::decide`: the retry decision as a function of the response, the attempt, the
   schedule and the time to the next minute. "The retry policy" below is its rules.
 - `shared::error`: `decode` by status first into `Decoded`, `retry_after_secs`, `clip` and
@@ -150,6 +150,8 @@ fourteen methods over eleven routes, with no credentials. It is the first produc
   layer. The `RAW_REQUESTS` limit (300,000 per 5 minutes) is not modelled: every request weighs at
   least 1, so the budget caps a client at 27,000 requests per 5 minutes, and the module docs say
   so. Pass a budget with `SpotBuilder::weight_budget`; every `Spot` built with one shares its hold.
+  `SpotBuilder::build` makes one with `WeightBudget::new_on` the client's runtime, as `usdm`'s does,
+  and a budget passed in keeps its own.
 - **The weight table**, `spot::weight::Route::cost`, is measured over distinct URLs, not copied,
   and pinned by its `documented_weights` test: `ping` and `time` 1, `exchangeInfo` 20, `depth` 5
   without `limit` and for 1 to 100, 25 for 101 to 500, 50 for 501 to 1000 and 250 above (each band
@@ -239,7 +241,13 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
 
 Nine spot market streams on `stream.binance.com`: `SpotWs` (one connection) and
 `SpotWsBuilder`/`SupervisedSpotWs`, on the same `shared::ws` code as `usdm::ws`, with `SpotStreams`
-as spot's `StreamSet`. `spot-ws` turns `spot` on.
+as spot's `StreamSet`. `spot-ws` turns `spot` on. `SpotWsBuilder` takes `runtime(..)` and
+`socket_transport(..)` from `polyoxide_ws::transport_setters!`, as `UsdmWsBuilder` does.
+
+- **Native-only.** Spot is not in the wasm32 set (README's WebAssembly section): its hosts'
+  CORS and socket upgrade were never probed from a browser, so `scripts/wasm_check.sh` names no
+  spot feature. Its code is on the same seams as `usdm`'s, so admitting it is a probe and a line
+  in that script, not a port.
 
 - **One path.** Every stream is on `/stream` of `SPOT_WS_BASE`, `wss://stream.binance.com:9443`:
   `base_url` sets another host and the client appends `/stream`, so a test server's base works as it

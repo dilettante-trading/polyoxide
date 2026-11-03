@@ -128,7 +128,9 @@ impl SpotWs {
 
     /// Send a protocol ping and wait for the pong, returning the round trip.
     /// The ping is sent outside the request pacing, and counts toward Binance's
-    /// limit of 5 incoming messages a second on a connection.
+    /// limit of 5 incoming messages a second on a connection. On a transport
+    /// that sends no protocol pings (a browser's) it fails with
+    /// [`Kind::Unsupported`](polyoxide_ws::Kind::Unsupported) and sends nothing.
     pub async fn ping(&mut self) -> Result<Duration, SpotWsError> {
         self.bare.ping().await
     }

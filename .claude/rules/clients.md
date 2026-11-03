@@ -31,8 +31,8 @@ paths:
 - `http_transport(..)`, from the same macro, injects the `Arc<dyn HttpTransport>` every attempt is
   sent on; with none set, `build` makes `ReqwestTransport` on a host target and `FetchTransport` on
   `wasm32` (`send-loop.md`), and `pool_size` and the client's `gzip` feed only the host default.
-- Each socket builder (perps, Binance's `usdm`, the CLOB's bare, market and user sockets, sports, rtds,
-  Kalshi) gets `runtime(..)` and `socket_transport(..)` from `polyoxide_ws::transport_setters!`,
+- Each socket builder (perps, Binance's `usdm` and `spot`, the CLOB's bare, market and user
+  sockets, sports, rtds, Kalshi) gets `runtime(..)` and `socket_transport(..)` from `polyoxide_ws::transport_setters!`,
   beside `timing_setters!` (`transport_setters!` names the runtime through `polyoxide_ws`'s
   doc-hidden `__rt`, as core's macro does); its `build` falls back to `polyoxide_rt::default_runtime()` and the
   target's default transport (the CLOB's, on a host target: `TungsteniteTransport::per_address()`).

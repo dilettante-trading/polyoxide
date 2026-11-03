@@ -151,8 +151,8 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
   `## Rate limits`).
 - **Data v2** (`shared::data_limits`), measured with `polyoxide-polymarket/examples/v2_soak`, which
   sends raw requests over distinct URLs; the runs are in `docs/specs/data-v2/OBSERVED.md`.
-- **Binance**: `usdm::WeightBudget` and `spot::WeightBudget` (`binance.md`); `usdm`'s `new_on`
-  keeps its hold, its funding pace and its minute waits on a given runtime.
+- **Binance**: `usdm::WeightBudget` and `spot::WeightBudget` (`binance.md`), each of whose `new_on`
+  keeps its hold and its minute waits (and `usdm`'s funding pace) on a given runtime.
 - **Kalshi**: the unsigned client's Read bucket is depth 600 refilling 180 tokens a second (20
   reads a second measured clean, less a tenth). A keyed client's public reads draw on a second
   bucket sized as the unsigned client's, so only `GET /account/limits` draws on the key's bucket,
