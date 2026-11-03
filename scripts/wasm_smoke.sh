@@ -83,7 +83,7 @@ set +a
 
 # The runner exits 0 when it finds no tests, so its exit code is not enough: its output must also
 # report at least one test passed and none failed. `pipefail` keeps a failing run failing.
-RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+RUSTFLAGS='' \
 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 WASM_BINDGEN_TEST_TIMEOUT=120 \
   cargo test -p polyoxide-wasm-smoke --target wasm32-unknown-unknown --test browser_smoke \

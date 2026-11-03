@@ -164,9 +164,10 @@ is: the two in tree are the wall-clock reads, `UnixMillis::now` and
 ## wasm
 
 `scripts/wasm_check.sh` runs `cargo check` and `cargo clippy -- -D warnings` for
-`wasm32-unknown-unknown` over the supported set, crate by crate with its features named. It sets
-`RUSTFLAGS='--cfg getrandom_backend="wasm_js"'` itself, replacing any inherited value, since an
-inherited `RUSTFLAGS` (a host `target-cpu`) would override a config file's and break the target;
+`wasm32-unknown-unknown` over the supported set, crate by crate with its features named. It blanks
+`RUSTFLAGS` itself, replacing any inherited value, since an inherited `RUSTFLAGS` (a host
+`target-cpu`) would override a config file's and break the target, and sets no
+`--cfg getrandom_backend` flag, so the job proves getrandom's `wasm_js` feature alone builds;
 with `--target` cargo passes no `RUSTFLAGS` to build scripts, so the host cache is untouched. It
 also lints `polyoxide-wasm-smoke`'s browser tests (`clippy --tests`), which no other step builds,
 with placeholder server addresses for their `env!` reads; the real ones come from

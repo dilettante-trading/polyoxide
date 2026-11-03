@@ -83,7 +83,7 @@ fi
 run() {
   local log=$1
   shift
-  RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+  RUSTFLAGS='' \
   CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
   WASM_BINDGEN_TEST_TIMEOUT=450 \
     cargo test -p polyoxide-wasm-smoke --target wasm32-unknown-unknown \
