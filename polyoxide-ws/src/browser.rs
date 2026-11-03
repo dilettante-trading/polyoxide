@@ -16,7 +16,6 @@ pub const PING_UNSUPPORTED: &str = "a ping frame is not supported by the browser
 // The test server's browser-like transport (`test-server`) refuses a frame by
 // `outgoing`, so the two refuse alike; the rest is wasm32's and the tests'.
 #[cfg(any(target_arch = "wasm32", test, feature = "test-server"))]
-#[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
 pub(crate) mod plain {
     use std::io;
 
@@ -27,6 +26,7 @@ pub(crate) mod plain {
         Error, Message,
     };
 
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
     const HEADER_UNSUPPORTED: &str = "a handshake header is not supported by the browser transport";
     const PONG_UNSUPPORTED: &str = "a pong frame is not supported by the browser transport";
     const FRAME_UNSUPPORTED: &str = "a raw frame is not supported by the browser transport";
@@ -41,6 +41,7 @@ pub(crate) mod plain {
     }
 
     /// What the browser needs to open a socket.
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
     #[derive(Debug, PartialEq, Eq)]
     pub(super) struct Dial {
         pub(super) url: String,
@@ -49,6 +50,7 @@ pub(crate) mod plain {
 
     /// The headers tungstenite generates for every handshake request, which
     /// the browser generates for itself.
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
     fn is_generated(name: &HeaderName) -> bool {
         [
             header::HOST,
@@ -67,6 +69,7 @@ pub(crate) mod plain {
     /// ones is refused, since a browser cannot set it.
     // The error is tungstenite's, the type `SocketIo` and `WsError` take.
     #[allow(clippy::result_large_err)]
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
     pub(super) fn dial_plan(request: &Request<()>) -> Result<Dial, Error> {
         let uri = request.uri();
         if !matches!(uri.scheme_str(), Some("ws" | "wss")) {
@@ -140,6 +143,7 @@ pub(crate) mod plain {
 
     /// What a send means to a browser socket in its current state.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
     pub(super) enum SendState {
         /// The socket is open: hand the frame to the platform.
         Accept,
@@ -160,6 +164,7 @@ pub(crate) mod plain {
     /// close event reaching the reader must not fail: a supervisor reads
     /// `AlreadyClosed` as the end of the stream, where a routine server close
     /// should reconnect.
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
     pub(super) const fn send_state(ready_state: u16, ended: bool) -> SendState {
         if ended {
             SendState::AlreadyClosed
