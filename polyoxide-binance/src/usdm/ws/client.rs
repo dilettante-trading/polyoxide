@@ -521,6 +521,12 @@ mod tests {
             matches!(&err, UsdmWsError::Connect(source) if matches!(source.kind(), Kind::Unsupported)),
             "{err:?}"
         );
+        // The browser transport's own wording, the contract text.
+        assert!(
+            err.to_string()
+                .contains("a ping frame is not supported by the browser transport"),
+            "{err}"
+        );
         assert_eq!(server.ping_count(), 0, "a ping reached the server");
         // The refusal sends nothing and leaves the connection usable.
         assert_eq!(ws.list_subscriptions().await.unwrap(), ["btcusdt@aggTrade"]);
