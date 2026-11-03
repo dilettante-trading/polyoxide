@@ -83,6 +83,8 @@ set +a
 
 # The runner exits 0 when it finds no tests, so its exit code is not enough: its output must also
 # report at least one test passed and none failed. `pipefail` keeps a failing run failing.
+# CARGO_ENCODED_RUSTFLAGS outranks RUSTFLAGS, so an inherited one goes too.
+unset CARGO_ENCODED_RUSTFLAGS
 RUSTFLAGS='' \
 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
 WASM_BINDGEN_TEST_TIMEOUT=120 \

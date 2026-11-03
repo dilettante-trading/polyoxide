@@ -83,6 +83,8 @@ fi
 run() {
   local log=$1
   shift
+  # CARGO_ENCODED_RUSTFLAGS outranks RUSTFLAGS, so an inherited one goes too.
+  unset CARGO_ENCODED_RUSTFLAGS
   RUSTFLAGS='' \
   CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
   WASM_BINDGEN_TEST_TIMEOUT=450 \

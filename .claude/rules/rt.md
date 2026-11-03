@@ -68,4 +68,4 @@ Dependencies are per target: tokio's `rt` and `time` are the host's, and `gloo-t
 `getrandom` is here so feature unification reaches `rand` and `tungstenite` from every crate that
 builds this one. From 0.3.4 its `wasm_js` feature alone selects the browser backend, so the crate
 requires 0.3.4 and no build sets a `--cfg getrandom_backend` flag; `scripts/wasm_check.sh`,
-`wasm_smoke.sh` and `wasm_live.sh` blank `RUSTFLAGS` and so prove it.
+`wasm_smoke.sh` and `wasm_live.sh` blank `RUSTFLAGS` and unset `CARGO_ENCODED_RUSTFLAGS` (which outranks it), and so prove it.
