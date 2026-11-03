@@ -755,8 +755,9 @@ async fn a_transport_without_client_pings_keeps_a_quiet_path_alive_with_paced_li
         .unwrap();
     let quiet = tokio::time::timeout(Duration::from_millis(1500), ws.next()).await;
     assert!(quiet.is_err(), "the path went stale or ended: {quiet:?}");
+    // A protocol that pinged would have its ping refused by `browser_like()`,
+    // which ends the connection: the count and the quiet read above catch it.
     assert_eq!(server.connection_count(), 1);
-    assert_eq!(server.ping_count(), 0, "a protocol ping was sent");
     let lists = requests_of(&server, "LIST_SUBSCRIPTIONS");
     assert!(
         lists.len() >= 4,

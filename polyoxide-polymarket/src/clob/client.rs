@@ -1058,7 +1058,7 @@ mod tests {
 
         // None on the socket builder: it follows the client's.
         let clob = ClobBuilder::new().runtime(client.clone()).build().unwrap();
-        let held = clob.user_socket.set_runtime().expect("a runtime");
+        let held = clob.user_socket.chosen_runtime().expect("a runtime");
         assert!(Arc::ptr_eq(held, &client), "the socket kept the default");
 
         // One set on it wins, whatever order the two setters ran in.
@@ -1067,12 +1067,12 @@ mod tests {
             .runtime(client.clone())
             .build()
             .unwrap();
-        let held = clob.user_socket.set_runtime().expect("a runtime");
+        let held = clob.user_socket.chosen_runtime().expect("a runtime");
         assert!(Arc::ptr_eq(held, &socket), "the client's runtime won");
 
         // With no runtime on the client either, the socket gets its default.
         let clob = ClobBuilder::new().build().unwrap();
-        assert!(clob.user_socket.set_runtime().is_some());
+        assert!(clob.user_socket.chosen_runtime().is_some());
     }
 
     /// Keeps the URL of each request it is asked to send, and fails it, so

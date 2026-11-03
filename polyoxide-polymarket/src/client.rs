@@ -300,6 +300,12 @@ mod tests {
             ("clob", &polymarket.clob.http_client, "/clob-path"),
             ("gamma", &polymarket.gamma.http_client, "/gamma-path"),
             ("data", &polymarket.data.http_client, "/data-path"),
+            ("data pnl", &polymarket.data.pnl_http_client, "/pnl-path"),
+            (
+                "data rankings",
+                &polymarket.data.rankings_http_client,
+                "/rankings-path",
+            ),
         ] {
             let err = client.get_bytes(path, &[]).await.unwrap_err();
             assert!(

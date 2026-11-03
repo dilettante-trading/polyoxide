@@ -426,7 +426,7 @@ impl UserWsBuilder {
 
     /// The runtime set on this builder, if any.
     #[cfg(test)]
-    pub(crate) fn set_runtime(&self) -> Option<&Arc<dyn Runtime>> {
+    pub(crate) fn chosen_runtime(&self) -> Option<&Arc<dyn Runtime>> {
         self.runtime.as_ref()
     }
 
