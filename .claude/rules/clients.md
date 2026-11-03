@@ -49,7 +49,9 @@ paths:
     `socket_transport` of the supervised user socket each `Trading::events` stream opens).
 - `polyoxide_polymarket::Polymarket`, the unified client (built with `clob`, `gamma` and `data`),
   builds one CLOB, Gamma and Data client from one `Account`, and the CLOB client reads through
-  that same Gamma and Data client. `Polymarket::new` and `PolymarketBuilder::build` return a
+  that same Gamma and Data client. `PolymarketBuilder` has `runtime(..)` and `http_transport(..)`
+  too, set on all three clients it builds (and so on the signer buckets the CLOB holds).
+  `Polymarket::new` and `PolymarketBuilder::build` return a
   `BuildError` whose `Clob`, `Gamma` and `Data` variants wrap the error of the client that could
   not be built and classify as it does. The umbrella re-exports it as
   `polyoxide::polymarket::Polymarket` and from its prelude.
