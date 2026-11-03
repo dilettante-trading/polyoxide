@@ -64,6 +64,17 @@ pyo3 = { version = "0.28", features = ["abi3-py39"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 pythonize = "0.28"
 
+# Debug info was ~80% of every dev test binary (305 of 381 MB), and each loom
+# worktree keeps one per feature set it has built, so a single worktree's
+# target/debug reached 131 GB. Line tables keep file:line in backtraces;
+# dependencies need none. CI's CARGO_PROFILE_TEST_DEBUG=0 still wins for
+# `cargo test` there.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 opt-level = 3
 lto = true
