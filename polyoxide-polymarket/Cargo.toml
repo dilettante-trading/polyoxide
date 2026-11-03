@@ -35,7 +35,6 @@ clob = [
     "dep:rand",
     "dep:rust_decimal",
     "dep:tokio",
-    "tokio/time",
     "dep:urlencoding",
 ]
 # The CLOB's two WebSocket channels, `clob::ws`.
@@ -88,7 +87,6 @@ relay = [
     "dep:hex",
     "dep:rand",
     "dep:tokio",
-    "tokio/time",
 ]
 perps = [
     "dep:polyoxide-core",
@@ -107,14 +105,12 @@ perps-ws = [
     "perps",
     "dep:polyoxide-ws",
     "dep:tokio",
-    "tokio/time",
     "dep:futures-util",
 ]
 # RTDS's crypto price streams. A socket alone: the kit, no core.
 rtds = [
     "dep:polyoxide-ws",
     "dep:tokio",
-    "tokio/time",
     "dep:futures-util",
     "dep:serde",
     "dep:serde_json",
@@ -127,7 +123,6 @@ rtds = [
 sports = [
     "dep:polyoxide-ws",
     "dep:tokio",
-    "tokio/time",
     "dep:futures-util",
     "dep:serde",
     "dep:serde_json",

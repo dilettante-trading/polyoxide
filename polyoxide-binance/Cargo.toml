@@ -47,7 +47,7 @@ rust_decimal = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["time", "sync"], optional = true }
+tokio = { workspace = true, features = ["sync"], optional = true }
 futures-util = { version = "0.3", optional = true }
 tracing = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
