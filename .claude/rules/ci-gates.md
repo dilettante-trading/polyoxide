@@ -190,7 +190,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 28 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 30 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -205,7 +205,9 @@ stage does not hold, printing each one's key to copy there.
   `instrument_id` (R20); and `perps::types`' enum test, moved again, and `spec_agreement_perps`'s
   `every_enum_matches_the_spec`, for `InstrumentCategory`'s undocumented `pre_ipo` (R21); and
   `polyoxide-binance`'s `UsdmWs::close_frame`, whose body moved unchanged to `shared::ws`'s
-  `Bare::close_frame`, the hook delegating (R22).
+  `Bare::close_frame`, the hook delegating (R22); and `sports::fixtures`' `ALL` and
+  `sports::update`'s `unmodelled_keys_are_kept`, which modelling the feed's `turn`,
+  `turnProviderId` and `sportradarGameId` moved (R23).
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

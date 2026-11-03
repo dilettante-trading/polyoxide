@@ -19,6 +19,8 @@ directory, copy the frames worth keeping here, and list each one in
 | `league_with_space.json` | 2026-10-01 | `leagueAbbreviation` of `wta challenger`, with a space |
 | `finished_numeric.json` | 2026-10-01 | `gameId` with `finishedTimestamp` and `status: finished` |
 | `elapsed_without_event_state.json` | 2026-10-01 | Soccer (`fif`) with `elapsed` but no `eventState` |
+| `nfl_turn.json` | 2026-11-01 | NFL, carrying `turn` and `turnProviderId` |
+| `nba_sportradar_game_id.json` | 2026-11-01 | NBA, carrying `sportradarGameId` beside `gameId` |
 
 ## Captures
 
@@ -33,3 +35,9 @@ directory, copy the frames worth keeping here, and list each one in
   `eventState` or a key `MatchUpdate` does not model. It first showed
   `status: not_started`. Its one new key-set, `elapsed` without
   `eventState`, is kept as `elapsed_without_event_state.json`.
+- **2026-11-01, from 22:13 UTC**, the weekend nightly's
+  `live_frames_round_trip_and_carry_no_unmodelled_keys`, which reads the
+  feed for 180 s and prints the first frame carrying each key it does not
+  model, verbatim (run 41356070270, issue #84). Its NFL frame is
+  `nfl_turn.json` and its NBA frame `nba_sportradar_game_id.json`, each
+  decoded from the test's quoted output and otherwise unchanged.

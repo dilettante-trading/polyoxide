@@ -10,8 +10,9 @@ use serde_json::{Map, Value};
 /// # Field requiredness
 ///
 /// Modelled on frames captured on 2026-07-25 (229 frames) and in two captures
-/// on 2026-10-01 (121 and 176 frames). Only the five fields present on every
-/// frame are required.
+/// on 2026-10-01 (121 and 176 frames), and on the NFL and NBA frames the
+/// nightly read on 2026-11-01. Only the five fields present on every frame are
+/// required.
 /// Cricket frames carry no `gameId`, `homeTeam`, `awayTeam` or `status`, and
 /// identify the match with `metadataGameId` instead. Use
 /// [`key`](Self::key) rather than either id field directly.
@@ -79,6 +80,22 @@ pub struct MatchUpdate {
     /// soccer and tennis in July 2026, and on no frame in October 2026.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_state: Option<Value>,
+    /// The team in possession, as a lowercase abbreviation such as `"ne"`.
+    /// Seen only on NFL frames, always beside
+    /// [`turn_provider_id`](Self::turn_provider_id).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<String>,
+    /// A numeric string such as `"21"` sent with [`turn`](Self::turn). It
+    /// tracks the team in possession (`"10"` with `den`, `"21"` with `ne`), so
+    /// it reads as the data provider's id for that team. Seen only on NFL
+    /// frames.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_provider_id: Option<String>,
+    /// Sportradar's id for the match, a UUID string, sent beside
+    /// [`game_id`](Self::game_id). Seen only on NBA frames. Use
+    /// [`key`](Self::key) to identify a match: gamma filters on `gameId`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sportradar_game_id: Option<String>,
     /// Every key this type does not model, kept rather than dropped.
     ///
     /// A later release may promote a key to a typed field, so read it with
@@ -222,11 +239,51 @@ mod tests {
     fn unmodelled_keys_are_kept() {
         let update = MatchUpdate::from_json(
             r#"{"leagueAbbreviation":"nfl","score":"14-7","period":"Q2","live":true,
-                "ended":false,"turn":"sea","somethingNew":42}"#,
+                "ended":false,"somethingNew":42}"#,
         )
         .unwrap();
-        assert_eq!(update.extra["turn"], "sea");
         assert_eq!(update.extra["somethingNew"], 42);
+    }
+
+    #[test]
+    fn every_later_field_reads_its_own_key() {
+        // The keys adopted from the 2026-11-01 nightly, with distinct values so
+        // a swapped `rename` fails, as `every_field_reads_its_own_key` does for
+        // the rest.
+        let frame = json!({
+            "leagueAbbreviation": "league", "score": "score", "period": "period",
+            "live": true, "ended": false, "turn": "turn",
+            "turnProviderId": "provider", "sportradarGameId": "sportradar"
+        });
+        let update: MatchUpdate = serde_json::from_value(frame).unwrap();
+        assert_eq!(update.turn.as_deref(), Some("turn"));
+        assert_eq!(update.turn_provider_id.as_deref(), Some("provider"));
+        assert_eq!(update.sportradar_game_id.as_deref(), Some("sportradar"));
+        assert!(
+            update.extra.is_empty(),
+            "a modelled key fell through to extra: {:?}",
+            update.extra.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn an_nfl_frame_carries_possession() {
+        let update = MatchUpdate::from_json(fixtures::NFL_TURN).unwrap();
+        assert_eq!(update.turn.as_deref(), Some("ne"));
+        assert_eq!(update.turn_provider_id.as_deref(), Some("21"));
+        assert_eq!(update.key(), Some(GameKey::Game(19572)));
+        assert!(update.extra.is_empty(), "{:?}", update.extra);
+    }
+
+    #[test]
+    fn an_nba_frame_carries_its_sportradar_id_and_is_keyed_by_its_game_id() {
+        let update = MatchUpdate::from_json(fixtures::NBA_SPORTRADAR_GAME_ID).unwrap();
+        assert_eq!(
+            update.sportradar_game_id.as_deref(),
+            Some("2b5f6d81-66f4-4470-a105-5355f4bbe6c8")
+        );
+        assert_eq!(update.key(), Some(GameKey::Game(20024031)));
+        assert!(update.extra.is_empty(), "{:?}", update.extra);
     }
 
     #[test]

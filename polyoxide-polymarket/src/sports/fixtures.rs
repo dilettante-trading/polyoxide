@@ -27,8 +27,15 @@ pub const FINISHED_NUMERIC: &str =
 pub const ELAPSED_WITHOUT_EVENT_STATE: &str =
     include_str!("../../tests/fixtures/sports/elapsed_without_event_state.json");
 
+/// NFL, carrying `turn` and `turnProviderId` (the 2026-11-01 nightly).
+pub const NFL_TURN: &str = include_str!("../../tests/fixtures/sports/nfl_turn.json");
+
+/// NBA, carrying `sportradarGameId` beside `gameId` (the 2026-11-01 nightly).
+pub const NBA_SPORTRADAR_GAME_ID: &str =
+    include_str!("../../tests/fixtures/sports/nba_sportradar_game_id.json");
+
 /// Every fixture, keyed by its file stem.
-pub const ALL: [(&str, &str); 8] = [
+pub const ALL: [(&str, &str); 10] = [
     ("soccer", SOCCER),
     ("tennis_event_state", TENNIS_EVENT_STATE),
     ("esports", ESPORTS),
@@ -37,6 +44,8 @@ pub const ALL: [(&str, &str); 8] = [
     ("league_with_space", LEAGUE_WITH_SPACE),
     ("finished_numeric", FINISHED_NUMERIC),
     ("elapsed_without_event_state", ELAPSED_WITHOUT_EVENT_STATE),
+    ("nfl_turn", NFL_TURN),
+    ("nba_sportradar_game_id", NBA_SPORTRADAR_GAME_ID),
 ];
 
 #[cfg(test)]

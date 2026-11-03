@@ -1262,7 +1262,7 @@ def test_main_cannot_decide_without_its_inputs(repo: Path, capsys) -> None:
 def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     config = body_diff.read_config(REPO)
     rows = body_diff.drift_rows((REPO / body_diff.DIVERGENCES).read_text())
-    assert rows == {f"R{n}" for n in range(1, 23)}
+    assert rows == {f"R{n}" for n in range(1, 24)}
     assert all(entry.row in rows for entry in config.drift)
     # S2's DRIFT rows are R6, rtds' `test-fixtures` becoming `test-server`, and
     # R12, the live tests of the two data hosts Polymarket retired. S3 adds R13,
@@ -1275,9 +1275,11 @@ def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     # R19, the `ActivityType` set test that adopting the range-event types
     # (#83) moves again; R20, the live perps test asserting `tickers` honours
     # `instrument_id` (#82); R21, the two enum tests that
-    # `InstrumentCategory`'s `pre_ipo` moves; and R22, `UsdmWs::close_frame`,
+    # `InstrumentCategory`'s `pre_ipo` moves; R22, `UsdmWs::close_frame`,
     # whose body moved to the shared socket plumbing's `Bare::close_frame` when
-    # Binance's spot streams arrived.
+    # Binance's spot streams arrived; and R23, the sports fixture list and the
+    # `extra` test that modelling `turn`, `turnProviderId` and
+    # `sportradarGameId` (#84) moves.
     assert {entry.row for entry in config.drift} <= {
-        "R6", "R12", "R13", "R14", "R15", "R16", "R17", "R18", "R19", "R20", "R21", "R22"
+        "R6", "R12", "R13", "R14", "R15", "R16", "R17", "R18", "R19", "R20", "R21", "R22", "R23"
     }
