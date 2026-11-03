@@ -1,10 +1,354 @@
 ## [Unreleased]
 
+## [0.45.0] - 2026-11-03
+
+Binance spot market data over HTTP and WebSocket, wasm32 support through an injected runtime and
+transports, the sports feed's three new keys (#84), and the Kalshi AsyncAPI (#79) and OpenAPI
+(#80, #85) mirrors. The wasm32 work changes public API, so the 0.x minor rises:
+`ApiError::Network`, `HttpClient`'s `client` field and `classify_reqwest` are removed, and the
+HTTP response and socket types are re-typed, each with its migration in
+[`docs/s3-removals.md`](docs/s3-removals.md). A native build that injects nothing behaves as
+before. One crate is new, `polyoxide-rt`, which publishes first. After the entries comes the
+wasm32 consumer-impact note from [`docs/s3-migration.md`](docs/s3-migration.md).
+
+- **Binance spot.** `polyoxide-binance` gains the `spot` module, on by default and built without
+  `usdm`: spot public market data from `api.binance.com`, with no credentials. `Spot` has
+  `health()` (`ping`, `time`), `exchange()` (`exchange_info`, with each symbol's filters) and
+  `market()` (`depth`, `trades`, `agg_trades`, `klines`, `avg_price`, `ticker_24h`,
+  `tickers_24h`, `price`, `prices`, `book_ticker`, `book_tickers`). Every request is charged to a
+  spot `WeightBudget` of 5400 of the published 6000 a minute, which follows the server's
+  `X-MBX-USED-WEIGHT-1M`, and a `429` or `418` holds every request. `spot::key` and `spot::venue`
+  put it behind `MarketData`, `Instruments`, `Trades` and `Candles`, and `polyoxide-venue` gains
+  `ProductClass::Spot` and the `SpotMarket` bundle (`MarketData` alone); `ProductClass` is
+  `#[non_exhaustive]`, so this is additive.
+  - The `spot-ws` feature adds spot's streams on `stream.binance.com`: the bare `SpotWs` and the
+    supervised `SpotWsBuilder` and `SupervisedSpotWs`, which reconnects, replays its streams and
+    replaces its connection before Binance's 24-hour cutoff. Both enforce the host's rules before
+    sending: 1024 streams per connection, 1024 names per request and one request per 500 ms.
+    `StreamName` covers aggregate trades, trades, klines, mini tickers (one symbol or all),
+    tickers, book tickers, partial depth and the average price.
+  - The CLI gains `polyoxide binance spot stream`, and the umbrella gains `binance-spot` and
+    `binance-spot-ws`, the first now part of `binance`, with spot in `parse_key` and the prelude.
+  - Spot is native only: its hosts' CORS and socket upgrade have not been probed from a browser.
+
+- **Sports feed: `turn`, `turnProviderId` and `sportradarGameId` (#84).** NFL frames carry `turn`
+  and `turnProviderId` and NBA frames `sportradarGameId`, none of which `MatchUpdate`
+  (`sports::update`) modelled, which failed the nightly's drift detector. `MatchUpdate` gains
+  `turn`, `turn_provider_id` and `sportradar_game_id`, each an `Option<String>`, and
+  `sports::fixtures` gains `NFL_TURN` and `NBA_SPORTRADAR_GAME_ID`, so `fixtures::ALL` holds 10
+  frames where it held 8 (DRIFT R25). `MatchUpdate` is `#[non_exhaustive]`, but a caller that read
+  `extra.get("turn")` now gets `None` and reads the field instead.
+
 - **Kalshi AsyncAPI drift (#79).** Mirror only, with no code change. Upstream adds opt-in
   conflated order-book updates (`update_interval_ms` on `subscribe`, and error code 29), which
   the socket does not offer: it subscribes in real-time mode, where the exchange clock keeps
   #72's guarantees. The `batch_communications` channel is folded into `communications`, which
   the client does not implement, so the mirror lists 15 channels.
+
+- **Kalshi OpenAPI drift (#80, #85).** Mirror only, with no code change. 3.35.0 (#80) adds
+  position exit triggers (every route marked `x-excluded`), `GET /portfolio/credit_history`,
+  eight `MarketIndex` schemas no route references yet, and per-child sizes and fill-or-kill
+  execution on RFQ batches. #85 adds Go codegen hints and deprecates `Market.no_sub_title`, which
+  the client does not model.
+
+- **Data API v1 retired upstream.** Since 2026-11-02 every v1 route on `data-api.polymarket.com`
+  answers `410 {"error":"Data API v1 has been retired"}`. The client's v1 routes are unchanged in
+  this release and now fail; use `data.v2()`. The Python bindings' v1 live tests are skipped, and
+  their v2 live tests still run.
+
+**wasm32: an injected runtime and transports.**
+
+Consumer impact: breaking. Timers, spawns and clock reads go through an injected
+`polyoxide_rt::Runtime`, and every HTTP and socket exchange through an injected transport, so
+the same crates build for `wasm32-unknown-unknown`. A native build behaves as before, but the
+types below change, and a consumer that matched a reqwest error or held a socket by its old type
+migrates. Each break has its entry in [`docs/s3-removals.md`](docs/s3-removals.md), under
+"Removed" (the ones cargo-semver-checks keys) and "Changes the gate does not key" (the signature
+and auto-trait changes it does not).
+
+- The HTTP failure moves. `ApiError::Network` is removed: a failure to get a response, or to read
+  its body, is `ApiError::Transport(TransportError)`, so where you matched `ApiError::Network(e)
+  if e.is_timeout()` match `ApiError::Transport(e) if e.kind() == TransportKind::Timeout`
+  (`is_connect` is `TransportKind::Connect`). `Classify` is unchanged in effect.
+- The response type moves. `HttpClient::send` and the `send_raw` methods (`Request::send_raw` and
+  clob's `ListOrders::send_raw`) return `polyoxide_core::Response` where they returned a
+  `reqwest::Response`; its `status`, `headers`, `url`, `bytes`, `text` and `json` read as before
+  and fail with `ApiError`. `Pong::response`, `ErrorResponse::read`, `ApiError::from_response` and
+  `retry_after_header` take it or its head, and `HttpClient`'s `client` field is gone: inject a
+  reqwest client of your own as `ReqwestTransport::new(client)`.
+- The socket type moves. `polyoxide_ws::Socket` is removed for `polyoxide_ws::BoxSocket`, which
+  `connect`, `connect_over` and `Connection::new` use; `Protocol::connect` takes
+  `(transport, runtime, timeout)` and returns a `BoxSocket` (it first shipped in 0.41, so
+  semver-checks has no baseline for it). `Connection::last_inbound` returns
+  `polyoxide_rt::Instant`, which is `std::time::Instant` on native.
+- Auto traits. `Connection` and every type holding one (`WebSocket`, `WebSocketWithPing`,
+  `UsdmWs`, `Rtds`, `SupervisedRtds`, `SupervisedSportsWs`, `PerpsWs`, `SportsWs`) are no longer
+  `Sync`, and `Supervisor`, `Supervised` and the builders and clients that hold a runtime or
+  transport are no longer `UnwindSafe`. Share a connection through a `Mutex`, and wrap a client
+  in `AssertUnwindSafe` where `catch_unwind` needs it.
+- `Kind::Unsupported` joins `polyoxide_ws::Kind` (an operation the transport cannot do, such as a
+  ping frame in a browser); reconnecting never fixes it. `Kind` is `#[non_exhaustive]`, so a
+  `match` on it already has a wildcard arm.
+
+What is added, so a native build that sets none of it is unchanged:
+
+- `polyoxide-rt`, new and first in the publish order: the `Runtime` trait, `Task`, `timeout`,
+  `Interval`, `default_runtime()` and `TokioRuntime` on a host target, and the `Instant` and
+  `SystemTime` of `web-time` (std's own types on native).
+- Setters on every client and socket builder: `runtime(..)` and, on an HTTP builder,
+  `http_transport(..)` (from `client_config_setters!`), and `runtime(..)` with
+  `socket_transport(..)` on a socket builder (from `polyoxide_ws::transport_setters!`).
+  `HttpClientBuilder::http_transport`, `ClientConfig::http_transport` and `Supervisor`'s own
+  `runtime` and `socket_transport` take the same. With none set, a host target uses
+  `ReqwestTransport`, `TungsteniteTransport` and `TokioRuntime`, and `wasm32` uses `FetchTransport`
+  (`polyoxide-core`), `WebSocketTransport` (`polyoxide-ws`) and `BrowserRuntime`.
+- `polyoxide_ws::Capabilities`, which a `SocketTransport` reports (`client_pings`,
+  `sees_server_pings`, `handshake_headers`), so a protocol learns what its transport can do.
+
+For a crate outside the workspace that invokes `client_config_setters!`: the macro's `runtime`
+setter names `polyoxide_rt::Runtime`, which `polyoxide-core` does not re-export, so the invoking
+crate declares `polyoxide-rt` itself. `transport_setters!` needs it the same way. The crates and
+features that build for `wasm32` are listed in the README's WebAssembly section.
+
+### 🚀 Features
+
+- *(venue)* ProductClass::Spot (binance spot, Story 3)
+- *(venue)* The SpotMarket bundle (binance spot, Story 3)
+- *(binance)* The spot feature and its weight budget (binance spot, Story 4)
+- *(binance)* SpotError, decoded through the shared decode (binance spot, Story 4)
+- *(binance)* Spot's exchange types and the Classify assertion (binance spot, Story 4)
+- *(binance)* The Spot client, its retry policy and the health routes (binance spot, Story 4)
+- *(binance)* The spot exchange namespace (binance spot, Story 4)
+- *(binance)* Spot's market row types and their wire agreement (binance spot, Story 5)
+- *(binance)* Spot's market routes and their suites (binance spot, Story 5)
+- *(binance)* A weight probe for the spot routes (binance spot, Story 5)
+- *(binance)* Spot market keys and the product's registration (binance spot, Story 6)
+- *(binance)* Spot through the market-data traits (binance spot, Story 6)
+- *(polyoxide)* The umbrella's binance-spot, parse_key and prelude; allowlist added for the new feature (binance spot, Story 6)
+- *(binance)* The spot-ws feature, its module root and SpotWsError (binance spot ws, Story 3)
+- *(binance)* Spot's StreamName, DepthLevels, DepthSpeed and InvalidStreamName (binance spot ws, Story 3)
+- *(binance)* Spot::ws::fixtures, the captured frames (binance spot ws, Story 3)
+- *(binance)* Spot's stream payloads and Update::from_json (binance spot ws, Story 3)
+- *(binance)* Spot's stream set and bare socket on shared::ws (binance spot ws, Story 4)
+- *(binance)* Spot's supervised socket, builder and membership handle (binance spot ws, Story 4)
+- *(binance)* Spot's live stream suite, the live entry and the stream.binance.com identifier (binance spot ws, Story 4)
+- *(cli)* Polyoxide binance spot stream (binance spot ws, Story 5)
+- *(polyoxide)* Binance-spot-ws, with its prelude names and passthrough checks (binance spot ws, Story 5)
+- *(rt)* Add the polyoxide-rt crate and its workspace plumbing (story 1)
+- *(rt)* Add Runtime, TokioRuntime and default_runtime (story 1)
+- *(rt)* Add spawn and Task (story 1)
+- *(rt)* Add timeout (story 1)
+- *(rt)* Add interval, Interval and MissedTick (story 1)
+- *(rt)* Document polyoxide-rt, add its rules file and pin its dependency tree (story 1)
+- *(core)* The runtime a client is built on, from ClientConfig to HttpClient (wasm story 2.1)
+- *(core)* The retry sleep and health's stopwatch go through the client's runtime (wasm story 2.2)
+- *(core)* Holds, capacity buckets and window quotas keep time on a runtime (wasm story 2.3)
+- *(polymarket)* The tables, the CLOB throttle and the builders keep time on the client's runtime (wasm story 2.4)
+- *(binance)* The weight budget and its builder keep time on the client's runtime (wasm story 2.6)
+- *(kalshi)* The Read throttle and the builder keep time on the client's runtime (wasm story 2.7)
+- *(core)* HttpTransport, Response and TransportError beside the reqwest paths (wasm story 4.1)
+- *(core)* [**breaking**] The send loop sends through an injected HttpTransport, ApiError::Network becomes ApiError::Transport (wasm story 4.2)
+- *(ws)* The socket transport seam and Kind::Unsupported (wasm story 5.1)
+- *(ws)* [**breaking**] BoxSocket, and the kit and the CLOB's dial on the injected runtime and transport (wasm story 5.2)
+- *(polymarket)* The perps, rtds, sports and bare CLOB sockets on the injected runtime (wasm story 5.3)
+- *(binance)* The router, forwarders and bare tier on the injected runtime (wasm story 5.4)
+- *(kalshi)* The socket on the injected runtime (wasm story 5.5)
+- *(ci)* Hold time and tasks to the injected runtime with runtime_gate.py (wasm story 6.3)
+- *(rt)* Add BrowserRuntime and the wasm32 dependency table (story 7)
+- *(core)* Add FetchTransport and gate reqwest's host build (story 7)
+- *(ws)* Add WebSocketTransport and gate the kit's host dependencies (story 7)
+- *(binance)* The bare client refuses a ping on a transport that sends none (story 8)
+- *(binance)* Keep a path alive with LIST_SUBSCRIPTIONS where the transport sends no ping (story 8)
+- *(scripts)* Capture the sports feed's silence and its answer to a text ping (story 8)
+- *(wasm-smoke)* The browser smoke crate and its local server (Story 9)
+- *(polymarket)* Turn the sports feed staleness check off where the transport hides the server pings (story 8)
+- *(test-support)* The failure tags build on wasm32 and print through the browser console (Story 10)
+- *(ci)* The generator's runner key and the live-wasm-browser nightly job (Story 10)
+- *(polymarket)* PolymarketBuilder takes a runtime and an HTTP transport
+- *(clob)* The user socket follows the client's runtime unless it sets its own
+- *(binance)* Spot's clients and socket builders take the runtime and transport
+
+### 🐛 Bug Fixes
+
+- *(release)* Claim the version's tag before anything publishes
+- *(binance)* Spot's Filter holds the captured filter types; reword four docs (binance spot, Story 4)
+- *(binance)* Shared::ws passes the classify sweep and leaves scripted.rs's gate alone (binance spot ws, Story 2)
+- *(binance)* Name WsError in shared::ws and exempt its two non-error views from the classify fence (binance spot ws, Story 2)
+- *(binance)* Row (m) names every test its mutant fails, the ping doc names its pacing (binance spot ws, Story 4)
+- *(scripts)* The spot stream capture's own exit and a checked depth trim (binance spot ws, final review)
+- *(core)* Wasm story 2 review fixes
+- *(core)* Wasm story 3 review fixes
+- *(core)* Wasm story 4 review fixes
+- *(ws)* Wasm story 5 review fixes
+- *(ci)* Wasm story 6 review fixes
+- *(wasm)* Drop the wasm32 gate on the kit's host-only code from the test-body comparison (story 7)
+- *(wasm)* Wasm story 7 review fixes
+- *(binance,ws,scripts)* Wasm story 8 review fixes
+- *(wasm)* Wasm story 9 review fixes
+- *(polymarket,scripts)* Wasm story 8 sports review fixes
+- *(wasm-smoke)* Read Binance's 451 natively, judge close frames by code (Story 10 fix)
+- *(ci)* The browser job's converter refuses a log whose summary disagrees (Story 10 fix)
+- *(ci)* The runner job template refuses a runner it was not written for (Story 10 fix)
+- *(core)* Drop tokio's time feature from core's normal dependencies (spec D10)
+- *(ws)* A send while the browser is closing is dropped, not AlreadyClosed (final review I1)
+- *(ci)* No 'published after' for an unpublished crate; honest browser job budget; wasm_live hygiene (final review M6, M9, F8)
+- *(ci)* The runtime gate reads a renamed tokio root as a hit (final review S6)
+- *(core)* FetchTransport counts a failure within 2 ms of the deadline as a timeout (final review S7)
+- *(sports)* Arm no staleness timer when the check is off
+- *(binance)* UsdmWs::ping refuses with the browser transport's text
+- *(binance)* The merge review's three minors
+- *(sports)* Model the feed's turn, turnProviderId and sportradarGameId
+
+### 🚜 Refactor
+
+- *(binance)* Move Symbol into a crate-private shared module (binance spot, Story 2)
+- *(binance)* Move the minute-weight engine into the shared module (binance spot, Story 2)
+- *(binance)* Move the error decode into the shared module (binance spot, Story 2)
+- *(binance)* Move the retry decision into the shared module, re-cite and re-prove MUTANTS rows (a) and (k) (binance spot, Story 2)
+- *(binance)* Move the routed request and route_builder into the shared module (binance spot, Story 2)
+- *(binance)* Shared::ws, the socket plumbing generic over a StreamSet (binance spot ws, Story 2)
+- *(binance)* Usdm::ws on shared::ws, its unit tests untouched (binance spot ws, Story 2)
+- *(binance)* One stream cap for both stream sets, duplicate_mod allowed only under test (binance spot ws, Story 2)
+- *(binance)* Spot's stream limit reads the shared constant; document the shared socket plumbing (binance spot ws, final review)
+- *(core)* Re-export http as polyoxide_core::http and move core's paths to it (wasm story 3.1)
+- *(binance)* Name the HTTP vocabulary through polyoxide_core::http (wasm story 3.2)
+- *(kalshi)* Name the HTTP vocabulary through polyoxide_core::http (wasm story 3.3)
+- *(polymarket)* Name the HTTP vocabulary through polyoxide_core::http (wasm story 3.4)
+- *(test-support)* Name the HTTP vocabulary through polyoxide_core::http (wasm story 3.5)
+- *(venue,polymarket)* Read the wall clock through web-time (wasm story 6.1)
+- *(core,ws)* The setter macros name the runtime through a doc-hidden __rt re-export
+- *(ws)* The browser transport's ping refusal text is one public const
+- *(ws)* The dead-code allow sits on the six items the test server leaves unused
+
+### 📚 Documentation
+
+- *(specs)* Adopt Kalshi's OpenAPI drift ([#80](https://github.com/dilettante-trading/polyoxide/issues/80))
+- *(spec)* Adopt Kalshi's AsyncAPI drift, conflated order-book updates ([#79](https://github.com/dilettante-trading/polyoxide/issues/79))
+- *(changelog)* Record what 0.44.0 shipped
+- *(spec)* Binance spot, public market data over HTTP and WebSocket
+- *(plan)* Binance spot plan 1 skeleton, and the spec's plan-time decisions
+- *(spec)* Spot's weight probe is a new example, weight_probe.rs unchanged
+- *(plan)* Binance spot plan 1, the seven stories drafted
+- *(specs)* Probe_rest.py takes --product usdm|spot and measures spot (binance spot, Story 1)
+- *(specs)* OBSERVED.md's Spot section, measured with probe_rest.py --product spot (binance spot, Story 1)
+- *(binance)* The spot module README, compiled as a doctest (binance spot, Story 4)
+- *(mutants)* Spot's depth re-pricing row, proved (binance spot, Story 5)
+- Rewrap the venue-traits rules and name spot in the venue gate's skip list (binance spot, Story 6)
+- *(binance)* The spot swagger is stale, so spot's drift check is the live suites (binance spot, Story 7)
+- *(binance)* Spot's routes, drift detectors and fixtures in the Binance spec index (binance spot, Story 7)
+- *(binance)* The crate README and crate docs name both modules (binance spot, Story 7)
+- *(binance)* Spot in the umbrella and root READMEs and the hand-written lines of CLAUDE.md, SELF-HEALING.md and the spec index (binance spot, Story 7)
+- *(binance)* The shared and spot rules, and the umbrella's binance-spot (binance spot, Story 7)
+- *(binance)* The spine amendment for ProductClass::Spot and SpotMarket (binance spot, Story 7)
+- *(rules)* Spot's counterpart in each sentence that lists Binance's usdm files (binance spot, Story 7)
+- *(binance)* Spot docs review fixes: depth bands measured, retry-policy direction, route_builder, Filter::Other, capture script, row (l) (binance spot, Story 7)
+- *(rules)* Rewrap the lines over 100 columns in six rules files (binance spot, Story 7)
+- *(binance)* Final fix round: send docs on the market builders, spot README, clip doc, depth limit wording, probe margin (binance spot)
+- *(mutants)* Wrap the proof paragraphs, re-prove row (l) after the mock_spot collapse (binance spot)
+- *(claude)* Enter the dev shell with direnv exec, not nix develop --command
+- *(spec)* Spot's WebSocket probe sends one over-limit burst, never repeated
+- *(binance)* Spot's WebSocket probe and its results in OBSERVED.md (binance spot, plan 2)
+- *(spec)* Spot's socket requests are paced at 500 ms
+- *(spec)* Spot's socket requests carry up to 1024 names
+- *(binance)* Spot's 500 ms socket pace held for 45 s (binance spot, plan 2)
+- *(plan)* Binance spot plan 2 skeleton, and the spec's plan-time decisions
+- *(spec)* Answer moves to shared::ws, and usdm's protocol aliases are test-only
+- *(plan)* Binance spot plan 2 drafted, six stories
+- *(spec)* Close_frame's hook takes a drift entry, and shared::ws's WsError views a fence exemption
+- *(spec)* DRIFT R22 and its test-body entry for UsdmWs::close_frame (binance spot ws, Story 2)
+- *(binance)* Errors.md names the WS_VIEWS exception to the WsError fence, R22 cites §5.2 and the Kind path (binance spot ws, Story 2)
+- *(registry)* Regenerate the regions for polyoxide-binance's spot-ws (binance spot ws, Story 3)
+- *(mutants)* Row (m), spot's socket pace, proved by its mutant (binance spot ws, Story 4)
+- *(binance)* Spot streams in the spec index, the READMEs and the crate docs (binance spot ws, Story 6)
+- *(rules)* Shared::ws and spot streams in the Binance, socket, error, CLI and umbrella rules (binance spot ws, Story 6)
+- *(rules)* Fix spot kline range, re-wrap rules paragraphs, name MUTANTS row (m) (binance spot ws, Story 6)
+- *(rules)* Cite DRIFT R22 and name stream.binance.com in the venue gate's identifiers (binance spot ws, final review)
+- *(plan)* Spot's kline kinds run from 1s, as the CLI README says (binance spot plan 2)
+- *(specs)* Adopt Kalshi OpenAPI drift ([#85](https://github.com/dilettante-trading/polyoxide/issues/85))
+- *(spec)* Design wasm32 support through an injected runtime and transport
+- *(plan)* Wasm32 runtime and transport skeleton, and the spec's plan-time decisions
+- *(spec)* Widen DRIFT R22 to the reqwest rows ApiError::Network takes with it
+- *(plan)* Draft the wasm32 runtime and transport plan's eleven stories
+- *(spec)* Run window quotas on the runtime's clock, and fix the vacuous 429 retry test in story 4
+- *(mutants)* Move the rows the runtime moved and prove their mutants again (wasm story 2.5)
+- *(venue)* Say the crate's wasm32-only web-time where it claims no dependencies (wasm story 6.2)
+- *(rules)* Record the browser runtime and transports (story 7)
+- *(spec)* SendWrapper covers !Send futures, and the smoke suite drives signing, a body timeout and a quota wait
+- *(spec)* Sports turns staleness off on a transport that cannot see server pings
+- *(spec)* Record the sports feed's browser-transport capture (story 8)
+- *(spec)* Correct D13's quanta note to Story 9's measurement
+- *(wasm)* The browser facts per host, the browser job's rules and its place in the nightly docs (Story 10)
+- *(perps)* Both auth headers pass the browser preflight (Story 10 fix)
+- *(readme)* Add the WebAssembly section (story 11)
+- *(claude)* State the runtime, transport and gate rules (story 11)
+- *(rules)* State the transports, the runtime and the browser in the rules (story 11)
+- *(spine)* Propose the wasm32 runtime and transport amendments (story 11)
+- *(readme)* Correct the getrandom reason and the injected clock reads (story 11 fix)
+- *(rules)* Bring the reqwest fence, socket and builder rules to the tree (story 11 fix)
+- *(spine)* Correct the wasm amendment's citations and its browser-code list (story 11 fix)
+- *(s3)* The wasm32 consumer-impact note, and why Protocol::connect has no key (final fix)
+- *(rules)* Getrandom wording, send-loop and socket notes, the browser job's server reason, a rewrap (final fix)
+- *(spine)* Restate AW-5's gate, correct AW-1's FOUNDATION and add the Structural Seed (final fix)
+- One wording for the getrandom flag; the runtime-gate bullet matches the script (final review M7, M8)
+- *(rules)* State the browser send while closing, fetch's clock slack and the tokio alias hit
+- *(core)* The fetch deadline doc and rule say within 2 ms (CLOCK_SLACK); send_state in the sockets rule; wrap wasm_check.sh (final re-review N2-N4)
+- *(spec)* The owner's follow-up decisions on the wasm run's open items
+- *(sports)* Stale_after(Duration::MAX) arms no timer on any transport
+- *(spec)* Land spot first, move it onto the seams in the merge, keep it native-only
+
+### 🧪 Testing
+
+- *(binance)* Scripts/capture_binance_spot.py captures spot's REST fixtures (binance spot, Story 1)
+- *(binance)* Spot's REST fixtures, captured from production (binance spot, Story 1)
+- *(binance)* Spot's mock suite, its budget and its failure paths (binance spot, Story 4)
+- *(binance)* Spot's headers, error classes, failure tags and 418 log (binance spot, Story 4)
+- *(binance)* Spot's namespaces share one hold, proved on the mock server; a ping's bad body is Decode (binance spot, Story 4)
+- *(binance)* Live_spot, spot's drift detector and nightly job (binance spot, Story 6)
+- *(binance)* Spot's instrument read picks its row out of rotated exchange info (binance spot, Story 6)
+- *(binance)* Collapse mock_spot's market helpers onto the suite's own, re-cite row (l) (binance spot, final fix round)
+- *(binance)* Scripts/capture_binance_spot.py ws captures spot's stream frames (binance spot ws, Story 1)
+- *(binance)* Spot's stream frames, captured from production (binance spot ws, Story 1)
+- *(binance)* Probe's request interval above usdm's so the pacing test catches a hardcoded 200 ms (binance spot ws, Story 2)
+- *(binance)* Wire agreement of spot's stream fixtures with their types (binance spot ws, Story 3)
+- *(ci)* Pin polyoxide-binance's spot-ws dependency tree
+- *(binance)* Pin symbol and event_type to their own keys in spot's stream payloads (binance spot ws, Story 3)
+- *(ci)* Cover spot-ws in the dep-allowlist tests' feature checks and wording (binance spot ws, Story 3)
+- *(cli)* Pin spot stream's closed-kline suffix and depth levels and dash (binance spot ws, Story 5)
+- *(wasm)* Pin the browser build's dependency trees under ci/dep-allowlists/wasm32-unknown-unknown (story 7)
+- *(binance)* Check LIST_SUBSCRIPTIONS answers as a keepalive on fstream (story 8)
+- *(wasm-smoke)* The runner script, Chrome's arguments, the flake's browser tools and the first BrowserRuntime tests (Story 9)
+- *(wasm-smoke)* BrowserRuntime's timeout, interval, spawn and long-sleep tests (Story 9)
+- *(wasm-smoke)* FetchTransport's 200, timeout and both 429s in the browser (Story 9)
+- *(wasm-smoke)* WebSocketTransport's echo, close code and refusals in the browser (Story 9)
+- *(wasm-smoke)* A CLOB signature, a stalled body timeout and a window-quota wait in the browser (Story 9)
+- *(wasm-smoke)* The live feature, the tag-line probe and scripts/wasm_live.sh (Story 10)
+- *(wasm-smoke)* The live browser checks per host, with D17's limits and retry (Story 10)
+- *(rt)* Assert is_finished before awaiting; Send assertions; timeout counts from first poll (final review S1)
+- *(smoke)* Name the send test for what Chrome lets it pin (final re-review N1)
+- *(ws)* One browser-like socket transport for the supervision suites
+- *(throttle)* The hold test starts its stopwatch before it sets the hold
+- *(binance)* UsdmWs::ping's refusal text is asserted
+- Drop a vacuous ping count, name a test accessor, cover Data's other hosts
+- *(py)* Skip the retired Data API v1 live tests
+
+### 🔧 Build
+
+- *(binance)* Pin the spot feature's dependency tree; the file is new because the feature is, and the tree is the REST client's with no socket stack (binance spot, Story 4)
+- Cut dev debug info to line tables, none for dependencies
+- *(wasm)* Add the wasm32 target to the dev shell and scripts/wasm_check.sh (story 7)
+- *(polymarket)* Turn on getrandom 0.2's js feature on wasm32 (story 7)
+- Take wasm-bindgen and tungstenite from the workspace entries (final review M5)
+- *(rt)* Require getrandom 0.3.4 and drop the consumer's cfg flag
+- Venue crates drop tokio time from their normal dependencies
+- *(wasm)* The smoke and live scripts unset CARGO_ENCODED_RUSTFLAGS
+- *(polymarket)* Clob, relay, perps-ws, rtds and sports drop dep:tokio
+
+### ⚙️ Miscellaneous Tasks
+
+- *(binance)* Regenerate CLAUDE.md's crate list, core now needed under spot too (binance spot, Story 4)
+- *(wasm)* The WebAssembly job, the runtime gate in the scripts job and the docs for both (Story 9)
+- *(test-bodies)* Acknowledge test-support's wasm32 gates with [gates] entries (Story 10 fix)
+- *(wasm)* Lint browser_live under the live feature on every push (Story 10 fix)
 
 ## [0.44.0] - 2026-10-23
 

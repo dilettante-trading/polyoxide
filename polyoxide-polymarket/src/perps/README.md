@@ -12,7 +12,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.44", default-features = false, features = ["perps"] }
+polyoxide-polymarket = { version = "0.45", default-features = false, features = ["perps"] }
 ```
 
 Add `perps-ws` for the WebSocket channels; it turns on `perps`.
