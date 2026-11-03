@@ -146,6 +146,7 @@ impl<S: StreamSet> Bare<S> {
     /// Say whether the transport can send protocol pings, as `open` reads it
     /// from a transport's capabilities: a test's stand-in for a browser's.
     #[cfg(test)]
+    #[cfg_attr(not(feature = "usdm-ws"), allow(dead_code))]
     pub(crate) fn set_client_pings(&mut self, client_pings: bool) {
         self.client_pings = client_pings;
     }

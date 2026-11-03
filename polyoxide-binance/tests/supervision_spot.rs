@@ -459,8 +459,8 @@ fn requests_of(server: &ScriptedServer, method: &str) -> Vec<serde_json::Value> 
 #[tokio::test]
 async fn the_builders_socket_transport_dials_the_connection() {
     // `browser_like()` reports no client pings, so a connection it dialled
-    // keeps alive with `LIST_SUBSCRIPTIONS` and sends no protocol ping; one
-    // dialled by the default transport pings and sends no such request.
+    // keeps alive with `LIST_SUBSCRIPTIONS` and sends no protocol ping (the
+    // default transport's pings: `supervision_usdm_kit`'s `..._keeps_the_protocol_ping_d9`).
     let server = ScriptedServer::start(vec![Script::default()]).await;
     let mut ws = fast(&server)
         .stale_after(Duration::from_millis(1500))

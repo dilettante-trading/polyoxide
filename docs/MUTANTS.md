@@ -164,7 +164,8 @@ Row (m), spot's socket pace, was proved on 2026-11-02 on top of `57bb70c5`, on R
 The merge of `main` into the wasm32 branch (`50111953`) moved Binance spot onto the runtime and
 transport seams, and its follow-up added two lines to `SpotWs::ping`'s docs, which moved row (m)'s
 `client.rs` tests from lines 183 and 230 to 185 and 232. The row was proved again on 2026-11-03 on
-top of `50111953`, on Rust 1.99.0 with `-j 4`, through the same two commands: its five tests
+top of `70e5c55d` (the landing merge, which holds the follow-up `eea6eaf8` and so the cited lines),
+on Rust 1.99.0 with `-j 4`, through the same two commands: its five tests
 passed, then failed with `Duration::from_millis(250)` in place, then passed again once the line was
 restored, with `git diff --exit-code` clean. Rows (a), (k) and (l) did not move in the merge: the
 `shared/` port changed an import's path on a line of its own, not the lines they cite.
