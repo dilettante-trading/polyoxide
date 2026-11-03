@@ -166,7 +166,8 @@ before the reader sees the close succeeds; only a send after the stream has yiel
 beyond those tungstenite generates (a `Sec-WebSocket-Protocol` becomes the subprotocol list) is
 refused before dialling, and sending a ping, pong or raw frame is refused, each as
 `Kind::Unsupported` with the message `a handshake header`, `a ping frame`, `a pong frame` or
-`a raw frame` followed by `is not supported by the browser transport`. A refused upgrade shows no
+`a raw frame` followed by `is not supported by the browser transport`; the ping's text is
+`polyoxide_ws::PING_UNSUPPORTED`, which `UsdmWs::ping` builds its refusal from. A refused upgrade shows no
 status to a page, so it arrives as a lost connection, never `Kind::Refused`.
 
 What the transport decides (`dial_plan`, `close_code`, `close_reason`, `outgoing`, `send_state`) is plain Rust

@@ -7,6 +7,12 @@
 //! send, which frames it cannot) is plain Rust, built on every target so the
 //! host's tests pin it.
 
+/// The message of the `Kind::Unsupported` error a transport that sends no
+/// ping frames (a browser's) gives for a ping: a caller that refuses a ping
+/// before sending it builds its error from this text, so the refusal reads
+/// the same as the transport's own.
+pub const PING_UNSUPPORTED: &str = "a ping frame is not supported by the browser transport";
+
 // The test server's browser-like transport (`test-server`) refuses a frame by
 // `outgoing`, so the two refuse alike; the rest is wasm32's and the tests'.
 #[cfg(any(target_arch = "wasm32", test, feature = "test-server"))]
@@ -14,6 +20,7 @@
 pub(crate) mod plain {
     use std::io;
 
+    use super::PING_UNSUPPORTED;
     use crate::tungstenite::{
         error::UrlError,
         http::{header, HeaderName, Request},
@@ -21,7 +28,6 @@ pub(crate) mod plain {
     };
 
     const HEADER_UNSUPPORTED: &str = "a handshake header is not supported by the browser transport";
-    const PING_UNSUPPORTED: &str = "a ping frame is not supported by the browser transport";
     const PONG_UNSUPPORTED: &str = "a pong frame is not supported by the browser transport";
     const FRAME_UNSUPPORTED: &str = "a raw frame is not supported by the browser transport";
 

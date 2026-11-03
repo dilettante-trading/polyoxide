@@ -70,6 +70,7 @@ pub use backoff::{Backoff, MIN_BACKOFF};
 pub use bare::{Connection, Mode};
 #[cfg(target_arch = "wasm32")]
 pub use browser::WebSocketTransport;
+pub use browser::PING_UNSUPPORTED;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connect::connect_over;
 pub use connect::{connect, retrying_can_fix, with_timeout, DEFAULT_CONNECT_TIMEOUT};
