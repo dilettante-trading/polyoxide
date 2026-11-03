@@ -1,0 +1,45 @@
+[package]
+name = "polyoxide-rt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The runtime seam the polyoxide crates share: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them"
+keywords = ["async", "runtime", "timer", "wasm"]
+categories = ["asynchronous"]
+
+# Nothing in the workspace, so it publishes first and every crate can use it
+# (AD-2). Each task below adds the dependencies it first needs.
+[dependencies]
+# `Task`: an abortable future, and a oneshot for its output.
+futures-channel = { workspace = true }
+futures-util = { workspace = true }
+web-time = { workspace = true }
+
+# Native only (spec D10): `rt` and `time` are `TokioRuntime`'s spawn and clock.
+# The browser has its own runtime and builds no tokio.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "time"] }
+
+# `BrowserRuntime` (D8). `getrandom`'s `wasm_js` backend is on here so feature
+# unification reaches `rand` and `tungstenite` from every crate that builds
+# this one. From 0.3.4 the feature alone selects the browser backend on
+# `wasm32-unknown-unknown`, so the floor is 0.3.4 and a consumer's final binary
+# sets no `--cfg getrandom_backend` flag.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3.4", features = ["wasm_js"] }
+gloo-timers = { workspace = true, features = ["futures"] }
+send_wrapper = { workspace = true, features = ["futures"] }
+wasm-bindgen-futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
+
+# Registration, read by scripts/gen_registry.py: the README line and the notes
+# CLAUDE.md's crate list carries. Run `python3 scripts/gen_registry.py --write`
+# after an edit.
+[package.metadata.polyoxide]
+readme = "The runtime seam: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them"
+notes = ["names no venue, which `scripts/venue_gate.py` holds, and builds futures-channel, futures-util and web-time on every target, tokio (`rt` and `time`) on a host, and getrandom, gloo-timers, send_wrapper and wasm-bindgen-futures on `wasm32`"]

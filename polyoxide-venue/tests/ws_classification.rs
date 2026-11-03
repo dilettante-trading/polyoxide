@@ -113,6 +113,13 @@ fn every_other_kind() -> Vec<(WsError, Kind<'static>, Class)> {
             Kind::AlreadyClosed,
             Class::InvalidRequest,
         ),
+        (
+            transport(tungstenite::Error::Io(
+                std::io::ErrorKind::Unsupported.into(),
+            )),
+            Kind::Unsupported,
+            Class::InvalidRequest,
+        ),
     ]
 }
 

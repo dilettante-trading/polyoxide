@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use polyoxide_core::{reqwest::Method, ApiError, HttpClient, QueryBuilder, Request};
+use polyoxide_core::{http::Method, ApiError, HttpClient, QueryBuilder, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 

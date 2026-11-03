@@ -34,8 +34,9 @@ impl RelayError {
 }
 
 /// A local signing failure is an `InvalidRequest`, and `Api` is as core
-/// classes it: a relayer response by its status, a transport failure by
-/// core's reqwest rule, a URL failure or a local refusal an `InvalidRequest`,
+/// classes it: a relayer response by its status, a transport failure by its
+/// kind (only a request that could not be built is not `Network`), a URL
+/// failure or a local refusal an `InvalidRequest`,
 /// and JSON that did not parse a `Decode`.
 impl Classify for RelayError {
     fn class(&self) -> Class {
@@ -67,7 +68,7 @@ mod tests {
     /// A response with `status` and the body `{"error": message}`.
     fn response(status: u16, message: &str) -> ApiError {
         polyoxide_core::ErrorResponse::new(
-            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
+            polyoxide_core::http::StatusCode::from_u16(status).unwrap(),
             Default::default(),
             serde_json::json!({ "error": message }).to_string(),
         )
@@ -129,14 +130,13 @@ mod tests {
 
     #[test]
     fn every_variant_classifies() {
-        let builder = polyoxide_core::reqwest::Client::new()
-            .get("not a url")
-            .build()
-            .unwrap_err();
         // Was `Reqwest`, `UrlParse` and `SerdeJson` until Story 3.11.
         let rows = [
             (
-                RelayError::Api(ApiError::Network(builder)),
+                RelayError::Api(ApiError::Transport(polyoxide_core::TransportError::new(
+                    polyoxide_core::TransportKind::Request,
+                    "not a url",
+                ))),
                 Class::InvalidRequest,
             ),
             (

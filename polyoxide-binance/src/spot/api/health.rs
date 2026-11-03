@@ -33,7 +33,7 @@ impl Health {
             .http
             .health::<SpotError>(route.path(), &[route.cost().into()])
             .await?;
-        let text = pong.response.text().await.map_err(ApiError::from)?;
+        let text = pong.response.text().await?;
         let _: Empty = decode_json(route.path(), &text).map_err(ApiError::from)?;
         Ok(pong.round_trip)
     }

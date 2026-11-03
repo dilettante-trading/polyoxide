@@ -1,6 +1,5 @@
 //! [`HttpClient::send`]: core's one send loop.
 
-use reqwest::Response;
 use serde::de::DeserializeOwned;
 use url::Url;
 
@@ -10,6 +9,7 @@ use crate::hooks::{
     Authenticator, Cost, DynAuthenticator, Outcome, RequestMeta, RequestParts, ResponseMeta,
     RetryPolicy, Throttle,
 };
+use crate::{response::Response, transport::HttpRequest};
 
 impl HttpClient {
     /// Send `parts`, retrying as the client's policy decides.
@@ -44,7 +44,7 @@ impl HttpClient {
     /// - [`ApiError::Url`] when `parts.path` does not join the base URL.
     /// - [`ApiError::Refused`] when the throttle refuses a cost, or the
     ///   signing error when `auth` fails. Nothing is sent.
-    /// - [`ApiError::Network`] when no response arrives. That attempt is
+    /// - [`ApiError::Transport`] when no response arrives. That attempt is
     ///   neither observed nor retried.
     ///
     /// [`RetryConfig::retry_delay`]: crate::RetryConfig::retry_delay
@@ -73,7 +73,7 @@ impl HttpClient {
             if let Some(auth) = auth {
                 auth.sign(&mut signed, attempt).await?;
             }
-            let response = self.request(&url, signed).send().await?;
+            let response = self.transport.send(self.http_request(&url, signed)).await?;
 
             let status = response.status();
             let info = self.retry_config.attempt_info(attempt);
@@ -109,7 +109,7 @@ impl HttpClient {
                             .as_millis()
                     );
                     drop(permit);
-                    tokio::time::sleep(sleep).await;
+                    self.runtime.sleep(sleep).await;
                 }
                 Outcome::Done | Outcome::Fail | Outcome::Retry(_) => {
                     // A hold outlives this request, so it is logged even when
@@ -140,22 +140,21 @@ impl HttpClient {
         }
     }
 
-    /// One attempt's request, built from its signed parts.
-    fn request(&self, url: &Url, parts: RequestParts) -> reqwest::RequestBuilder {
-        let mut request = self
-            .client
-            .request(parts.method, url.clone())
-            .headers(parts.headers);
+    /// One attempt's request, built from its signed parts: the URL with the
+    /// query form-urlencoded onto it, as reqwest's `.query()` did, and a
+    /// timeout that is always set, the request's own else the client's.
+    fn http_request(&self, url: &Url, parts: RequestParts) -> HttpRequest {
+        let mut url = url.clone();
         if !parts.query.is_empty() {
-            request = request.query(&parts.query);
+            url.query_pairs_mut().extend_pairs(&parts.query);
         }
-        if let Some(body) = parts.body {
-            request = request.body(body);
+        HttpRequest {
+            method: parts.method,
+            url,
+            headers: parts.headers,
+            body: parts.body.map(Into::into),
+            timeout: parts.timeout.unwrap_or(self.timeout),
         }
-        if let Some(timeout) = parts.timeout {
-            request = request.timeout(timeout);
-        }
-        request
     }
 }
 

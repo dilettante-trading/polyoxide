@@ -263,11 +263,14 @@ def package(root: Path, name: str, *deps: dict, publish: list | None = None) -> 
             "dependencies": list(deps), "targets": []}
 
 
-def live(suite: str = "live", timeout: int = 15, features=(), secrets=(), note=None) -> dict:
+def live(suite: str = "live", timeout: int = 15, features=(), secrets=(), note=None,
+         runner=None) -> dict:
     entry = {"suite": suite, "timeout": timeout, "features": list(features),
              "secrets": list(secrets)}
     if note:
         entry["note"] = note
+    if runner:
+        entry["runner"] = runner
     return entry
 
 
@@ -377,6 +380,18 @@ def test_the_fixture_orders_crates_by_publish_order_then_unpublished(fixture_reg
     assert [c.name for c in fixture_registry.crates] == [
         "polyoxide-core", "polyoxide-alpha", "polyoxide", "polyoxide-omega",
         "polyoxide-cli", "polyoxide-py"]
+
+
+def test_an_unpublished_crate_has_no_published_after_clause(tmp_path: Path) -> None:
+    def versioned_dev_dependency(metadata, workspace, manifests):
+        py = next(p for p in metadata["packages"] if p["name"] == "polyoxide-py")
+        py["dependencies"].append(dep("polyoxide-omega", kind="dev", req="^1.0.0"))
+
+    registry = build(tmp_path, versioned_dev_dependency)
+    assert registry.crate("polyoxide-py").published_after == ("polyoxide-omega",)
+    lines = {line.split(" — ")[0]: line for line in gen_registry.claude_graph(registry)}
+    assert "published after" not in lines["- `polyoxide-py`"]
+    assert "published after" in lines["- `polyoxide-omega`"]
 
 
 def test_a_duplicate_venue_and_product_fails_naming_both_crates(tmp_path: Path) -> None:
@@ -693,6 +708,99 @@ def test_one_job_per_crate_and_suite(fixture_registry) -> None:
         ("live-polyoxide-alpha-slow", 30, "--no-default-features --test live_slow", ()),
         ("live-polyoxide-omega-live", 15, "--no-default-features --test live_api", ()),
     ]
+
+
+def _with_browser_job(metadata, workspace, manifests):
+    table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+    table["browser_live"] = live(suite="browser", features=["live"], runner="wasm-bindgen")
+
+
+def test_a_runner_job_is_named_for_its_runner(tmp_path: Path) -> None:
+    registry = build(tmp_path, _with_browser_job)
+    jobs = {job.id: job for job in registry.jobs()}
+    job = jobs["live-wasm-browser"]
+    assert (job.crate, job.suite, job.runner, job.secrets) == (
+        "polyoxide-omega", "browser", "wasm-bindgen", ())
+    # The crate's native suite keeps its own job.
+    assert jobs["live-polyoxide-omega-live"].runner is None
+
+
+def test_a_runner_job_runs_its_script_and_classifies_what_it_writes(tmp_path: Path) -> None:
+    import yaml
+
+    registry = build(tmp_path, _with_browser_job)
+    jobs = yaml.safe_load("\n".join(gen_registry.nightly_live_jobs(registry)))
+    job = jobs["live-wasm-browser"]
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert "bash scripts/wasm_live.sh" in runs
+    assert not any(step.get("uses") == "./.github/actions/live-suite" for step in job["steps"])
+    assert job["timeout-minutes"] == 15
+    assert "env" not in job
+    merge = next(run for run in runs if "classify_failures.py merge" in run)
+    assert "--output-dir artifacts/polyoxide-omega/merged" in merge
+    upload = next(step for step in job["steps"]
+                  if str(step.get("uses", "")).startswith("actions/upload-artifact"))
+    assert upload["with"] == {"name": "behavioral-polyoxide-omega-browser",
+                              "path": "artifacts/polyoxide-omega/"}
+    native = jobs["live-polyoxide-omega-live"]
+    assert native["steps"][1]["uses"] == "./.github/actions/live-suite"
+
+
+def test_a_runner_with_no_job_template_is_refused(tmp_path: Path, monkeypatch) -> None:
+    # RUNNERS is a table, but the job's steps are wasm-bindgen's: a second entry must not be given
+    # them silently.
+    monkeypatch.setitem(gen_registry.RUNNERS, "selenium", ("browser", "scripts/selenium_live.sh"))
+
+    def other(metadata, workspace, manifests):
+        table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+        table["browser_live"] = live(suite="browser", features=["live"], runner="selenium")
+
+    registry = build(tmp_path, other)
+    with pytest.raises(RegistryError, match="runner 'selenium' has no job template"):
+        gen_registry.nightly_live_jobs(registry)
+
+
+def test_the_runner_job_is_listed_beside_the_native_ones(tmp_path: Path) -> None:
+    registry = build(tmp_path, _with_browser_job)
+    assert "  - live-wasm-browser" in gen_registry.nightly_aggregate_needs(registry)
+    assert ("- `live-wasm-browser` (15 min): `browser_live` with `--features live`"
+            in gen_registry.claude_nightly(registry))
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"secrets": ["A_KEY"]}, "holds no secrets"),
+        ({"runner": "selenium"}, "is not one of"),
+    ],
+)
+def test_a_bad_runner_entry_fails(tmp_path: Path, change: dict, message: str) -> None:
+    def bad(metadata, workspace, manifests):
+        _with_browser_job(metadata, workspace, manifests)
+        table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+        table["browser_live"].update(change)
+
+    with pytest.raises(RegistryError, match=message):
+        build(tmp_path, bad)
+
+
+def test_a_suite_may_not_mix_runners(tmp_path: Path) -> None:
+    def mixed(metadata, workspace, manifests):
+        table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+        table["browser_live"] = live(suite="live", features=["live"], runner="wasm-bindgen")
+
+    with pytest.raises(RegistryError, match="mixes runners"):
+        build(tmp_path, mixed)
+
+
+def test_two_crates_may_not_share_a_runner_job(tmp_path: Path) -> None:
+    def twice(metadata, workspace, manifests):
+        _with_browser_job(metadata, workspace, manifests)
+        table = manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["live"]
+        table["browser_live"] = live(suite="browser", features=["live"], runner="wasm-bindgen")
+
+    with pytest.raises(RegistryError, match="live-wasm-browser is the job of more than one"):
+        build(tmp_path, twice)
 
 
 # --- the renderers -----------------------------------------------------------

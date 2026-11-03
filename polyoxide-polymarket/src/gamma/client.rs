@@ -68,10 +68,12 @@ impl GammaBuilder {
 
     /// Build the Gamma client
     pub fn build(self) -> Result<Gamma, GammaError> {
+        let runtime = self.config.runtime_or_default();
         let http_client = self
             .config
             .http_builder()
-            .with_rate_limiter(shared::gamma_limits())
+            .runtime(runtime.clone())
+            .with_rate_limiter(shared::gamma_limits_on(runtime))
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 
@@ -89,6 +91,17 @@ impl Default for GammaBuilder {
 mod tests {
     use super::*;
     use polyoxide_core::{RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS};
+
+    #[test]
+    fn the_builders_runtime_is_the_clients() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let gamma = Gamma::builder().runtime(runtime.clone()).build().unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            gamma.http_client.runtime(),
+            &runtime
+        ));
+    }
 
     #[test]
     fn test_builder_default() {

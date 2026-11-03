@@ -158,6 +158,7 @@ pin-project-internal
 pin-project-lite
 polyoxide-core
 polyoxide-polymarket
+polyoxide-rt
 polyoxide-venue
 portable-atomic
 potential_utf

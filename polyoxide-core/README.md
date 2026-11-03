@@ -8,8 +8,10 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 
 | Module | Purpose |
 |---|---|
-| `client` | `HttpClient` / `HttpClientBuilder` -- configurable reqwest wrapper with base URL, connection pooling, concurrency limiting, and 429 retry logic |
-| `error` | `ApiError` -- shared error enum (Response, Validation, Network, Serialization, Url, Refused, Sign), classed through `polyoxide_venue::Classify`; `ErrorResponse` -- an unsuccessful response read whole (status, headers, body, message, `Retry-After`), which `ApiError::Response` carries |
+| `client` | `HttpClient` / `HttpClientBuilder` -- configurable client over an injected or default transport, with base URL, connection pooling, concurrency limiting, and 429 retry logic |
+| `transport` | `HttpTransport`, the seam the send loop sends through, with `HttpRequest`, `TransportError` and `TransportKind`, and `ReqwestTransport`, the native default |
+| `response` | `Response` -- a transport's answer, an owned head and a lazy body read by `bytes`, `text` and `json` |
+| `error` | `ApiError` -- shared error enum (Response, Validation, Transport, Serialization, Url, Refused, Sign), classed through `polyoxide_venue::Classify`; `ErrorResponse` -- an unsuccessful response read whole (status, headers, body, message, `Retry-After`), which `ApiError::Response` carries |
 | `hooks` | `Throttle`, `RetryPolicy` and `Authenticator` -- the hooks a venue gives the send loop -- with the types they take (`RequestMeta`, `ResponseMeta`, `AttemptInfo`, `RequestParts`, `Decision`, `Cost`, `Charge`, `Refused`), `NoThrottle` and `DefaultRetryPolicy` |
 | `send` | `HttpClient::send`, core's one send loop, and `decode_json`, which logs a decode failure once |
 | `hold` | `Hold` -- the extend-only deadline every layer of one throttle waits out, with an optional ceiling |
@@ -21,7 +23,7 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 
 ## Error hierarchy
 
-Each venue crate defines its own error enum, one per module, with an `Api(ApiError)` variant. An unsuccessful response reaches it as `ApiError::Response`, which carries the whole response (`ErrorResponse`: status, headers, body, message and `Retry-After`), and the crate's `From<ApiError>` is its one decode: a `?` on core's error anywhere reads the venue's own body shape there. Transport, URL and JSON failures enter the same way, as `ApiError::Network`, `Url` and `Serialization`:
+Each venue crate defines its own error enum, one per module, with an `Api(ApiError)` variant. An unsuccessful response reaches it as `ApiError::Response`, which carries the whole response (`ErrorResponse`: status, headers, body, message and `Retry-After`), and the crate's `From<ApiError>` is its one decode: a `?` on core's error anywhere reads the venue's own body shape there. Transport, URL and JSON failures enter the same way, as `ApiError::Transport`, `Url` and `Serialization`:
 
 ```rust
 use polyoxide_core::ApiError;
@@ -55,6 +57,9 @@ impl From<ApiError> for MyCrateError {
 # #![allow(unused_imports)]
 // HTTP client
 use polyoxide_core::{HttpClient, HttpClientBuilder, DEFAULT_TIMEOUT_MS, DEFAULT_POOL_SIZE};
+
+// The transport it sends on
+use polyoxide_core::{HttpRequest, HttpTransport, Response, TransportError, TransportKind};
 
 // Errors
 use polyoxide_core::{ApiError, ErrorResponse};

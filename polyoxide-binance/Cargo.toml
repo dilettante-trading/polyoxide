@@ -43,9 +43,9 @@ spot = [
     "dep:url",
 ]
 # The USDⓈ-M market streams, `usdm::ws`, on the socket kit.
-usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/macros"]
 # The spot market streams, `spot::ws`, on the same kit.
-spot-ws = ["spot", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+spot-ws = ["spot", "dep:polyoxide-ws", "dep:futures-util", "tokio/macros"]
 # Exposes the captured frames, `usdm::ws::fixtures` with `usdm-ws` and
 # `spot::ws::fixtures` with `spot-ws`, for downstream tests; it turns no module
 # on. Not for consumers.
@@ -53,6 +53,10 @@ test-server = []
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
+# The runtime the client, its weight budget and the streams keep time on. Plain
+# and not optional under `usdm`, unlike Kalshi's: the HTTP side and the socket
+# side both read it.
+polyoxide-rt = { workspace = true }
 polyoxide-venue = { workspace = true }
 # The socket kit (`usdm-ws`, `spot-ws`): connect, the bare tier, the socket error and the
 # supervisor. It owns the transport, tokio-tungstenite and rustls.
@@ -61,7 +65,7 @@ rust_decimal = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["time", "sync"], optional = true }
+tokio = { workspace = true, features = ["sync"], optional = true }
 futures-util = { version = "0.3", optional = true }
 tracing = { workspace = true, optional = true }
 url = { workspace = true, optional = true }

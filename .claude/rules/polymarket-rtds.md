@@ -13,18 +13,19 @@ one connection under an `action`/`subscriptions` envelope, unlike the CLOB chann
 channel per connection. Its guide is `src/rtds/mod.rs`'s module docs; it has no README
 (`test_module_readmes.py`'s `WITHOUT_README`).
 
-- The feature builds `polyoxide-venue`, which depends on nothing by default (its `decimal`
-  feature, which perps, Binance and, through `market`, clob enable, adds rust_decimal and serde
-  for `positional`), and the socket kit, and no core, `reqwest` or `alloy`;
-  `test_dep_allowlists.py` holds `@rtds` to that. So a
+- The feature builds `polyoxide-venue`, which depends on nothing by default (on wasm32, only
+  `web-time`, for the wall clock; its `decimal` feature, which perps, Binance and, through
+  `market`, clob enable, adds rust_decimal and serde for `positional`), and the socket kit, and no
+  core, `reqwest` or `alloy`; `test_dep_allowlists.py` holds `@rtds` to that. So a
   credential-free price feed does not pull in `alloy`:
   `polyoxide-polymarket --no-default-features --features clob-ws` builds 254 crates against core's
   126 (unique names in `cargo tree -e normal`).
 - Two tiers: `Rtds` is a bare `Stream`; `RtdsBuilder`/`SupervisedRtds` adds keep-alive, a
-  staleness watchdog and reconnect-with-resubscribe. Each connect goes through the kit's `connect`,
-  bounded by a connect timeout, 10 s by default (`RtdsBuilder::connect_timeout`, DRIFT R2), and
-  the bare tier reads through the kit's `Connection` (`Mode::Data`), which answers the server's
-  close with the RFC 6455 close reply (DRIFT R3) and logs it under `polyoxide_ws`.
+  staleness watchdog and reconnect-with-resubscribe. Each connect goes through the builder's
+  `SocketTransport` (`Rtds::open_with`, default the target's), bounded by a connect timeout, 10 s
+  by default (`RtdsBuilder::connect_timeout`, DRIFT R2), and the bare tier reads through the
+  kit's `Connection` (`Mode::Data`), which answers the server's close with the RFC 6455 close
+  reply (DRIFT R3) and logs it under `polyoxide_ws`.
 - The documented 5-second `PING` is neither required nor answered, so staleness, not the
   heartbeat, is the only liveness signal. Its pump pings only on a quiet tick: do not copy that
   shape for a host that requires pings.

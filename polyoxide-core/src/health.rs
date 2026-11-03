@@ -1,14 +1,16 @@
 //! One health ping, on the send loop.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use reqwest::{Method, Response};
+use http::Method;
+use polyoxide_rt::{Instant, Runtime};
 
 use crate::client::HttpClient;
 use crate::error::ApiError;
 use crate::hooks::{Authenticator, Cost, DynAuthenticator, RequestParts};
 use crate::request::RequestError;
+use crate::response::Response;
 
 /// A successful [`HttpClient::health`] ping.
 #[derive(Debug)]
@@ -22,26 +24,38 @@ pub struct Pong {
     pub response: Response,
 }
 
-/// Notes when an attempt is signed, which is just before it is sent.
-#[derive(Default)]
-struct Stopwatch(Mutex<Option<Instant>>);
+/// Notes when an attempt is signed, which is just before it is sent, on the
+/// client's runtime clock.
+struct Stopwatch {
+    runtime: Arc<dyn Runtime>,
+    signed: Mutex<Option<Instant>>,
+}
 
 impl Stopwatch {
+    fn new(runtime: Arc<dyn Runtime>) -> Self {
+        Self {
+            runtime,
+            signed: Mutex::new(None),
+        }
+    }
+
     /// Time since the last attempt was signed.
     fn elapsed(&self) -> Duration {
-        self.0
+        self.signed
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .map_or(Duration::ZERO, |sent| sent.elapsed())
+            .map_or(Duration::ZERO, |sent| {
+                self.runtime.now().saturating_duration_since(sent)
+            })
     }
 }
 
 impl Authenticator for Stopwatch {
     async fn sign(&self, _parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
         *self
-            .0
+            .signed
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(self.runtime.now());
         Ok(())
     }
 }
@@ -59,7 +73,7 @@ impl HttpClient {
     /// A final non-2xx response is [`ApiError::Response`] as `E`, and so is a
     /// failure before one (a refused cost, a transport error).
     pub async fn health<E: RequestError>(&self, path: &str, costs: &[Cost]) -> Result<Pong, E> {
-        let stopwatch = Stopwatch::default();
+        let stopwatch = Stopwatch::new(Arc::clone(&self.runtime));
         let response = self
             .send(
                 RequestParts::new(Method::GET, path),

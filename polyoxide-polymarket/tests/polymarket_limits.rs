@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{EffectiveQuota, Matching, RateLimiter, WindowQuotaTable};
 use polyoxide_polymarket::shared;
 
@@ -1080,6 +1080,11 @@ mod cooldown_tests {
         let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
         rl.acquire("/closed-positions", None).await;
+        // The quota keeps the runtime's clock, so its own pacing shows in
+        // virtual time: let the general bucket (about 11 ms) and the row's
+        // (about 75 ms) both refill, so that only the cooldown could still
+        // delay the second acquire.
+        tokio::time::advance(Duration::from_millis(100)).await;
 
         let t = tokio::time::Instant::now();
         rl.acquire("/closed-positions", None).await;

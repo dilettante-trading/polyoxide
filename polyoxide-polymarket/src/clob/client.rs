@@ -1,7 +1,7 @@
 use crate::shared::{
     self, PolymarketRetryPolicy, RateLimitStatus, SignerLimiter, Tier, TradingRequest,
 };
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{ClientConfig, DynAuthenticator, HttpClient, Request};
 
 use crate::clob::{
@@ -933,7 +933,10 @@ impl ClobBuilder {
     /// its timing. The default is `UserWsBuilder::new()`, the CLOB's own host.
     ///
     /// The builder holds no credential: a stream builds them from the account
-    /// when it opens its socket.
+    /// when it opens its socket. Its `runtime` and `socket_transport` setters
+    /// choose the runtime and the dial of the stream's socket. With no runtime
+    /// set on it, `build` gives it the client's own; a runtime set on the
+    /// socket builder wins.
     #[cfg(feature = "clob-ws")]
     pub fn user_socket(mut self, socket: crate::clob::ws::UserWsBuilder) -> Self {
         self.user_socket = socket;
@@ -942,14 +945,17 @@ impl ClobBuilder {
 
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
+        // The client and its throttle keep time on one runtime.
+        let runtime = self.config.runtime_or_default();
         // The IP table and the per-signer buckets over one hold, so a 429
         // stops both; the client keeps a handle on the signer layer for the
         // tier and telemetry it adopts.
-        let throttle = shared::clob_throttle();
+        let throttle = shared::clob_throttle_on(runtime.clone());
         let signer_limiter = throttle.signer().clone();
         let http_client = self
             .config
             .http_builder()
+            .runtime(runtime.clone())
             .with_throttle(throttle)
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
@@ -965,22 +971,28 @@ impl ClobBuilder {
         let gamma = if let Some(gamma) = self.gamma {
             gamma
         } else {
-            crate::gamma::Gamma::builder()
+            let mut builder = crate::gamma::Gamma::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
-                .build()
-                .map_err(ClobError::Gamma)?
+                .runtime(runtime.clone());
+            if let Some(transport) = &self.config.http_transport {
+                builder = builder.http_transport(transport.clone());
+            }
+            builder.build().map_err(ClobError::Gamma)?
         };
 
         #[cfg(feature = "data")]
         let data = if let Some(data) = self.data {
             data
         } else {
-            crate::data::DataApi::builder()
+            let mut builder = crate::data::DataApi::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
-                .build()
-                .map_err(ClobError::Data)?
+                .runtime(runtime.clone());
+            if let Some(transport) = &self.config.http_transport {
+                builder = builder.http_transport(transport.clone());
+            }
+            builder.build().map_err(ClobError::Data)?
         };
 
         Ok(Clob {
@@ -997,7 +1009,7 @@ impl ClobBuilder {
             #[cfg(all(feature = "clob-ws", feature = "data"))]
             ids: Default::default(),
             #[cfg(feature = "clob-ws")]
-            user_socket: self.user_socket,
+            user_socket: self.user_socket.runtime_unless_set(runtime),
         })
     }
 }
@@ -1012,6 +1024,132 @@ impl Default for ClobBuilder {
 mod tests {
     use super::*;
     use polyoxide_core::RetryConfig;
+
+    #[test]
+    fn the_builders_runtime_reaches_the_client_its_signer_buckets_and_its_fallbacks() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let clob = ClobBuilder::new().runtime(runtime.clone()).build().unwrap();
+        assert!(std::sync::Arc::ptr_eq(clob.http_client.runtime(), &runtime));
+        assert!(std::sync::Arc::ptr_eq(
+            clob.signer_limiter.hold().runtime(),
+            &runtime
+        ));
+        #[cfg(feature = "gamma")]
+        assert!(std::sync::Arc::ptr_eq(
+            clob.gamma.http_client.runtime(),
+            &runtime
+        ));
+        #[cfg(feature = "data")]
+        assert!(std::sync::Arc::ptr_eq(
+            clob.data.http_client.runtime(),
+            &runtime
+        ));
+    }
+
+    #[cfg(feature = "clob-ws")]
+    #[test]
+    fn the_builders_runtime_reaches_the_user_socket_unless_the_socket_sets_its_own() {
+        use crate::clob::ws::UserWsBuilder;
+        use std::sync::Arc;
+
+        let client: Arc<dyn polyoxide_rt::Runtime> = Arc::new(polyoxide_rt::TokioRuntime);
+        let socket: Arc<dyn polyoxide_rt::Runtime> = Arc::new(polyoxide_rt::TokioRuntime);
+
+        // None on the socket builder: it follows the client's.
+        let clob = ClobBuilder::new().runtime(client.clone()).build().unwrap();
+        let held = clob.user_socket.chosen_runtime().expect("a runtime");
+        assert!(Arc::ptr_eq(held, &client), "the socket kept the default");
+
+        // One set on it wins, whatever order the two setters ran in.
+        let clob = ClobBuilder::new()
+            .user_socket(UserWsBuilder::new().runtime(socket.clone()))
+            .runtime(client.clone())
+            .build()
+            .unwrap();
+        let held = clob.user_socket.chosen_runtime().expect("a runtime");
+        assert!(Arc::ptr_eq(held, &socket), "the client's runtime won");
+
+        // With no runtime on the client either, the socket gets its default.
+        let clob = ClobBuilder::new().build().unwrap();
+        assert!(clob.user_socket.chosen_runtime().is_some());
+    }
+
+    /// Keeps the URL of each request it is asked to send, and fails it, so
+    /// the test needs no response to build.
+    #[cfg(any(feature = "gamma", feature = "data"))]
+    #[derive(Debug, Default)]
+    struct Recorder(std::sync::Mutex<Vec<String>>);
+
+    #[cfg(any(feature = "gamma", feature = "data"))]
+    impl polyoxide_core::HttpTransport for Recorder {
+        fn send(
+            &self,
+            request: polyoxide_core::HttpRequest,
+        ) -> polyoxide_rt::BoxFuture<Result<polyoxide_core::Response, polyoxide_core::TransportError>>
+        {
+            self.0.lock().unwrap().push(request.url.to_string());
+            Box::pin(async {
+                Err(polyoxide_core::TransportError::new(
+                    polyoxide_core::TransportKind::Other,
+                    "recorded, not sent",
+                ))
+            })
+        }
+    }
+
+    #[cfg(feature = "gamma")]
+    #[tokio::test]
+    async fn the_builders_transport_reaches_the_gamma_client_it_builds() {
+        let recorder = std::sync::Arc::new(Recorder::default());
+        let clob = ClobBuilder::new()
+            .http_transport(recorder.clone())
+            .build()
+            .unwrap();
+
+        let err = clob
+            .gamma
+            .http_client
+            .get_bytes("/markets", &[])
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, polyoxide_core::ApiError::Transport(_)),
+            "{err:?}"
+        );
+        let seen = recorder.0.lock().unwrap().clone();
+        assert!(!seen.is_empty(), "the Gamma client sent nothing on it");
+        assert!(seen.iter().all(|url| url.ends_with("/markets")), "{seen:?}");
+    }
+
+    #[cfg(feature = "data")]
+    #[tokio::test]
+    async fn the_builders_transport_reaches_the_data_client_it_builds() {
+        let recorder = std::sync::Arc::new(Recorder::default());
+        let clob = ClobBuilder::new()
+            .http_transport(recorder.clone())
+            .build()
+            .unwrap();
+
+        let err = clob
+            .data
+            .http_client
+            .get_bytes("/positions", &[])
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, polyoxide_core::ApiError::Transport(_)),
+            "{err:?}"
+        );
+        let seen = recorder.0.lock().unwrap().clone();
+        assert!(!seen.is_empty(), "the Data client sent nothing on it");
+        assert!(
+            seen.iter().all(|url| url.ends_with("/positions")),
+            "{seen:?}"
+        );
+    }
 
     #[test]
     fn build_order_v2_sets_builder_and_timestamp() {

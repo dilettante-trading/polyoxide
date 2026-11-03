@@ -2,6 +2,7 @@
 //! account, with `clob`, `gamma` and `data` all on (Story 5.7 moved it here
 //! from the `polyoxide` umbrella).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use polyoxide_venue::{Class, Classify};
@@ -85,6 +86,8 @@ pub struct PolymarketBuilder {
     data_base_url: Option<String>,
     timeout_ms: Option<u64>,
     chain: Option<Chain>,
+    runtime: Option<Arc<dyn polyoxide_rt::Runtime>>,
+    http_transport: Option<Arc<dyn polyoxide_core::HttpTransport>>,
     account: Account,
 }
 
@@ -96,6 +99,8 @@ impl PolymarketBuilder {
             data_base_url: None,
             timeout_ms: None,
             chain: None,
+            runtime: None,
+            http_transport: None,
             account,
         }
     }
@@ -130,6 +135,21 @@ impl PolymarketBuilder {
         self
     }
 
+    /// Set the runtime the CLOB, Gamma and Data clients' waits, clock reads
+    /// and spawns go through. Unset, each uses the target's default
+    /// (`polyoxide_rt::default_runtime`).
+    pub fn runtime(mut self, runtime: Arc<dyn polyoxide_rt::Runtime>) -> Self {
+        self.runtime = Some(runtime);
+        self
+    }
+
+    /// Send every attempt of the CLOB, Gamma and Data clients on `transport`
+    /// instead of the target's default.
+    pub fn http_transport(mut self, transport: Arc<dyn polyoxide_core::HttpTransport>) -> Self {
+        self.http_transport = Some(transport);
+        self
+    }
+
     /// Build the Polymarket client
     pub fn build(self) -> Result<Polymarket, BuildError> {
         // Build Gamma client
@@ -140,6 +160,12 @@ impl PolymarketBuilder {
         }
         if let Some(timeout) = self.timeout_ms {
             gamma_builder = gamma_builder.timeout_ms(timeout);
+        }
+        if let Some(runtime) = &self.runtime {
+            gamma_builder = gamma_builder.runtime(runtime.clone());
+        }
+        if let Some(transport) = &self.http_transport {
+            gamma_builder = gamma_builder.http_transport(transport.clone());
         }
 
         let gamma = gamma_builder.build()?;
@@ -152,6 +178,12 @@ impl PolymarketBuilder {
         }
         if let Some(timeout) = self.timeout_ms {
             data_builder = data_builder.timeout_ms(timeout);
+        }
+        if let Some(runtime) = &self.runtime {
+            data_builder = data_builder.runtime(runtime.clone());
+        }
+        if let Some(transport) = &self.http_transport {
+            data_builder = data_builder.http_transport(transport.clone());
         }
 
         let data = data_builder.build()?;
@@ -173,6 +205,12 @@ impl PolymarketBuilder {
         if let Some(chain) = self.chain {
             clob_builder = clob_builder.chain(chain);
         }
+        if let Some(runtime) = self.runtime {
+            clob_builder = clob_builder.runtime(runtime);
+        }
+        if let Some(transport) = self.http_transport {
+            clob_builder = clob_builder.http_transport(transport);
+        }
 
         let clob = clob_builder.build()?;
 
@@ -184,8 +222,8 @@ impl PolymarketBuilder {
 mod tests {
     use super::*;
     use crate::clob::Credentials;
-    use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
-    use polyoxide_core::reqwest::StatusCode;
+    use polyoxide_core::http::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+    use polyoxide_core::http::StatusCode;
     use polyoxide_core::{ApiError, ErrorResponse};
 
     // Anvil's first well-known key: any valid key builds the client.
@@ -207,6 +245,79 @@ mod tests {
             headers.insert(RETRY_AFTER, HeaderValue::from_static(seconds));
         }
         ErrorResponse::new(StatusCode::from_u16(status).unwrap(), headers, "").into()
+    }
+
+    #[test]
+    fn the_builders_runtime_reaches_the_clob_gamma_and_data_clients() {
+        let runtime: Arc<dyn polyoxide_rt::Runtime> = Arc::new(polyoxide_rt::TokioRuntime);
+        let polymarket = builder().runtime(runtime.clone()).build().unwrap();
+
+        let clients = [
+            ("clob", polymarket.clob.http_client.runtime()),
+            (
+                "clob signer buckets",
+                polymarket.clob.signer_limiter.hold().runtime(),
+            ),
+            ("gamma", polymarket.gamma.http_client.runtime()),
+            ("data", polymarket.data.http_client.runtime()),
+            ("data pnl", polymarket.data.pnl_http_client.runtime()),
+            (
+                "data rankings",
+                polymarket.data.rankings_http_client.runtime(),
+            ),
+        ];
+        for (name, held) in clients {
+            assert!(Arc::ptr_eq(held, &runtime), "{name} kept its own runtime");
+        }
+    }
+
+    /// Keeps the URL of each request it is asked to send, and fails it.
+    #[derive(Debug, Default)]
+    struct Recorder(std::sync::Mutex<Vec<String>>);
+
+    impl polyoxide_core::HttpTransport for Recorder {
+        fn send(
+            &self,
+            request: polyoxide_core::HttpRequest,
+        ) -> polyoxide_rt::BoxFuture<Result<polyoxide_core::Response, polyoxide_core::TransportError>>
+        {
+            self.0.lock().unwrap().push(request.url.to_string());
+            Box::pin(async {
+                Err(polyoxide_core::TransportError::new(
+                    polyoxide_core::TransportKind::Other,
+                    "recorded, not sent",
+                ))
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn the_builders_transport_carries_the_clob_gamma_and_data_requests() {
+        let recorder = Arc::new(Recorder::default());
+        let polymarket = builder().http_transport(recorder.clone()).build().unwrap();
+
+        for (name, client, path) in [
+            ("clob", &polymarket.clob.http_client, "/clob-path"),
+            ("gamma", &polymarket.gamma.http_client, "/gamma-path"),
+            ("data", &polymarket.data.http_client, "/data-path"),
+            ("data pnl", &polymarket.data.pnl_http_client, "/pnl-path"),
+            (
+                "data rankings",
+                &polymarket.data.rankings_http_client,
+                "/rankings-path",
+            ),
+        ] {
+            let err = client.get_bytes(path, &[]).await.unwrap_err();
+            assert!(
+                matches!(err, polyoxide_core::ApiError::Transport(_)),
+                "{name}: {err:?}"
+            );
+            let seen = recorder.0.lock().unwrap().clone();
+            assert!(
+                seen.iter().any(|url| url.ends_with(path)),
+                "{name} sent nothing on the injected transport: {seen:?}"
+            );
+        }
     }
 
     #[tokio::test]

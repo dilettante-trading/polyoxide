@@ -347,3 +347,20 @@ Probed 2026-10-23 (`builder.json` in the fixtures).
   `total_fee` equalled `fee` plus `builder_fee` exactly. Some fees carry 29 significant
   digits, so a check of that sum needs more than Python's default 28-digit `Decimal`
   context; `rust_decimal` holds them.
+
+## Browser transport (2026-11)
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `api.perpetuals.polymarket.com` answers `Access-Control-Allow-Origin: *`, and is the one host
+  probed that sets `Access-Control-Expose-Headers`: `Retry-After, x-pmp-pod`. A browser reads both;
+  the nightly job reads `x-pmp-pod` from `GET /v1/info/ping`.
+- Its `Access-Control-Allow-Headers` is `content-type, authorization, polymarket-proxy,
+  polymarket-secret, traceparent, tracestate, x-gc-*`, measured on `GET /v1/info/ping`. Both of the
+  perps auth headers (`POLYMARKET-PROXY` and `POLYMARKET-SECRET`, the spec's security schemes) are
+  on that list and the allowed origin is `*`, so a page can send them; a browser request with any
+  other header fails its preflight.
+- `ws.perpetuals.polymarket.com/v1/ws` upgrades (101). The browser sends no protocol pings, so
+  the JSON `post/ping` is its keepalive; the nightly job sends it and holds the socket until the
+  first data frame or 20 s.

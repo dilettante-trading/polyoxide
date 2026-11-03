@@ -65,6 +65,14 @@ Two layers count different things, and a request must satisfy both:
   distinct URLs and recorded in its `OBSERVED.md` (below): several v2 routes are CDN-cached, and a
   repeated URL is answered by CloudFront without reaching the origin, so a soak that repeats URLs
   reports a clean run at any rate.
+- **A bucket checks and sleeps on the runtime's clock.** governor's `until_ready` sleeps on its own
+  timer and reads its own clock, so `Bucket::until_ready` (`polyoxide-core/src/rate_limit.rs`)
+  loops on `check`, sleeps the time `NotUntil::wait_time_from` reports, and checks again, on the
+  runtime of the table's hold (`WindowQuotaTable::with_runtime`). The bucket's governor limiter
+  runs on a `Clock` over that runtime's `now()` (`RuntimeClock`), made when the bucket is first
+  awaited: on a paused tokio clock a quanta-clocked check would barely move while the sleep
+  advances virtual time, and the loop would spin through minutes of it. The bucket's depth, its
+  refill and the reserve are unchanged.
 
 ## 429s and holds
 
@@ -77,6 +85,9 @@ however many tokens the buckets still hold.
   `begin_cooldown` does the same), and every later `acquire` waits it out whatever the path,
   before charging and again after any bucket wait of its own (AD-23), so a hold set meanwhile is
   not sent into. Every layer of one throttle shares one `Hold`; `Hold::with_ceiling` clamps it.
+  The hold also carries the throttle's `Runtime` (`Hold::unbounded_on`, `Hold::with_ceiling_on`,
+  `Hold::runtime`): it reads its deadline off that clock, and its waits and those of every bucket
+  sharing it sleep on it, so a client built on an injected runtime never waits on another.
 - The hold is `RetryConfig::retry_delay(0)`, whatever attempt saw the 429; the attempt's own wait
   is `retry_delay(attempt)`. A `425` retries without holding anyone else.
 - The send loop applies a policy's hold **before** it decides whether to retry, whatever it
@@ -125,6 +136,11 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
   composes the two layers over one `Hold`: each attempt is charged one request against
   `clob_limits()` by method and path, then the signer bucket its `shared::signer_cost` names.
   Every trading route names its bucket with `shared::signer_cost`.
+- Each table and the throttle has an `_on` twin that keeps time on a given runtime (`clob_limits_on`,
+  `gamma_limits_on`, `data_limits_on`, `relay_limits_on`, `perps_limits_on`, `clob_throttle_on`,
+  `SignerLimiter::new_on`). Every builder resolves its runtime once with
+  `ClientConfig::runtime_or_default` and builds its table or throttle with the twin, so a client
+  and its throttle share one runtime; the plain constructors take the target's default.
 
 ## Other measured throttles
 
@@ -135,9 +151,11 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
   `## Rate limits`).
 - **Data v2** (`shared::data_limits`), measured with `polyoxide-polymarket/examples/v2_soak`, which
   sends raw requests over distinct URLs; the runs are in `docs/specs/data-v2/OBSERVED.md`.
-- **Binance**: `usdm::WeightBudget` and `spot::WeightBudget` (`binance.md`).
+- **Binance**: `usdm::WeightBudget` and `spot::WeightBudget` (`binance.md`), each of whose `new_on`
+  keeps its hold and its minute waits (and `usdm`'s funding pace) on a given runtime.
 - **Kalshi**: the unsigned client's Read bucket is depth 600 refilling 180 tokens a second (20
   reads a second measured clean, less a tenth). A keyed client's public reads draw on a second
   bucket sized as the unsigned client's, so only `GET /account/limits` draws on the key's bucket,
   which holds its published capacity like the signer buckets (the signed probe ran on the demo
-  host; production signed public reads are unmeasured).
+  host; production signed public reads are unmeasured). Both buckets share one `Hold` on the
+  client's runtime (`PredictionsThrottle::new_on`).

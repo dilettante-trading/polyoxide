@@ -6,11 +6,13 @@
 use std::{
     fmt,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use futures_util::Stream;
-use polyoxide_ws::Timing;
+use polyoxide_rt::Runtime;
+use polyoxide_ws::{SocketTransport, Timing};
 
 use crate::{
     shared::ws::{
@@ -99,6 +101,8 @@ pub struct SpotWsBuilder {
     base_url: String,
     timing: Timing,
     streams: Vec<StreamName>,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for SpotWsBuilder {
@@ -119,6 +123,8 @@ impl SpotWsBuilder {
             base_url: SPOT_WS_BASE.to_owned(),
             timing,
             streams: Vec::new(),
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -161,6 +167,14 @@ impl SpotWsBuilder {
         max_connection_age;
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the paths' supervision tasks, the router and its
+        /// forwarders run on. By default the target's.
+        runtime;
+        /// How each path's connection dials. By default the target's.
+        socket_transport;
+    }
+
     /// The streams to open with.
     pub fn streams(mut self, streams: impl IntoIterator<Item = StreamName>) -> Self {
         self.streams = streams.into_iter().collect();
@@ -177,6 +191,8 @@ impl SpotWsBuilder {
             base_url: self.base_url,
             timing: self.timing,
             streams: self.streams,
+            runtime: self.runtime,
+            socket_transport: self.socket_transport,
         })
         .await?;
         Ok(SupervisedSpotWs { running })
@@ -384,5 +400,48 @@ mod tests {
             DisconnectReason::Rotation.to_string(),
             "rotated before the 24-hour cutoff"
         );
+    }
+
+    /// A runtime that counts its spawns and runs them on tokio's.
+    #[derive(Debug, Default)]
+    struct CountingRuntime {
+        inner: polyoxide_rt::TokioRuntime,
+        spawns: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Runtime for CountingRuntime {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.spawns
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_router_and_each_path_are_spawned_on_the_injected_runtime() {
+        use crate::spot::ws::scripted::{Script, ScriptedServer};
+
+        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let runtime = std::sync::Arc::new(CountingRuntime::default());
+        let btc = crate::spot::types::Symbol::new("BTCUSDT").unwrap();
+        let feed = SpotWsBuilder::new()
+            .base_url(server.url.clone())
+            .runtime(runtime.clone())
+            .streams([StreamName::AggTrade(btc)])
+            .connect()
+            .await
+            .expect("connect");
+        // One spawn for the path's supervision task, one for its forwarder and
+        // one for the router.
+        assert_eq!(runtime.spawns.load(std::sync::atomic::Ordering::SeqCst), 3);
+        feed.close().await.expect("close");
     }
 }

@@ -1,11 +1,12 @@
 use std::time::Duration;
 
+use http::header::{HeaderMap, RETRY_AFTER};
+use http::StatusCode;
 use polyoxide_venue::{class_for_status, parse_retry_after, Class, Classify};
-use reqwest::header::{HeaderMap, RETRY_AFTER};
-use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::hooks::Refused;
+use crate::transport::TransportError;
 
 /// An unsuccessful response, read whole: what [`ApiError::Response`] carries.
 ///
@@ -60,7 +61,7 @@ impl ErrorResponse {
     }
 
     /// Read `response` whole. A body that cannot be read is `""`.
-    pub async fn read(response: reqwest::Response) -> Self {
+    pub async fn read(response: crate::Response) -> Self {
         let status = response.status();
         let headers = response.headers().clone();
         let body = response.text().await.unwrap_or_default();
@@ -98,9 +99,10 @@ pub enum ApiError {
     #[error("Validation error: {0}")]
     Validation(String),
 
-    /// Network error
-    #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
+    /// The transport failed: no response arrived, or its body could not be
+    /// read. Its class is its kind's.
+    #[error("Transport error: {0}")]
+    Transport(#[from] TransportError),
 
     /// JSON serialization/deserialization error
     #[error("Serialization error: {0}")]
@@ -124,7 +126,7 @@ pub enum ApiError {
 
 impl ApiError {
     /// Read an unsuccessful response whole, as [`ApiError::Response`].
-    pub async fn from_response(response: reqwest::Response) -> Self {
+    pub async fn from_response(response: crate::Response) -> Self {
         ErrorResponse::read(response).await.into()
     }
 }
@@ -133,48 +135,6 @@ impl From<ErrorResponse> for ApiError {
     fn from(response: ErrorResponse) -> Self {
         Self::Response(Box::new(response))
     }
-}
-
-/// The class of a transport error from `reqwest`.
-///
-/// A failure in transit is [`Class::Network`]: a timeout, a failed connect, or
-/// any error with an I/O error or a body-read failure in its source chain.
-/// reqwest reports a body that broke off mid-read as a decode error, so these
-/// are checked first. An error that carries an HTTP status follows the status
-/// rule. Then a request that could not be built is [`Class::InvalidRequest`],
-/// a body that arrived whole but did not decode is [`Class::Decode`], and
-/// anything else is [`Class::Network`].
-pub fn classify_reqwest(err: &reqwest::Error) -> Class {
-    if failed_in_transit(err) {
-        Class::Network
-    } else if let Some(status) = err.status() {
-        status_class(status.as_u16())
-    } else if err.is_builder() {
-        Class::InvalidRequest
-    } else if err.is_decode() {
-        Class::Decode
-    } else {
-        Class::Network
-    }
-}
-
-/// Whether a reqwest error is the connection failing, however reqwest labels it.
-fn failed_in_transit(err: &reqwest::Error) -> bool {
-    if err.is_timeout() || err.is_connect() || err.is_body() {
-        return true;
-    }
-    let mut source = std::error::Error::source(err);
-    while let Some(inner) = source {
-        if inner.is::<std::io::Error>()
-            || inner
-                .downcast_ref::<reqwest::Error>()
-                .is_some_and(reqwest::Error::is_body)
-        {
-            return true;
-        }
-        source = inner.source();
-    }
-    false
 }
 
 /// The status rule, with any status outside 400–599 a [`Class::Decode`].
@@ -201,7 +161,7 @@ impl Classify for ApiError {
                 status_class(response.status.as_u16()).with_retry_after(response.retry_after)
             }
             Self::Validation(_) => Class::InvalidRequest,
-            Self::Network(err) => classify_reqwest(err),
+            Self::Transport(err) => err.class(),
             Self::Serialization(_) => Class::Decode,
             Self::Url(_) => Class::InvalidRequest,
             Self::Refused(refused) => refused.class(),
@@ -225,6 +185,7 @@ impl Classify for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::TransportKind;
 
     /// A response with `status`, `body` and, when given, a `Retry-After`.
     fn response(status: u16, body: &str, retry_after: Option<&str>) -> ErrorResponse {
@@ -237,6 +198,14 @@ mod tests {
 
     fn api(status: u16) -> ApiError {
         response(status, "", None).into()
+    }
+
+    /// A transport failure of `kind`, caused by `source`.
+    fn transport(
+        kind: TransportKind,
+        source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> ApiError {
+        ApiError::Transport(TransportError::new(kind, source))
     }
 
     #[test]
@@ -375,116 +344,28 @@ mod tests {
 
     // ── Classify ────────────────────────────────────────────────
 
-    /// One reqwest error of each kind the rule tells apart.
+    /// The source text of a transport failure of each kind a transport
+    /// reports. The names stay as the baseline's, whose items held real
+    /// reqwest errors; a `TransportError` only displays its source.
     struct ReqwestErrors {
-        builder: reqwest::Error,
-        decode: reqwest::Error,
-        cut_off: reqwest::Error,
-        connect: reqwest::Error,
-        timeout: reqwest::Error,
-        unavailable: reqwest::Error,
-        not_found: reqwest::Error,
+        builder: &'static str,
+        cut_off: &'static str,
+        connect: &'static str,
+        timeout: &'static str,
     }
 
-    async fn reqwest_errors() -> ReqwestErrors {
-        use std::io::{Read, Write};
-
-        let builder = reqwest::Client::new().get("not a url").build().unwrap_err();
-        assert!(builder.is_builder());
-
-        // No proxy, so a proxy set in the environment cannot answer for the
-        // local addresses below.
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
-        let mut server = mockito::Server::new_async().await;
-        let _not_json = server
-            .mock("GET", "/not-json")
-            .with_body("not json")
-            .create_async()
-            .await;
-        let _down = server
-            .mock("GET", "/down")
-            .with_status(503)
-            .create_async()
-            .await;
-        let _missing = server
-            .mock("GET", "/missing")
-            .with_status(404)
-            .create_async()
-            .await;
-        let get = |path: &str| client.get(format!("{}{path}", server.url())).send();
-
-        let decode = get("/not-json")
-            .await
-            .unwrap()
-            .json::<serde_json::Value>()
-            .await
-            .unwrap_err();
-        assert!(decode.is_decode());
-
-        let status = |response: reqwest::Response| response.error_for_status().unwrap_err();
-        let unavailable = status(get("/down").await.unwrap());
-        let not_found = status(get("/missing").await.unwrap());
-
-        // A body that promises 100 bytes and stops after 6. reqwest reports
-        // the broken read as a decode error.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let cut_off_url = format!("http://{}", listener.local_addr().unwrap());
-        let server_thread = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let _ = stream.read(&mut [0; 1024]);
-            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{\"a\":");
-        });
-        let cut_off = client
-            .get(&cut_off_url)
-            .send()
-            .await
-            .unwrap()
-            .json::<serde_json::Value>()
-            .await
-            .unwrap_err();
-        server_thread.join().unwrap();
-        assert!(cut_off.is_decode(), "{cut_off:?}");
-
-        // Bind a port, then free it, so nothing is listening there.
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let connect = client
-            .get(format!("http://127.0.0.1:{port}"))
-            .send()
-            .await
-            .unwrap_err();
-        assert!(connect.is_connect());
-
-        // A listener that never accepts: the connection opens and no answer comes.
-        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let timeout = reqwest::Client::builder()
-            .no_proxy()
-            .timeout(std::time::Duration::from_millis(300))
-            .build()
-            .unwrap()
-            .get(format!("http://{}", silent.local_addr().unwrap()))
-            .send()
-            .await
-            .unwrap_err();
-        assert!(timeout.is_timeout());
-
+    fn reqwest_errors() -> ReqwestErrors {
         ReqwestErrors {
-            builder,
-            decode,
-            cut_off,
-            connect,
-            timeout,
-            unavailable,
-            not_found,
+            builder: "not a url",
+            cut_off: "connection closed before the body ended",
+            connect: "connection refused",
+            timeout: "operation timed out",
         }
     }
 
-    #[tokio::test]
-    async fn every_variant_classifies() {
-        let reqwest = reqwest_errors().await;
+    #[test]
+    fn every_variant_classifies() {
+        let reqwest = reqwest_errors();
         let json = serde_json::from_str::<String>("not json").unwrap_err();
         let url = url::Url::parse("://bad").unwrap_err();
         let unavailable = Class::Unavailable { code: None };
@@ -565,38 +446,37 @@ mod tests {
                 None,
             ),
             (
-                ApiError::Network(reqwest.builder),
+                transport(TransportKind::Request, reqwest.builder),
                 Class::InvalidRequest,
                 true,
                 None,
             ),
-            (ApiError::Network(reqwest.decode), Class::Decode, true, None),
-            // Labelled a decode error by reqwest, but the connection broke.
+            // A body that broke off is a failure in transit, so `Network`, though reqwest
+            // labels it a decode error.
             (
-                ApiError::Network(reqwest.cut_off),
+                transport(TransportKind::Body, reqwest.cut_off),
                 Class::Network,
                 true,
                 None,
             ),
             (
-                ApiError::Network(reqwest.connect),
+                transport(TransportKind::Connect, reqwest.connect),
                 Class::Network,
                 true,
                 None,
             ),
             (
-                ApiError::Network(reqwest.timeout),
+                transport(TransportKind::Timeout, reqwest.timeout),
                 Class::Network,
                 true,
                 None,
             ),
             (
-                ApiError::Network(reqwest.unavailable),
-                unavailable,
+                transport(TransportKind::Other, "no answer"),
+                Class::Network,
                 true,
                 None,
             ),
-            (ApiError::Network(reqwest.not_found), refusal, true, None),
             (ApiError::Serialization(json), Class::Decode, true, None),
             (ApiError::Url(url), Class::InvalidRequest, true, None),
             (

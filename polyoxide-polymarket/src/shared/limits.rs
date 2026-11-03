@@ -3,13 +3,15 @@
 //! Each is pinned row for row by the `documented_*_limits` agreement tests,
 //! which assert the effective quota a request resolves to.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "clob")]
+use polyoxide_core::http::Method;
+#[cfg(feature = "clob")]
 use polyoxide_core::rate_limit::Matching;
 use polyoxide_core::rate_limit::{RateLimiter, WindowQuotaTable};
-#[cfg(feature = "clob")]
-use polyoxide_core::reqwest::Method;
+use polyoxide_rt::Runtime;
 
 #[cfg(any(
     feature = "clob",
@@ -59,8 +61,17 @@ fn dual(
 /// and the specific `/data/*` routes must precede the `/data` catch-all.
 #[cfg(feature = "clob")]
 pub fn clob_limits() -> RateLimiter {
+    clob_limits_on(polyoxide_rt::default_runtime())
+}
+
+/// [`clob_limits`], keeping time on `runtime`: the table's waits for a bucket
+/// and for its hold sleep on it, and so do the signer buckets of a
+/// [`ClobThrottle`](crate::shared::ClobThrottle) composed over its hold.
+#[cfg(feature = "clob")]
+pub fn clob_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
     let get = Some(Method::GET);
     let mut table = WindowQuotaTable::new(9_000, TEN_SECONDS);
+    table.with_runtime(runtime);
 
     // Shared across the ledger read endpoints — one bucket, four patterns.
     let ledger_group = table.bucket(900, TEN_SECONDS);
@@ -152,7 +163,14 @@ pub fn clob_limits() -> RateLimiter {
 /// serves it.
 #[cfg(feature = "gamma")]
 pub fn gamma_limits() -> RateLimiter {
+    gamma_limits_on(polyoxide_rt::default_runtime())
+}
+
+/// [`gamma_limits`], keeping time on `runtime`.
+#[cfg(feature = "gamma")]
+pub fn gamma_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
     let mut table = WindowQuotaTable::new(4_000, TEN_SECONDS);
+    table.with_runtime(runtime);
     table
         .prefix("/comments", None, 200, TEN_SECONDS)
         .prefix("/tags", None, 200, TEN_SECONDS)
@@ -192,7 +210,14 @@ pub fn gamma_limits() -> RateLimiter {
 ///   so those fall to the general bucket.
 #[cfg(feature = "data")]
 pub fn data_limits() -> RateLimiter {
+    data_limits_on(polyoxide_rt::default_runtime())
+}
+
+/// [`data_limits`], keeping time on `runtime`.
+#[cfg(feature = "data")]
+pub fn data_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
     let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+    table.with_runtime(runtime);
     table
         .prefix("/closed-positions", None, 150, TEN_SECONDS)
         .prefix("/positions", None, 150, TEN_SECONDS)
@@ -217,7 +242,15 @@ pub fn data_limits() -> RateLimiter {
 /// - 25 requests per 1 minute (single limiter, no endpoint-specific limits)
 #[cfg(feature = "relay")]
 pub fn relay_limits() -> RateLimiter {
-    WindowQuotaTable::new(25, Duration::from_secs(60)).build()
+    relay_limits_on(polyoxide_rt::default_runtime())
+}
+
+/// [`relay_limits`], keeping time on `runtime`.
+#[cfg(feature = "relay")]
+pub fn relay_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
+    let mut table = WindowQuotaTable::new(25, Duration::from_secs(60));
+    table.with_runtime(runtime);
+    table.build()
 }
 
 /// Perps API rate limits.
@@ -247,6 +280,12 @@ pub fn relay_limits() -> RateLimiter {
 /// catch-all must come last.
 #[cfg(feature = "perps")]
 pub fn perps_limits() -> RateLimiter {
+    perps_limits_on(polyoxide_rt::default_runtime())
+}
+
+/// [`perps_limits`], keeping time on `runtime`.
+#[cfg(feature = "perps")]
+pub fn perps_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
     const PIN_KLINES: u32 = 30;
     const PIN_TRADES: u32 = 10;
     const PIN_PORTFOLIO: u32 = 30;
@@ -258,6 +297,7 @@ pub fn perps_limits() -> RateLimiter {
         .min()
         .expect("four rows");
     let mut table = WindowQuotaTable::new(PERPS_GENERAL, TEN_SECONDS);
+    table.with_runtime(runtime);
     table
         .prefix("/v1/info/klines", None, PIN_KLINES, TEN_SECONDS)
         .prefix("/v1/info/trades", None, PIN_TRADES, TEN_SECONDS)
@@ -271,7 +311,7 @@ pub fn perps_limits() -> RateLimiter {
 mod tests {
     use std::time::Duration;
 
-    use polyoxide_core::reqwest::Method;
+    use polyoxide_core::http::Method;
     use polyoxide_core::{ApiError, HttpClientBuilder, RequestParts};
 
     /// Notes when it signs: just after the throttle let the attempt go.
@@ -312,5 +352,117 @@ mod tests {
             .with_rate_limiter(crate::shared::clob_limits());
         let elapsed = time_to_sign(builder, &server).await;
         assert!(elapsed < Duration::from_millis(50));
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    //! Each table, and the CLOB's throttle, keeps time on the runtime it is
+    //! built on.
+
+    use polyoxide_rt::TokioRuntime;
+
+    use super::*;
+
+    fn injected() -> Arc<dyn Runtime> {
+        Arc::new(TokioRuntime)
+    }
+
+    /// A runtime over tokio's that records its sleeps.
+    #[cfg(feature = "clob")]
+    #[derive(Debug, Default)]
+    struct Counting {
+        inner: TokioRuntime,
+        sleeps: std::sync::Mutex<Vec<Duration>>,
+    }
+
+    #[cfg(feature = "clob")]
+    impl Runtime for Counting {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.sleeps.lock().unwrap().push(duration);
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
+
+    #[cfg(feature = "clob")]
+    #[test]
+    fn the_clob_table_keeps_time_on_its_runtime() {
+        let runtime = injected();
+        let limiter = clob_limits_on(Arc::clone(&runtime));
+        assert!(Arc::ptr_eq(limiter.hold().runtime(), &runtime));
+    }
+
+    #[cfg(feature = "gamma")]
+    #[test]
+    fn the_gamma_table_keeps_time_on_its_runtime() {
+        let runtime = injected();
+        let limiter = gamma_limits_on(Arc::clone(&runtime));
+        assert!(Arc::ptr_eq(limiter.hold().runtime(), &runtime));
+    }
+
+    #[cfg(feature = "data")]
+    #[test]
+    fn the_data_table_keeps_time_on_its_runtime() {
+        let runtime = injected();
+        let limiter = data_limits_on(Arc::clone(&runtime));
+        assert!(Arc::ptr_eq(limiter.hold().runtime(), &runtime));
+    }
+
+    #[cfg(feature = "relay")]
+    #[test]
+    fn the_relay_table_keeps_time_on_its_runtime() {
+        let runtime = injected();
+        let limiter = relay_limits_on(Arc::clone(&runtime));
+        assert!(Arc::ptr_eq(limiter.hold().runtime(), &runtime));
+    }
+
+    #[cfg(feature = "perps")]
+    #[test]
+    fn the_perps_table_keeps_time_on_its_runtime() {
+        let runtime = injected();
+        let limiter = perps_limits_on(Arc::clone(&runtime));
+        assert!(Arc::ptr_eq(limiter.hold().runtime(), &runtime));
+    }
+
+    #[cfg(feature = "clob")]
+    #[tokio::test]
+    async fn a_hold_on_the_clob_throttle_is_waited_out_on_its_runtime() {
+        use polyoxide_core::hooks::{RequestMeta, Throttle};
+
+        let counting = Arc::new(Counting::default());
+        let throttle = crate::shared::clob_throttle_on(counting.clone());
+        // The IP table and both signer buckets share one hold, on one runtime.
+        assert!(Arc::ptr_eq(
+            throttle.signer().hold().runtime(),
+            throttle.table().hold().runtime()
+        ));
+
+        throttle.hold(Duration::from_millis(60));
+        let method = polyoxide_core::http::Method::GET;
+        throttle
+            .acquire(&RequestMeta {
+                method: &method,
+                path: "/ok",
+                query: &[],
+                costs: &[],
+            })
+            .await
+            .unwrap();
+
+        let slept = counting.sleeps.lock().unwrap().clone();
+        assert!(
+            slept
+                .iter()
+                .any(|d| *d > Duration::ZERO && *d <= Duration::from_millis(60)),
+            "the hold was not waited out on the runtime: {slept:?}"
+        );
     }
 }

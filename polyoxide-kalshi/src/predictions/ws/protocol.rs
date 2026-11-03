@@ -4,9 +4,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     future::Future,
+    sync::Arc,
     time::Duration,
 };
 
+use polyoxide_rt::{default_runtime, Instant, Runtime};
 use polyoxide_venue::Classify;
 use polyoxide_ws::{
     tungstenite::{
@@ -20,7 +22,6 @@ use polyoxide_ws::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tokio::time::Instant;
 
 use crate::predictions::{
     key::Ticker,
@@ -223,6 +224,9 @@ pub struct PredictionsProtocol {
     /// frame, and `recover`, which the supervisor calls with that error straight after,
     /// reconnects on it where it would skip the same frame elsewhere; `reset` clears it.
     change_refused: Option<Refusal>,
+    /// The runtime whose clock times a re-snapshot, so a paused or injected
+    /// clock drives it.
+    runtime: Arc<dyn Runtime>,
 }
 
 impl std::fmt::Debug for PredictionsProtocol {
@@ -252,6 +256,7 @@ impl PredictionsProtocol {
             snapshot_refused: false,
             replay_refused: false,
             change_refused: None,
+            runtime: default_runtime(),
         }
     }
 
@@ -259,6 +264,12 @@ impl PredictionsProtocol {
     pub(crate) fn configured(mut self, channels: BTreeSet<Channel>, stale_after: Duration) -> Self {
         self.channels = channels;
         self.stale_after = stale_after;
+        self
+    }
+
+    /// The runtime whose clock times a re-snapshot.
+    pub(crate) fn runtime(mut self, runtime: Arc<dyn Runtime>) -> Self {
+        self.runtime = runtime;
         self
     }
 
@@ -369,7 +380,10 @@ impl PredictionsProtocol {
     /// The timeout of a re-snapshot that has outlived the staleness window, if there is one.
     fn snapshot_overdue(&self) -> Option<PredictionsWsError> {
         let resync = self.resync.as_ref()?;
-        let waited = resync.queued_at.elapsed();
+        let waited = self
+            .runtime
+            .now()
+            .saturating_duration_since(resync.queued_at);
         (waited >= self.stale_after).then(|| PredictionsWsError::SnapshotTimeout {
             sid: resync.sid,
             waited,
@@ -423,7 +437,7 @@ impl PredictionsProtocol {
             id,
             sid,
             pending: tickers.iter().cloned().collect(),
-            queued_at: Instant::now(),
+            queued_at: self.runtime.now(),
         });
         Event::Resyncing { tickers }
     }
@@ -2400,6 +2414,37 @@ mod tests {
             other => panic!("expected the timeout, got {other:?}"),
         }
         assert_eq!(protocol.recover(&err), Recovery::Reconnect);
+    }
+
+    /// A runtime whose clock never moves.
+    #[derive(Debug)]
+    struct Frozen(polyoxide_rt::Instant);
+
+    impl polyoxide_rt::Runtime for Frozen {
+        fn spawn(&self, _task: polyoxide_rt::BoxFuture<()>) {}
+
+        fn sleep(&self, _duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            Box::pin(std::future::pending())
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.0
+        }
+    }
+
+    #[test]
+    fn a_resnapshots_age_is_the_protocols_runtime_clock() {
+        // Bug: the age read the process clock, so no runtime could drive it.
+        let mut protocol =
+            on_the_book().runtime(std::sync::Arc::new(Frozen(polyoxide_rt::Instant::now())));
+        protocol.stale_after = Duration::from_millis(300);
+        gap_on_the_book(&mut protocol);
+        std::thread::sleep(Duration::from_millis(350));
+        let pong = || Message::Pong(Vec::new().into());
+        assert!(
+            matches!(protocol.decode(&pong()), Decoded::Nothing),
+            "no time has passed on the protocol's own clock"
+        );
     }
 
     #[test]

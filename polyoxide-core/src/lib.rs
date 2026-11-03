@@ -6,6 +6,9 @@
 //! its HTTP clients on, and names no venue:
 //! - Shared error types and error handling
 //! - HTTP client configuration
+//! - The transport seam, [`HttpTransport`], with the [`Response`] it answers
+//!   with and the [`TransportError`] it fails with, so the send loop names no
+//!   HTTP library
 //! - Request builder utilities
 //! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
 //!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`]), and one health
@@ -48,13 +51,16 @@ pub mod capacity;
 pub mod client;
 pub mod config;
 pub mod error;
+mod fetch;
 pub mod health;
 pub mod hold;
 pub mod hooks;
 mod query;
 pub mod rate_limit;
 pub mod request;
+pub mod response;
 pub mod send;
+pub mod transport;
 
 #[cfg(feature = "keychain")]
 pub mod keychain;
@@ -78,12 +84,26 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// The request vocabulary core's HTTP client speaks: `Method`, `StatusCode`,
+/// `HeaderMap`, `HeaderValue` and `header::*`.
+///
+/// Venue code, tests and examples name these through this path, never through
+/// reqwest. They are the very types reqwest re-exports, so moving a path here
+/// changes no type.
+pub use http;
+
+/// The runtime seam, for the macros of this crate to name: a crate invoking
+/// `client_config_setters!` needs no `polyoxide-rt` dependency of its own.
+#[doc(hidden)]
+pub use polyoxide_rt as __rt;
+
 /// The HTTP client core sends with, re-exported whole.
 ///
-/// Venue crates name its types (`Response`, `StatusCode`, `HeaderMap`,
-/// `Method`) through this path and never depend on reqwest themselves, so
-/// core alone decides its features and every client sends the same headers
-/// (AD-18). CI's dependency fence fails when any other member declares it.
+/// Venue crates name its client types (`Client`, `Response`, `RequestBuilder`)
+/// through this path and never depend on reqwest themselves, so core alone
+/// decides its features and every client sends the same headers (AD-18). CI's
+/// dependency fence fails when any other member declares it.
+#[cfg(not(target_arch = "wasm32"))]
 pub use reqwest;
 
 pub use capacity::CapacityBucket;
@@ -92,6 +112,8 @@ pub use client::{
 };
 pub use config::ClientConfig;
 pub use error::{ApiError, ErrorResponse};
+#[cfg(target_arch = "wasm32")]
+pub use fetch::FetchTransport;
 pub use health::Pong;
 pub use hold::Hold;
 pub use hooks::{
@@ -104,7 +126,11 @@ pub use rate_limit::{
     BucketId, EffectiveQuota, Matching, QuotaRow, RateLimiter, RetryConfig, WindowQuotaTable,
 };
 pub use request::{QueryBuilder, Request, RequestError};
+pub use response::Response;
 pub use send::decode_json;
+#[cfg(not(target_arch = "wasm32"))]
+pub use transport::ReqwestTransport;
+pub use transport::{HttpRequest, HttpTransport, TransportError, TransportKind};
 
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainError;
@@ -116,6 +142,7 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<ApiError>();
     is::<Refused>();
+    is::<TransportError>();
     #[cfg(feature = "keychain")]
     is::<KeychainError>();
 };
@@ -123,6 +150,31 @@ const _: fn() = || {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `polyoxide_core::http` names the types reqwest sends with: each value
+    /// below is assigned to the reqwest-typed binding with no conversion, so a
+    /// re-export of any other version of the crate would not compile. Every
+    /// path starts at the crate root, which the extern prelude does not serve,
+    /// so deleting either `pub use` fails to compile here.
+    #[test]
+    fn the_http_vocabulary_is_the_type_reqwest_sends() {
+        let method: crate::reqwest::Method = crate::http::Method::POST;
+        let status: crate::reqwest::StatusCode = crate::http::StatusCode::TOO_MANY_REQUESTS;
+        let mut headers: crate::reqwest::header::HeaderMap = crate::http::HeaderMap::new();
+        headers.insert(
+            crate::http::header::RETRY_AFTER,
+            crate::http::HeaderValue::from_static("3"),
+        );
+
+        assert_eq!(method, crate::reqwest::Method::POST);
+        assert_eq!(status.as_u16(), 429);
+        assert_eq!(
+            headers[crate::reqwest::header::RETRY_AFTER]
+                .to_str()
+                .unwrap(),
+            "3"
+        );
+    }
 
     #[test]
     fn test_truncate_for_log_short_string_unchanged() {

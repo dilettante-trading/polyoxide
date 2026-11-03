@@ -25,6 +25,7 @@ use polyoxide_core::{
     AttemptInfo, CapacityBucket, Charge, Hold, LayerCharge, Refused, Request, RequestMeta,
     ResponseMeta, Throttle,
 };
+use polyoxide_rt::Runtime;
 
 use crate::predictions::request::{Route, DEFAULT_COST, READ};
 use crate::predictions::{Inner, PredictionsError};
@@ -90,9 +91,15 @@ const PRIVATE_PATHS: [&str; 1] = [crate::predictions::request::routes::ACCOUNT_L
 
 impl PredictionsThrottle {
     /// A throttle with a full Read bucket at Basic's sizing and a public bucket at the unsigned
-    /// client's.
+    /// client's, on the target's default runtime.
+    #[cfg(test)]
     pub(crate) fn new() -> Self {
-        let hold = Hold::unbounded();
+        Self::new_on(polyoxide_rt::default_runtime())
+    }
+
+    /// As `new`, keeping time on `runtime`: both buckets share the one hold, which carries it.
+    pub(crate) fn new_on(runtime: Arc<dyn Runtime>) -> Self {
+        let hold = Hold::unbounded_on(runtime);
         Self {
             read: CapacityBucket::provisional(
                 READ,
@@ -680,11 +687,34 @@ mod confirmation_tests {
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::Method;
+    use polyoxide_core::http::Method;
     use polyoxide_core::{Cost, LayerId};
     use tokio::time::Instant;
 
     use super::*;
+
+    /// A runtime over tokio's that records its sleeps, so a paused-clock test
+    /// can say which waits went through it.
+    #[derive(Debug, Default)]
+    struct Counting {
+        inner: polyoxide_rt::TokioRuntime,
+        sleeps: std::sync::Mutex<Vec<Duration>>,
+    }
+
+    impl Runtime for Counting {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.sleeps.lock().unwrap().push(duration);
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
 
     fn read(units: u32) -> Cost {
         Cost {
@@ -692,6 +722,41 @@ mod tests {
             units,
             exact: true,
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_throttle_on_a_runtime_waits_for_tokens_through_it() {
+        let counting = Arc::new(Counting::default());
+        let throttle = PredictionsThrottle::new_on(counting.clone());
+        spend(&throttle, 60).await;
+        spend(&throttle, 1).await;
+
+        // The 61st read finds the bucket empty, and ten tokens at 200 a
+        // second take 50 ms.
+        let slept = counting.sleeps.lock().unwrap().clone();
+        assert!(
+            slept
+                .iter()
+                .any(|d| (Duration::from_millis(49)..=Duration::from_millis(50)).contains(d)),
+            "the wait for tokens did not sleep on the runtime: {slept:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_hold_on_a_throttle_on_a_runtime_is_waited_out_on_it() {
+        let counting = Arc::new(Counting::default());
+        let throttle = PredictionsThrottle::new_on(counting.clone());
+
+        throttle.hold(Duration::from_secs(7));
+        charge(&throttle, &[read(10)]).await.unwrap();
+
+        let slept = counting.sleeps.lock().unwrap().clone();
+        assert!(
+            slept
+                .iter()
+                .any(|d| *d > Duration::from_secs(6) && *d <= Duration::from_secs(7)),
+            "the hold was not waited out on the runtime: {slept:?}"
+        );
     }
 
     /// Charge one request costing `costs`, as the send loop would.

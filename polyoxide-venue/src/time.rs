@@ -1,6 +1,11 @@
 //! Wall-clock time as venues send it.
 
+// `web_time` re-exports `std`'s types on every target but wasm32, where it
+// reads the browser's clock.
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(target_arch = "wasm32")]
+use web_time::{SystemTime, UNIX_EPOCH};
 
 /// Milliseconds since the Unix epoch, the unit venues stamp orders and
 /// frames with.
@@ -11,7 +16,7 @@ impl UnixMillis {
     /// Now, by the system clock. A clock that reads before 1970 gives
     /// `UnixMillis(0)`.
     pub fn now() -> Self {
-        Self::at(SystemTime::now())
+        Self::at(SystemTime::now()) // runtime-gate: the wall clock is never injected
     }
 
     fn at(time: SystemTime) -> Self {

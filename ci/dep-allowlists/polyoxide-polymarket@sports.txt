@@ -10,6 +10,7 @@ cpufeatures
 crypto-common
 data-encoding
 digest
+futures-channel
 futures-core
 futures-macro
 futures-sink
@@ -27,6 +28,7 @@ mio
 once_cell
 openssl-probe
 pin-project-lite
+polyoxide-rt
 polyoxide-venue
 polyoxide-ws
 ppv-lite86
@@ -63,6 +65,7 @@ typenum
 unicode-ident
 untrusted
 utf-8
+web-time
 zerocopy
 zeroize
 zmij

@@ -2,12 +2,18 @@
 
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::{Stream, StreamExt};
-use polyoxide_ws::{connect, tungstenite::Message, Connection, Mode, DEFAULT_CONNECT_TIMEOUT};
+use polyoxide_rt::{default_runtime, Runtime};
+use polyoxide_ws::{
+    default_socket_transport,
+    tungstenite::{client::IntoClientRequest, Message},
+    Connection, Mode, SocketTransport, WsError, DEFAULT_CONNECT_TIMEOUT,
+};
 
 use crate::rtds::{
     error::RtdsError,
@@ -82,17 +88,41 @@ impl Rtds {
         Self::open(url, subscriptions, DEFAULT_CONNECT_TIMEOUT).await
     }
 
-    /// Connect to `url` within `connect_timeout`, through the kit's connect,
-    /// which installs the TLS provider, and subscribe.
+    /// Connect to `url` within `connect_timeout`, through the target's default
+    /// transport and runtime, and subscribe.
     pub(crate) async fn open(
         url: &str,
         subscriptions: impl IntoIterator<Item = Subscription>,
         connect_timeout: Duration,
     ) -> Result<Self, RtdsError> {
+        Self::open_with(
+            url,
+            subscriptions,
+            connect_timeout,
+            default_socket_transport(),
+            default_runtime(),
+        )
+        .await
+    }
+
+    /// Connect to `url` within `connect_timeout`, through `transport`, which
+    /// installs the TLS provider when it is the native one, on `runtime`, and
+    /// subscribe.
+    pub(crate) async fn open_with(
+        url: &str,
+        subscriptions: impl IntoIterator<Item = Subscription>,
+        connect_timeout: Duration,
+        transport: Arc<dyn SocketTransport>,
+        runtime: Arc<dyn Runtime>,
+    ) -> Result<Self, RtdsError> {
         let request = SubscriptionRequest::new(subscriptions);
         validate_subscriptions(request.subscriptions())?;
 
-        let mut inner = Connection::new(connect(url, connect_timeout).await?, Mode::Data);
+        let handshake = url.into_client_request().map_err(WsError::from)?;
+        let socket = transport
+            .connect(handshake, connect_timeout, Arc::clone(&runtime))
+            .await?;
+        let mut inner = Connection::with_runtime(socket, Mode::Data, runtime);
         let frame = serde_json::to_string(&request)
             .map_err(|e| RtdsError::json(format!("{request:?}"), e))?;
         inner.send(Message::Text(frame.into())).await?;

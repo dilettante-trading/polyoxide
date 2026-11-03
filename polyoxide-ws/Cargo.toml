@@ -16,15 +16,36 @@ categories = ["api-bindings", "web-programming::websocket"]
 # normal tree, and CI's scripts job fails on any crate outside it.
 [dependencies]
 futures-util = { workspace = true, features = ["sink"] }
-# Needed only to install a process-default CryptoProvider; see `tls.rs`.
-rustls = { workspace = true }
+# `Box<S>: Sink` is behind futures-sink's `alloc`, which futures-util does not
+# turn on, and `BoxSocket` is a boxed sink.
+futures-sink = { version = "0.3", default-features = false, features = ["alloc"] }
+# The injected runtime every timer, clock read and spawn of the kit goes through.
+polyoxide-rt = { workspace = true }
 thiserror = { workspace = true }
-# `macros`, `rt` and `sync` are the Supervisor's: its task runs on
-# `tokio::spawn` and waits with `tokio::select!`, with the consumer's queue and
-# the membership commands on `tokio::sync` channels.
-tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
-tokio-tungstenite = { workspace = true }
+# `macros` and `sync` are the Supervisor's: it waits with `tokio::select!`, and
+# the consumer's queue and the membership commands run on `tokio::sync`
+# channels. Its timers and tasks go through the injected runtime
+# (`polyoxide-rt`), so no tokio timer or spawn feature is built.
+tokio = { workspace = true, features = ["macros", "sync"] }
+# The message and handshake vocabulary, on every target (`pub use`d as
+# `polyoxide_ws::tungstenite`).
+tungstenite = { workspace = true }
 tracing = { workspace = true }
+
+# The host's transport: tokio's sockets, tokio-tungstenite over them, and the
+# rustls provider install it needs (see `tls.rs`).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rustls = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
+tokio-tungstenite = { workspace = true }
+
+# The browser's transport (`WebSocketTransport`, D8): its `WebSocket`, the
+# callbacks it needs and the wrapper that keeps their handles on one thread.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { workspace = true }
+send_wrapper = { workspace = true, features = ["futures"] }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = ["BinaryType", "CloseEvent", "Event", "MessageEvent", "WebSocket"] }
 
 [features]
 # The scripted local server and the helpers the offline suites share, for the
@@ -42,4 +63,4 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "syn
 # after an edit.
 [package.metadata.polyoxide]
 readme = "The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`)"
-notes = ["depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls"]
+notes = ["depends on neither `polyoxide-core` nor `polyoxide-venue`; on a host it builds tokio, tokio-tungstenite and rustls, and on `wasm32` the browser's `WebSocket` through web-sys, with polyoxide-rt, tungstenite, futures-util, thiserror and tracing on both"]

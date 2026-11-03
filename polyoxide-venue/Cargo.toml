@@ -23,6 +23,12 @@ futures-core = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
+# `std` has no wall clock on wasm32-unknown-unknown; `web-time` reads the
+# browser's. Declared for that target alone (a feature never turns on a
+# target-specific dependency), so no native tree changes.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = { workspace = true }
+
 [features]
 # `positional`: the decimal-string helpers for rows sent as bare arrays.
 decimal = ["dep:rust_decimal", "dep:serde"]
@@ -63,4 +69,4 @@ features = ["decimal", "keys", "market", "trading"]
 # --write` after an edit.
 [package.metadata.polyoxide]
 readme = "Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey`, the `KeySpace` a venue implements per product and the `ProductClass` it declares), the market-data traits and their class bundles, with the records they return and their typed `Extensions` (feature `market`), and the `Trading` trait with its order, fill, position and balance records and its `TradingEvents` stream (feature `trading`)"
-notes = ["every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency"]
+notes = ["every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, on wasm32 only `web-time`, and it has no HTTP, socket or signing dependency"]

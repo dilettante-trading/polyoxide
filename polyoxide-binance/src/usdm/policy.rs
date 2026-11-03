@@ -5,7 +5,7 @@ use polyoxide_core::{AttemptInfo, Decision, ResponseMeta, RetryConfig, RetryPoli
 use crate::usdm::weight::WeightBudget;
 
 #[cfg(test)]
-use polyoxide_core::reqwest::StatusCode;
+use polyoxide_core::http::StatusCode;
 #[cfg(test)]
 use polyoxide_core::Outcome;
 #[cfg(test)]
@@ -45,7 +45,7 @@ impl RetryPolicy for UsdmRetryPolicy {
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+    use polyoxide_core::http::header::{HeaderMap, HeaderValue, RETRY_AFTER};
 
     use super::*;
 

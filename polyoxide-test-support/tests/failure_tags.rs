@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
-use polyoxide_core::reqwest::StatusCode;
-use polyoxide_core::{ApiError, ErrorResponse};
+use polyoxide_core::http::StatusCode;
+use polyoxide_core::{ApiError, ErrorResponse, HttpClientBuilder, TransportKind};
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
 use tokio::net::TcpListener;
@@ -131,23 +131,26 @@ fn serialization() {
 }
 
 /// A request to a listener that accepts and never answers, with a timeout
-/// shorter than the wait: reqwest's timeout, whose Debug names `TimedOut`.
+/// shorter than the wait: the transport's timeout, whose source's Debug names
+/// `TimedOut`.
 #[tokio::test]
 async fn network_timeout() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}/ok", listener.local_addr().unwrap());
+    let base = format!("http://{}", listener.local_addr().unwrap());
     let _held = tokio::spawn(async move {
         let (socket, _) = listener.accept().await.unwrap();
         tokio::time::sleep(Duration::from_secs(30)).await;
         drop(socket);
     });
-    let client = polyoxide_core::reqwest::Client::builder()
-        .timeout(Duration::from_millis(200))
+    let client = HttpClientBuilder::new(base)
+        .timeout_ms(200)
         .build()
         .unwrap();
-    let source = client.get(&url).send().await.unwrap_err();
-    assert!(source.is_timeout(), "{source:?}");
-    let err = ApiError::Network(source);
+    let err = client.get_bytes("/ok", &[]).await.unwrap_err();
+    assert!(
+        matches!(&err, ApiError::Transport(e) if e.kind() == TransportKind::Timeout),
+        "{err:?}"
+    );
     assert!(format!("{err:?}").contains("TimedOut"), "{err:?}");
     assert!(
         err.to_string().contains("error sending request for url"),
@@ -156,16 +159,19 @@ async fn network_timeout() {
     assert_eq!(tag(&err), Tag::Transient);
 }
 
-/// A request to a port nothing listens on: reqwest's connect failure, whose
-/// Debug names hyper-util's `Connect` kind.
+/// A request to a port nothing listens on: the transport's connect failure,
+/// whose source's Debug names hyper-util's `Connect` kind.
 #[tokio::test]
 async fn network_connect() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}/ok", listener.local_addr().unwrap());
+    let base = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
-    let source = polyoxide_core::reqwest::get(&url).await.unwrap_err();
-    assert!(source.is_connect(), "{source:?}");
-    let err = ApiError::Network(source);
+    let client = HttpClientBuilder::new(base).build().unwrap();
+    let err = client.get_bytes("/ok", &[]).await.unwrap_err();
+    assert!(
+        matches!(&err, ApiError::Transport(e) if e.kind() == TransportKind::Connect),
+        "{err:?}"
+    );
     assert!(
         format!("{err:?}").contains("hyper_util::client::legacy::Error(Connect"),
         "{err:?}"

@@ -5,17 +5,18 @@
 use std::{
     future::Future,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::{Stream, StreamExt};
+use polyoxide_rt::{default_runtime, BoxFuture, Runtime};
 use polyoxide_venue::{class_for_handshake_status, Classify};
-use polyoxide_ws::{Backoff, Connection, Kind};
-use tokio::time::{sleep, Instant, Sleep};
+use polyoxide_ws::{default_socket_transport, Backoff, Connection, Kind, SocketTransport};
 
 use crate::sports::{
-    client::{classify, closed, open, Inbound, DEFAULT_CONNECT_TIMEOUT, SPORTS_WS_URL},
+    client::{classify, closed, open_with, Inbound, DEFAULT_CONNECT_TIMEOUT, SPORTS_WS_URL},
     error::SportsError,
     update::MatchUpdate,
 };
@@ -71,6 +72,8 @@ pub struct SportsWsBuilder {
     initial_backoff: Duration,
     max_backoff: Duration,
     connect_timeout: Duration,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for SportsWsBuilder {
@@ -89,6 +92,8 @@ impl SportsWsBuilder {
             initial_backoff: DEFAULT_INITIAL_BACKOFF,
             max_backoff: DEFAULT_MAX_BACKOFF,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -103,6 +108,13 @@ impl SportsWsBuilder {
     ///
     /// Keep this above the server's 15-second ping interval. Data cannot set
     /// it: when nothing is live anywhere, no data arrives at all.
+    ///
+    /// On a transport that hides the server's pings, a browser's, there is
+    /// nothing to count in a quiet hour, so the limit is not enforced there
+    /// and this value is ignored.
+    ///
+    /// `Duration::MAX` turns the check off on any transport: no timer is
+    /// armed.
     pub fn stale_after(mut self, stale_after: Duration) -> Self {
         self.stale_after = stale_after;
         self
@@ -130,6 +142,14 @@ impl SportsWsBuilder {
         self
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the feed's staleness timer and reconnect waits run on.
+        /// By default the target's.
+        runtime;
+        /// How each connect dials. By default the target's.
+        socket_transport;
+    }
+
     /// Make the first connection and start supervising.
     ///
     /// Fails if the first connection fails, so a wrong URL or a network with
@@ -137,12 +157,35 @@ impl SportsWsBuilder {
     /// refusal retrying cannot fix: an HTTP status other than 408, 425, 429
     /// or 5xx, or a malformed URL. That one is yielded as
     /// [`SportsError::Connect`] and ends the stream.
-    pub async fn connect(self) -> Result<SupervisedSportsWs, SportsError> {
-        let connection = open(self.url.clone(), self.connect_timeout).await?;
+    pub async fn connect(mut self) -> Result<SupervisedSportsWs, SportsError> {
+        let runtime = self.runtime.clone().unwrap_or_else(default_runtime);
+        let transport = self
+            .socket_transport
+            .clone()
+            .unwrap_or_else(default_socket_transport);
+        // D9: a transport that hides the server's pings (`Capabilities::
+        // sees_server_pings`; a browser's does) leaves a quiet feed nothing to
+        // count, since no data arrives when nothing is live, and no text ping
+        // is known to be answered (`docs/specs/sports/OBSERVED.md`). The limit
+        // is off there, as `Duration::MAX` means never stale and arms no
+        // timer, and a lost connection ends through its close event. The
+        // transport read is the one dialled.
+        if !transport.capabilities().sees_server_pings {
+            self.stale_after = Duration::MAX;
+        }
+        let connection = open_with(
+            self.url.clone(),
+            self.connect_timeout,
+            Arc::clone(&transport),
+            Arc::clone(&runtime),
+        )
+        .await?;
         Ok(SupervisedSportsWs {
             backoff: Backoff::new(self.initial_backoff, self.max_backoff),
             state: State::reading(Box::new(connection), self.stale_after),
             config: self,
+            runtime,
+            transport,
         })
     }
 }
@@ -153,11 +196,11 @@ enum State {
     /// Reading an open connection.
     Reading {
         connection: Box<Connection>,
-        stale: Pin<Box<Sleep>>,
+        stale: BoxFuture<()>,
         received: bool,
     },
     /// Waiting out a backoff delay.
-    Waiting(Pin<Box<Sleep>>),
+    Waiting(BoxFuture<()>),
     /// A connection attempt in flight.
     Connecting(Attempt),
     /// A reconnect was refused for good. The stream yields nothing more.
@@ -166,11 +209,23 @@ enum State {
 
 impl State {
     fn reading(connection: Box<Connection>, stale_after: Duration) -> Self {
+        let stale = stale_timer(&connection, stale_after);
         State::Reading {
             connection,
-            stale: Box::pin(sleep(stale_after)),
+            stale,
             received: false,
         }
+    }
+}
+
+/// The timer that ends a silent connection: the runtime's sleep for
+/// `stale_after`, or, for `Duration::MAX` (never stale), a future that never
+/// resolves, so a connection with the check off arms no timer at all.
+fn stale_timer(connection: &Connection, stale_after: Duration) -> BoxFuture<()> {
+    if stale_after == Duration::MAX {
+        Box::pin(std::future::pending())
+    } else {
+        connection.runtime().sleep(stale_after)
     }
 }
 
@@ -206,10 +261,18 @@ enum Step {
 /// server's pings are answered only while the stream is being polled. A
 /// caller that stops polling for long enough will be dropped by the server,
 /// and will see a disconnect and a reconnect when it resumes.
+///
+/// On a transport that hides the server's pings, a browser's, nothing is
+/// counted in a quiet hour, so the staleness limit is not enforced: a lost
+/// connection ends through its close event or a failed read (D9).
 pub struct SupervisedSportsWs {
     config: SportsWsBuilder,
     backoff: Backoff,
     state: State,
+    /// The runtime its backoff waits go through.
+    runtime: Arc<dyn Runtime>,
+    /// How a reconnect dials.
+    transport: Arc<dyn SocketTransport>,
 }
 
 impl SupervisedSportsWs {
@@ -220,7 +283,7 @@ impl SupervisedSportsWs {
         let delay = self.backoff.take();
         tracing::warn!(%reason, ?delay, "lost the sports feed; reconnecting");
         // Replacing the state drops the old connection.
-        self.state = State::Waiting(Box::pin(sleep(delay)));
+        self.state = State::Waiting(self.runtime.sleep(delay));
         Event::Disconnected { reason }
     }
 }
@@ -253,9 +316,11 @@ impl Stream for SupervisedSportsWs {
                 Step::Yield(item) => return Poll::Ready(Some(item)),
                 Step::Lost(reason) => return Poll::Ready(Some(Ok(this.lose(reason)))),
                 Step::Attempt => {
-                    this.state = State::Connecting(Box::pin(open(
+                    this.state = State::Connecting(Box::pin(open_with(
                         this.config.url.clone(),
                         this.config.connect_timeout,
+                        Arc::clone(&this.transport),
+                        Arc::clone(&this.runtime),
                     )));
                 }
                 Step::Connected(connection) => {
@@ -274,7 +339,7 @@ impl Stream for SupervisedSportsWs {
                     let asked = error.retry_after().unwrap_or_default();
                     let delay = this.backoff.take_at_least(asked);
                     tracing::warn!(%error, ?delay, "sports feed reconnect failed; retrying");
-                    this.state = State::Waiting(Box::pin(sleep(delay)));
+                    this.state = State::Waiting(this.runtime.sleep(delay));
                 }
             }
         }
@@ -309,7 +374,7 @@ fn retrying_can_fix(error: &SportsError) -> bool {
 /// Read one open connection until it yields something, goes quiet, or is lost.
 fn poll_reading(
     connection: &mut Connection,
-    stale: &mut Pin<Box<Sleep>>,
+    stale: &mut BoxFuture<()>,
     received: &mut bool,
     stale_after: Duration,
     cx: &mut Context<'_>,
@@ -332,10 +397,10 @@ fn poll_reading(
         // hour the server sends nothing else.
         if !matches!(inbound, Inbound::Closed(_)) {
             *received = true;
-            // A limit too large to add, such as `Duration::MAX`, means never
-            // stale: the timer `sleep` armed lies at its far-future fallback.
-            if let Some(deadline) = Instant::now().checked_add(stale_after) {
-                stale.as_mut().reset(deadline);
+            // `Duration::MAX` means never stale, and its timer never fires, so
+            // there is nothing to re-arm.
+            if stale_after != Duration::MAX {
+                *stale = stale_timer(connection, stale_after);
             }
         }
         match inbound {
@@ -515,5 +580,115 @@ mod tests {
     fn the_supervised_stream_can_move_between_tasks() {
         fn assert_send_unpin<T: Send + Unpin>() {}
         assert_send_unpin::<SupervisedSportsWs>();
+    }
+
+    /// A runtime on which an hour is over at once; every other wait is tokio's.
+    #[derive(Debug, Default)]
+    struct HourIsOver(polyoxide_rt::TokioRuntime);
+
+    impl Runtime for HourIsOver {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.0.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            if duration == Duration::from_secs(3600) {
+                Box::pin(std::future::ready(()))
+            } else {
+                self.0.sleep(duration)
+            }
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.0.now()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_staleness_window_is_the_injected_runtimes_timer() {
+        use polyoxide_ws::test_server::{Script, ScriptedServer};
+
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let mut feed = SportsWsBuilder::new()
+            .url(server.url.clone())
+            .stale_after(Duration::from_secs(3600))
+            .runtime(Arc::new(HourIsOver::default()))
+            .connect()
+            .await
+            .unwrap();
+        let item = tokio::time::timeout(Duration::from_secs(3), feed.next())
+            .await
+            .expect("a quiet feed on a spent hour is stale at once")
+            .expect("the feed is open");
+        assert!(
+            matches!(
+                item,
+                Ok(Event::Disconnected {
+                    reason: SportsError::Stale { .. }
+                })
+            ),
+            "{item:?}"
+        );
+    }
+
+    /// A runtime that keeps every duration it is asked to sleep.
+    #[derive(Debug, Default)]
+    struct Sleeps {
+        inner: polyoxide_rt::TokioRuntime,
+        asked: std::sync::Mutex<Vec<Duration>>,
+    }
+
+    impl Runtime for Sleeps {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.asked.lock().unwrap().push(duration);
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
+
+    #[tokio::test]
+    async fn with_staleness_off_no_timer_is_armed_for_any_frame() {
+        use crate::sports::fixtures;
+        use polyoxide_ws::test_server::{Script, ScriptedServer};
+
+        let server = ScriptedServer::start(vec![Script::frames(&[
+            fixtures::SOCCER,
+            fixtures::ESPORTS,
+            fixtures::TENNIS_EVENT_STATE,
+        ])])
+        .await;
+        let runtime = Arc::new(Sleeps::default());
+        let mut feed = SportsWsBuilder::new()
+            .url(server.url.clone())
+            .stale_after(Duration::MAX)
+            .runtime(runtime.clone())
+            .connect()
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            let item = tokio::time::timeout(Duration::from_secs(3), feed.next())
+                .await
+                .expect("a frame within 3 s")
+                .expect("the feed is open");
+            assert!(matches!(item, Ok(Event::Update(_))), "{item:?}");
+        }
+        // The connect's own 10 s bound is the only timer asked for, and it
+        // proves the injected runtime was consulted at all.
+        let asked = runtime.asked.lock().unwrap().clone();
+        assert!(
+            asked.contains(&Duration::from_secs(10)),
+            "the injected runtime was never asked for the connect bound: {asked:?}"
+        );
+        assert!(
+            asked.iter().all(|duration| *duration < Duration::MAX),
+            "armed a never-stale timer: {asked:?}"
+        );
     }
 }

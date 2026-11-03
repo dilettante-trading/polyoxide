@@ -254,3 +254,43 @@ async fn live_a_client_ping_is_answered() {
     );
     ws.close().await.or_fail("close");
 }
+
+/// Spec D17: six requests, 20 s apart, each due within 5 s.
+const KEEPALIVE_ROUNDS: usize = 6;
+const KEEPALIVE_SPACING: Duration = Duration::from_secs(20);
+const KEEPALIVE_ANSWER_WITHIN: Duration = Duration::from_secs(5);
+
+/// A transport with no protocol pings keeps a connection alive by asking
+/// `LIST_SUBSCRIPTIONS`, so `fstream` must answer it, quiet or not (D9). An
+/// unanswered request is the finding under test: it selects D9's fallback and
+/// is recorded in `docs/specs/binance/OBSERVED.md`.
+#[tokio::test]
+#[ignore]
+async fn list_subscriptions_answers_as_a_keepalive() {
+    let mut ws = UsdmWs::connect(StreamPath::Market, [StreamName::MarkPrice(btc())])
+        .await
+        .or_fail("connect");
+    let mut unanswered = Vec::new();
+    for round in 1..=KEEPALIVE_ROUNDS {
+        if round > 1 {
+            tokio::time::sleep(KEEPALIVE_SPACING).await;
+        }
+        let started = tokio::time::Instant::now();
+        match tokio::time::timeout(KEEPALIVE_ANSWER_WITHIN, ws.list_subscriptions()).await {
+            Ok(Ok(names)) => {
+                eprintln!("round {round}: answered in {:?}", started.elapsed());
+                assert_eq!(names, ["btcusdt@markPrice@1s"]);
+            }
+            Ok(Err(err)) => fail("list_subscriptions", &err),
+            Err(_) => {
+                eprintln!("round {round}: unanswered after {KEEPALIVE_ANSWER_WITHIN:?}");
+                unanswered.push(round);
+            }
+        }
+    }
+    ws.close().await.or_fail("close");
+    assert!(
+        unanswered.is_empty(),
+        "LIST_SUBSCRIPTIONS went unanswered in rounds {unanswered:?}"
+    );
+}

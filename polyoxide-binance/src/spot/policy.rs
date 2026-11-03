@@ -42,7 +42,7 @@ impl RetryPolicy for SpotRetryPolicy {
 mod tests {
     use std::time::Duration;
 
-    use polyoxide_core::reqwest::{
+    use polyoxide_core::http::{
         header::{HeaderMap, HeaderValue, RETRY_AFTER},
         StatusCode,
     };

@@ -1,0 +1,65 @@
+[package]
+name = "polyoxide-wasm-smoke"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push"
+# Never published: it is a test harness, and nothing depends on it.
+publish = false
+
+# The message vocabulary, in the server (native) and the browser tests (wasm32).
+[dependencies]
+tungstenite = { workspace = true }
+
+[features]
+# The nightly's live checks (tests/browser_live.rs). They call real hosts, so they are off by
+# default, and run through scripts/wasm_live.sh.
+live = []
+
+[[test]]
+name = "browser_live"
+required-features = ["live"]
+
+# The server is native only, and its socket is the kit's scripted test server.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mockito = { workspace = true }
+polyoxide-ws = { workspace = true, features = ["test-server"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }
+
+# The server's own tests read it as a client: core's re-exported reqwest for the routes,
+# the kit's `connect` for the socket.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+futures-util = { workspace = true, features = ["sink"] }
+polyoxide-core = { workspace = true }
+
+# The browser tests: the three implementations, and the vocabulary to drive them.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+futures-util = { workspace = true, features = ["sink"] }
+polyoxide-core = { workspace = true }
+# `clob` alone: the signing path, which the browser reaches through a `SendWrapper`.
+polyoxide-polymarket = { workspace = true, features = ["clob"] }
+polyoxide-rt = { workspace = true }
+polyoxide-test-support = { path = "../polyoxide-test-support" }
+polyoxide-venue = { workspace = true }
+polyoxide-ws = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen-test = "0.3"
+
+# Registration, read by scripts/gen_registry.py: the README line and the notes CLAUDE.md's
+# crate list carries. Run `python3 scripts/gen_registry.py --write` after an edit.
+[package.metadata.polyoxide]
+readme = "The browser smoke suite: the wasm32 runtime and transports run in headless Chrome against a local server on every push (`publish = false`)"
+notes = ["native server, wasm32 tests; nothing depends on it"]
+
+# The nightly's browser job, `live-wasm-browser`. Its target is a wasm32 test the runner's script
+# runs, not a nextest `live_*` binary, so it names its `runner`.
+[package.metadata.polyoxide.live.browser_live]
+suite = "browser"
+timeout = 15
+features = ["live"]
+secrets = []
+runner = "wasm-bindgen"
+note = "wasm-bindgen-test in headless Chrome through scripts/wasm_live.sh, no secrets; 15-minute budget"

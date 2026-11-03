@@ -25,7 +25,7 @@ use polyoxide_binance::spot::{
     },
     Spot, SpotError,
 };
-use polyoxide_core::ApiError;
+use polyoxide_core::{ApiError, TransportError, TransportKind};
 use polyoxide_test_support::{environmental, fail, transient, ClassifiedResultExt, ResultExt};
 use polyoxide_venue::{
     CandleInterval, CandleQuery, Candles, Instruments, MarketData, Trades, UnixMillis,
@@ -201,26 +201,75 @@ async fn live_an_unknown_symbol_is_venue_error_1121() {
     }
 }
 
+/// A raw reqwest failure as core's transport error, so it fails by the class
+/// core gives it: a refused connection or a timeout is `Network`, hence
+/// transient.
+fn transport(err: polyoxide_core::reqwest::Error) -> ApiError {
+    // A failure in transit is decided before a request that could not be built,
+    // as core's transport decides it.
+    let mut in_transit = false;
+    let mut source = std::error::Error::source(&err);
+    while let Some(inner) = source {
+        in_transit |= inner.is::<std::io::Error>()
+            || inner
+                .downcast_ref::<polyoxide_core::reqwest::Error>()
+                .is_some_and(polyoxide_core::reqwest::Error::is_body);
+        source = inner.source();
+    }
+    let kind = if err.is_timeout() {
+        TransportKind::Timeout
+    } else if err.is_connect() {
+        TransportKind::Connect
+    } else if err.is_body() || err.is_decode() {
+        TransportKind::Body
+    } else if in_transit {
+        TransportKind::Other
+    } else if err.is_builder() {
+        TransportKind::Request
+    } else {
+        TransportKind::Other
+    };
+    ApiError::Transport(TransportError::new(kind, err))
+}
+
+/// A raw reqwest response as core's [`polyoxide_core::Response`], so a refusal
+/// is read as core reads one and fails by its status's class.
+fn core_response(response: polyoxide_core::reqwest::Response) -> polyoxide_core::Response {
+    let status = response.status();
+    let headers = response.headers().clone();
+    let url = response.url().clone();
+    polyoxide_core::Response::new(
+        status,
+        headers,
+        url,
+        Box::pin(async move {
+            response
+                .bytes()
+                .await
+                .map_err(|err| TransportError::new(TransportKind::Body, err))
+        }),
+    )
+}
+
 /// Fetches a route's raw JSON, outside the client, for the key comparison.
 async fn raw(http: &polyoxide_core::reqwest::Client, path: &str) -> String {
     let response = http
         .get(format!("https://api.binance.com{path}"))
         .send()
         .await
-        .map_err(ApiError::Network)
+        .map_err(transport)
         .or_fail(path);
     let status = response.status();
     // A refusal fails as core classifies its status, so its tag says what the
     // nightly does with it: a 451 is environmental, a 429 or a 5xx transient,
     // and a 403 from the firewall or a 418 ban real.
     if !status.is_success() {
-        fail(path, &ApiError::from_response(response).await);
+        fail(
+            path,
+            &ApiError::from_response(core_response(response)).await,
+        );
     }
-    response
-        .text()
-        .await
-        .map_err(ApiError::Network)
-        .or_fail(path)
+    response.text().await.map_err(transport).or_fail(path)
 }
 
 fn json(text: &str) -> serde_json::Value {

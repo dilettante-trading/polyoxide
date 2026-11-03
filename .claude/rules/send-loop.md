@@ -36,8 +36,9 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
    layer), an optional `Authenticator` signs it, it is sent, `Throttle::observe` sees the
    response, and `RetryPolicy::decide` returns `Done`, `Retry(wait)` or `Fail` with an optional
    hold, which is applied whatever the outcome.
-3. A retry releases the permit and sleeps the longer of the policy's wait and the loop's floor,
-   `RetryConfig::retry_delay(attempt)`, never past `max_retries`.
+3. A retry releases the permit and sleeps, on the client's runtime (`HttpClient::runtime()`), the
+   longer of the policy's wait and the loop's floor, `RetryConfig::retry_delay(attempt)`, never
+   past `max_retries`.
 
 - A transport error is neither observed nor retried. A refused cost returns `ApiError::Refused`
   with nothing sent.
@@ -48,7 +49,9 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
 - `send_raw`, `get_bytes` and `health` turn a non-2xx `Done`, which only a custom policy produces,
   into the same error, so a failed response never reaches a caller as data.
 - `HttpClient` holds one `Arc<DynThrottle<'static>>` and one `Arc<DynRetryPolicy<'static>>`
-  (dynosaur), shared with its `with_base_url` siblings, so a 429 on one host holds them all.
+  (dynosaur), shared with its `with_base_url` siblings, so a 429 on one host holds them all. It
+  holds its `Arc<dyn polyoxide_rt::Runtime>` the same way, which the retry sleep and `health`'s
+  stopwatch go through.
 - A signing failure is `ApiError::Sign`; `ClobError`'s hand-written `From<ApiError>` takes it back
   out, as it turns a signer-layer `ApiError::Refused` into `BurstCapacityExceeded`.
 - Core's `Request::send` (which clob's and Binance's requests go through) and relay's `post_json`
@@ -78,8 +81,9 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
 
 Every venue's `ping` calls `HttpClient::health(path, costs)` (`polyoxide-core/src/health.rs`): one
 `GET` on the send loop that returns a `Pong { round_trip, response }`. `round_trip` is the attempt
-that answered, timed from its signing by a core-private authenticator, so it leaves out the
-permit, throttle and backoff waits; a final non-2xx is `ApiError::Response` as the caller's error.
+that answered, timed on the client's runtime clock from its signing by a core-private
+authenticator, so it leaves out the permit, throttle and backoff waits; a final non-2xx is
+`ApiError::Response` as the caller's error.
 Each ping keeps its path (gamma `/status`; data, clob and relay their base URL's path, so relay
 keeps a prefix; perps `/v1/info/ping`; Binance `/fapi/v1/ping`, and spot's `/api/v3/ping`, each
 costed from its own `Route::Ping`) and its body check (perps `status == "ok"`, Binance `{}`).
@@ -96,13 +100,48 @@ The loop retries only what the client's policy decides; callers decide with
 - Binance's `UsdmRetryPolicy` and `SpotRetryPolicy` retry a `429` and never a `425` (`binance.md`).
 - No policy retries 5xx or 408 (AD-17).
 
+## The transport
+
+`HttpClient` sends every attempt through a private `Arc<dyn HttpTransport>`
+(`polyoxide-core/src/transport.rs`). The loop builds an `HttpRequest`: the base URL joined with
+the path and the query form-urlencoded onto it as reqwest's `.query()` did, the method, the
+signed headers, the body, and a `timeout` that is always set (the request's own, else the
+client's) and bounds the whole exchange, body included. The transport answers with a `Response`,
+an owned head and a lazy body read by `bytes()`, `text()` and `json()`, each into `ApiError`. The
+loop decides on the head, releases the permit, then reads an error body.
+
+- `ClientConfig::http_transport`, the `http_transport(..)` setter of `client_config_setters!` and
+  `HttpClientBuilder::http_transport(..)` inject one. With none set, `build` makes, on a host
+  target, `ReqwestTransport` from the builder's timeout, pool size and `gzip` (unset), a 10 s
+  connect timeout and no redirects. `pool_size` and `gzip` feed only that native default. On
+  `wasm32` the default is `FetchTransport` instead, which sends through the page's `fetch` with the
+  request's `timeout`, takes neither setting, and leaves compression and redirects to the browser
+  (`## The browser's fetch`, below).
+- A transport that cannot produce a response is `ApiError::Transport(TransportError)`, neither
+  observed nor retried. `TransportError::kind()` is `Connect`, `Timeout`, `Body`, `Request` or
+  `Other`; only `Request` is `InvalidRequest`, so a body that broke off mid-read is `Network`.
+  `ReqwestTransport` maps a reqwest error through one private function: no foreign-error `From`
+  impl exists (`errors.md`).
+- `Pong::response`, `Request::send_raw` and clob's `ListOrders::send_raw` return core's
+  `Response`, and `ErrorResponse::read`, `ApiError::from_response` and `retry_after_header` take
+  its head.
+- `polyoxide-core/tests/transport_injection.rs` drives a retry, a hold, the permit rule and a
+  transport failure through a recording transport.
+
 ## reqwest, gzip and the header pins
 
-- Core is the only member that declares reqwest (AD-18): it enables `json`, `rustls-tls` and
-  `gzip` with no default features and re-exports the crate as `polyoxide_core::reqwest`, through
-  which every other member's src, tests and examples name its types. No crate but core sends
-  through `HttpClient`'s reqwest client. `test_dependency_fences.py` fails on any other member's
-  direct dependency, so no crate can change reqwest's features for the rest.
+- On a host target, core is the only member that declares reqwest (AD-18): it enables `json`,
+  `rustls-tls` and `gzip` with no default features and re-exports the crate as
+  `polyoxide_core::reqwest`. No venue crate's `src` names reqwest: they name the request
+  vocabulary, `Method`, `StatusCode`, `HeaderMap`, `HeaderValue` and `header::*`, through
+  `polyoxide_core::http`, core's re-export of the `http` crate (the very types reqwest
+  re-exports, so a path change only), and `Response` is core's own type. The reqwest re-export
+  stays for `ReqwestTransport::new`, and for the tests, examples and `polyoxide-test-support`
+  that open raw clients. On a host target nothing but `ReqwestTransport` sends through reqwest
+  (on `wasm32`, `FetchTransport` does, below): `HttpClient` holds a transport
+  (`## The transport`).
+  `test_dependency_fences.py` fails on any other member's direct dependency, so no crate can
+  change reqwest's features for the rest.
 - `HttpClientBuilder::gzip` is unset by default, which leaves reqwest's default: every client asks
   for gzip (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped). Never call `.gzip(...)` on a client
   builder or give `ClientConfig` a gzip knob: 0.37.0 forced it off and took compression away from
@@ -115,3 +154,20 @@ The loop retries only what the client's policy decides; callers decide with
   `accept: */*`, `accept-encoding: gzip` and `host`. CI runs it in the module's minimal build, in
   the workspace build and beside `polyoxide/full`, so a feature another member or another venue
   switches on fails one of the three.
+
+## The browser's fetch (`polyoxide-core/src/fetch.rs`)
+
+`FetchTransport` is the `wasm32` default of the config's `http_transport`; a host's is
+`ReqwestTransport`. It sends through reqwest's wasm client (the page's `fetch`) with the request's
+timeout set per request, which bounds the whole exchange, body included. A `fetch` that fails is
+`Connect` (a network failure and a CORS refusal look alike to a page), a failed body read is `Body`,
+a timeout is `Timeout` wherever it struck, and a request the browser would not build is `Request`.
+Reqwest's wasm client flags only a timeout before the response head (a body read cut short by the
+same timer comes back as a decode error), so the transport counts a failure within 2 ms of the
+request's own deadline or after it (`CLOCK_SLACK`) as a timeout too (`timed_out`), and holds the
+timeout to `i32::MAX` milliseconds (`clamped`), the most that client converts without panicking.
+`kind_of`, `timed_out` and `clamped` hold the rules and the host's tests pin them. The pool size and the gzip setting feed
+only the host default: the browser negotiates compression itself, follows redirects, and shows a
+page only the response headers the server exposes, so a `Retry-After` is unreadable unless it is.
+The header pins of the `headers_<module>` suites hold the host default only. The exchange sits in a
+`SendWrapper`, as in `rt.md`.

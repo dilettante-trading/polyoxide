@@ -13,6 +13,7 @@
 //! its membership tests (`recording_server` and `ping_counting_server`,
 //! `ws/client.rs`) went the same way in Story 4.9, needing nothing new.
 
+mod browser_like;
 mod helpers;
 
 use std::{
@@ -40,6 +41,7 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 
+pub use browser_like::{browser_like, BrowserLike};
 pub use helpers::{drain, fast, next_event, next_item, WINDOW};
 
 /// How long [`ScriptedServer::wait_for`] polls before it panics.

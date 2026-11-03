@@ -8,8 +8,7 @@ use std::{
 };
 
 use futures_util::{Stream, StreamExt};
-use polyoxide_ws::{connect, tungstenite::Message, Connection, Correlated, Mode};
-use tokio::time::Instant;
+use polyoxide_ws::{connect, tungstenite::Message, Connection, Correlated, Mode, WsError};
 
 use super::{
     request::{no_answer, request, Answer},
@@ -29,11 +28,15 @@ use super::{
 /// connection rather than reuse it. The server's protocol pings are answered
 /// while the caller polls, and its close is answered with the close reply. The
 /// stream ends after the server's close, or after the first transport error it
-/// yields.
+/// yields. On a transport that sends no protocol pings (a browser's), `ping`
+/// is refused before anything is sent.
 pub(crate) struct Bare<S: StreamSet> {
     connection: Connection,
     path: S::Path,
     streams: Vec<S::Name>,
+    /// Whether the transport this connection runs on can send protocol pings
+    /// (`Capabilities::client_pings`); a browser's cannot (D9).
+    client_pings: bool,
 }
 
 // Nothing in it is structurally pinned, but `S::Path` is not provably `Unpin`,
@@ -56,6 +59,9 @@ impl<S: StreamSet> Bare<S> {
             connection,
             path,
             streams: Vec::new(),
+            client_pings: polyoxide_ws::default_socket_transport()
+                .capabilities()
+                .client_pings,
         })
     }
 
@@ -108,9 +114,24 @@ impl<S: StreamSet> Bare<S> {
             .map_err(|_| <S::Error as SocketError>::response(id, result.to_string()))
     }
 
-    /// Send a protocol ping and wait for the pong, returning the round trip.
+    /// Send a protocol ping and wait for the pong, returning the round trip,
+    /// timed on the connection's runtime. On a transport that sends no
+    /// protocol pings (`client_pings` false, a browser's) it fails with
+    /// `Kind::Unsupported` and sends nothing.
     pub(crate) async fn ping(&mut self) -> Result<Duration, S::Error> {
-        let start = Instant::now();
+        // A transport with no protocol pings, a browser's, is refused before
+        // anything is sent: the failed send would end the connection, and a
+        // caller that wants a keepalive asks `list_subscriptions` (D9).
+        if !self.client_pings {
+            return Err(<S::Error>::from(WsError::from(
+                polyoxide_ws::tungstenite::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    polyoxide_ws::PING_UNSUPPORTED,
+                )),
+            )));
+        }
+        let runtime = std::sync::Arc::clone(self.connection.runtime());
+        let start = runtime.now();
         self.send_ping().await?;
         self.connection
             .await_answer(|message| match message {
@@ -119,7 +140,14 @@ impl<S: StreamSet> Bare<S> {
             })
             .await
             .map_err(|err| no_answer::<S::Error>(err, 0))?;
-        Ok(start.elapsed())
+        Ok(runtime.now().saturating_duration_since(start))
+    }
+
+    /// Say whether the transport can send protocol pings, as `open` reads it
+    /// from a transport's capabilities: a test's stand-in for a browser's.
+    #[cfg(test)]
+    pub(crate) fn set_client_pings(&mut self, client_pings: bool) {
+        self.client_pings = client_pings;
     }
 
     /// Close the connection.

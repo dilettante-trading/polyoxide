@@ -175,15 +175,17 @@ impl DataApiBuilder {
 
     /// Build the Data API client
     pub fn build(self) -> Result<DataApi, DataError> {
+        let runtime = self.config.runtime_or_default();
         let http_client = self
             .config
             .http_builder()
-            .with_rate_limiter(shared::data_limits())
+            .runtime(runtime.clone())
+            .with_rate_limiter(shared::data_limits_on(runtime))
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 
-        // Sibling hosts reuse the same reqwest client, throttle (and so its
-        // hold), and concurrency permit pool — only the base URL differs.
+        // Sibling hosts reuse the same transport, throttle (and so its hold),
+        // and concurrency permit pool — only the base URL differs.
         let pnl_http_client = http_client.with_base_url(&self.pnl_base_url)?;
         let rankings_http_client = http_client.with_base_url(&self.rankings_base_url)?;
 
@@ -217,6 +219,20 @@ impl Traded {
 mod tests {
     use super::*;
     use polyoxide_core::RetryConfig;
+
+    #[test]
+    fn the_builders_runtime_is_every_hosts() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let data = DataApi::builder().runtime(runtime.clone()).build().unwrap();
+        for client in [
+            &data.http_client,
+            &data.pnl_http_client,
+            &data.rankings_http_client,
+        ] {
+            assert!(std::sync::Arc::ptr_eq(client.runtime(), &runtime));
+        }
+    }
 
     #[test]
     fn test_builder_default() {

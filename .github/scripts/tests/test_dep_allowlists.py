@@ -19,6 +19,16 @@ program. It also leaves out build-dependencies, which run only at build time:
 ring's `cc`, for one, is built but is not on the list. The target is fixed so a
 developer on another platform reads the same tree CI does.
 
+`ci/dep-allowlists/wasm32-unknown-unknown/` is the same listing for the browser
+build (spec D10), taken with `--target wasm32-unknown-unknown`, for spec D1's
+crates and features (`WASM_SET`); the host's files stay pinned to
+`x86_64-unknown-linux-gnu`. Its files obey the deny-lists above, except that
+`polyoxide-core`, the HTTP stack itself, may build that stack (`EXEMPT`) but not
+the signing stack or the keychain. No file may build
+`WASM_NEVER`, the host-only crates (`tokio-tungstenite`, `rustls`), and each must
+build the crates in `WASM_MUST_BUILD`, which only the browser build reaches, so
+a target that silently resolved as the host's fails.
+
 No allowlist may admit a crate its deny-list refuses, so a regenerated file
 cannot quietly accept one. The socket kit's files are held to the socket-only
 deny-list, and `polyoxide-ws` may build neither `polyoxide-core` nor
@@ -71,6 +81,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 ALLOWLISTS = REPO / "ci" / "dep-allowlists"
 TARGET = "x86_64-unknown-linux-gnu"
+WASM_TARGET = "wasm32-unknown-unknown"
+WASM_ALLOWLISTS = ALLOWLISTS / WASM_TARGET
 # The socket-only deny-list: an HTTP client, a signing stack, core and its rate
 # limiter, and the keychain.
 DENIED = frozenset({"reqwest", "polyoxide-core", "governor", "hmac", "sha2", "keyring"})
@@ -157,6 +169,43 @@ MUST_BUILD = {
     "polyoxide@binance-spot.txt": "reqwest",
 }
 
+
+# Spec D1's supported set for the browser build, one file each in
+# `ci/dep-allowlists/wasm32-unknown-unknown/`. It is declared, not globbed, so a
+# file that is missing fails a test.
+WASM_SET: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("polyoxide-rt", ()),
+    ("polyoxide-venue", ("market", "trading")),
+    ("polyoxide-core", ()),
+    ("polyoxide-ws", ()),
+    ("polyoxide-binance", ("usdm",)),
+    ("polyoxide-binance", ("usdm-ws",)),
+    ("polyoxide-polymarket", ("clob",)),
+    ("polyoxide-polymarket", ("clob-ws",)),
+    ("polyoxide-polymarket", ("data",)),
+    ("polyoxide-polymarket", ("gamma",)),
+    ("polyoxide-polymarket", ("perps",)),
+    ("polyoxide-polymarket", ("perps-ws",)),
+    ("polyoxide-polymarket", ("sports",)),
+)
+# Spec D10's native-only crates: the kit's TLS and its socket client.
+WASM_NEVER = ("rustls", "tokio-tungstenite")
+# Crates only the browser build reaches (D10's wasm32 tables), per file.
+WASM_MUST_BUILD = {
+    "polyoxide-rt.txt": ("gloo-timers", "wasm-bindgen-futures"),
+    "polyoxide-venue@market,trading.txt": ("web-time",),
+    "polyoxide-core.txt": ("reqwest", "send_wrapper"),
+    "polyoxide-ws.txt": ("tungstenite", "web-sys"),
+    "polyoxide-binance@usdm-ws.txt": ("polyoxide-ws", "web-sys"),
+    "polyoxide-polymarket@clob.txt": ("alloy", "send_wrapper"),
+    "polyoxide-polymarket@perps.txt": ("reqwest",),
+    "polyoxide-polymarket@sports.txt": ("polyoxide-ws", "web-sys"),
+}
+# A crate whose purpose is part of the stack the socket-only deny-list refuses
+# is exempt from those names alone: core is the HTTP stack, and still refuses the
+# signing stack and the keychain.
+EXEMPT = {"polyoxide-core": frozenset({"reqwest", "polyoxide-core", "governor", "sha2"})}
+
 HEADER = """\
 # The crates `cargo tree -p {crate} -e normal{defaults} --target {target}{features}` builds,
 # sorted and unique, the crate itself left out. CI's scripts job fails on any
@@ -195,10 +244,10 @@ def no_defaults(crate: str) -> list[str]:
     return ["--no-default-features"] if crate in PER_FEATURE else []
 
 
-def cargo_tree(crate: str, features: tuple[str, ...]) -> set[str]:
-    """The crate names `crate` builds with `features`."""
+def cargo_tree(crate: str, features: tuple[str, ...], target: str = TARGET) -> set[str]:
+    """The crate names `crate` builds with `features` for `target`."""
     command = ["cargo", "tree", "-p", crate, "-e", "normal", "--prefix", "none",
-               *no_defaults(crate), "--target", TARGET, "--locked"]
+               *no_defaults(crate), "--target", target, "--locked"]
     if features:
         command += ["--features", ",".join(features)]
     result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, check=False)
@@ -249,7 +298,7 @@ def denied(crate: str, names: list[str], features: tuple[str, ...] = (),
     metadata when a per-feature rule needs it and none is given."""
     rules = PER_FEATURE.get(crate)
     if rules is None:
-        refused = DENIED | DENIED_FOR.get(crate, frozenset())
+        refused = (DENIED | DENIED_FOR.get(crate, frozenset())) - EXEMPT.get(crate, frozenset())
         return sorted(f"{n} ({SOCKET_ONLY})" for n in names
                       if n in refused or n.startswith(DENIED_PREFIXES))
     on = enabled(features, feature_table(crate) if table is None else table)
@@ -261,15 +310,29 @@ def allowlists() -> list[Path]:
     return sorted(ALLOWLISTS.glob("*.txt"))
 
 
+def wasm_path(crate: str, features: tuple[str, ...]) -> Path:
+    """The browser set's file for `crate` built with `features`."""
+    named = f"@{','.join(features)}" if features else ""
+    return WASM_ALLOWLISTS / f"{crate}{named}.txt"
+
+
+def wasm_allowlists() -> list[Path]:
+    return [wasm_path(crate, features) for crate, features in WASM_SET]
+
+
 def write() -> None:
-    """Rewrite every allowlist from the tree cargo reports now."""
-    for path in allowlists():
+    """Rewrite every allowlist from the tree cargo reports now: the host's files
+    that exist, and the browser set `WASM_SET` declares (created when absent)."""
+    WASM_ALLOWLISTS.mkdir(parents=True, exist_ok=True)
+    files = [(path, TARGET) for path in allowlists()]
+    files += [(path, WASM_TARGET) for path in wasm_allowlists()]
+    for path, target in files:
         crate, features = parse_name(path.stem)
         named = f" --features {','.join(features)}" if features else ""
         defaults = "".join(f" {flag}" for flag in no_defaults(crate))
-        header = HEADER.format(crate=crate, defaults=defaults, target=TARGET, features=named)
-        path.write_text(header + "".join(f"{n}\n" for n in sorted(cargo_tree(crate, features))),
-                        encoding="utf-8")
+        header = HEADER.format(crate=crate, defaults=defaults, target=target, features=named)
+        built = sorted(cargo_tree(crate, features, target))
+        path.write_text(header + "".join(f"{n}\n" for n in built), encoding="utf-8")
 
 
 def test_the_allowlists_exist() -> None:
@@ -311,6 +374,71 @@ def test_no_allowlist_admits_a_denied_crate(path: Path) -> None:
     crate, features = parse_name(path.stem)
     refused = denied(crate, read_allowlist(path), features)
     assert refused == [], f"{path.name} builds what its deny-list refuses: {refused}"
+
+
+def test_the_wasm_allowlists_exist() -> None:
+    # The set is spec D1's, and the directory holds exactly it: a file that is
+    # missing, or one the set does not name, fails here.
+    crates = {crate for crate, _ in WASM_SET}
+    assert crates == {"polyoxide-rt", "polyoxide-venue", "polyoxide-core", "polyoxide-ws",
+                      "polyoxide-binance", "polyoxide-polymarket"}, crates
+    assert len(set(WASM_SET)) == len(WASM_SET)
+
+    def features_of(crate: str) -> set[str]:
+        return {f for c, features in WASM_SET if c == crate for f in features}
+
+    assert features_of("polyoxide-venue") == {"market", "trading"}
+    assert features_of("polyoxide-binance") == {"usdm", "usdm-ws"}
+    assert features_of("polyoxide-polymarket") == {
+        "clob", "gamma", "data", "perps", "perps-ws", "sports", "clob-ws"}
+    present = sorted(p.name for p in WASM_ALLOWLISTS.glob("*.txt"))
+    assert present == sorted(p.name for p in wasm_allowlists()), present
+
+
+@pytest.mark.parametrize("path", wasm_allowlists(), ids=lambda p: p.stem)
+def test_each_wasm_allowlist_is_the_tree_cargo_builds(path: Path) -> None:
+    crate, features = parse_name(path.stem)
+    listed = read_allowlist(path)
+    found = problems(f"wasm32/{path.name}", listed, cargo_tree(crate, features, WASM_TARGET))
+    assert not found, "\n  ".join(["the tree and its allowlist differ:", *found])
+
+
+@pytest.mark.parametrize("path", wasm_allowlists(), ids=lambda p: p.stem)
+def test_no_wasm_allowlist_admits_a_denied_crate(path: Path) -> None:
+    crate, features = parse_name(path.stem)
+    refused = denied(crate, read_allowlist(path), features)
+    assert refused == [], f"wasm32/{path.name} builds what its deny-list refuses: {refused}"
+
+
+@pytest.mark.parametrize("path", wasm_allowlists(), ids=lambda p: p.stem)
+def test_no_wasm_allowlist_builds_a_host_only_crate(path: Path) -> None:
+    built = [name for name in read_allowlist(path) if name in WASM_NEVER]
+    assert built == [], f"wasm32/{path.name} builds {built}, which spec D10 keeps off wasm32"
+
+
+@pytest.mark.parametrize("name", sorted(WASM_MUST_BUILD))
+def test_each_wasm_allowlist_builds_what_only_the_browser_builds(name: str) -> None:
+    listed = read_allowlist(WASM_ALLOWLISTS / name)
+    missing = [crate for crate in WASM_MUST_BUILD[name] if crate not in listed]
+    assert missing == [], f"wasm32/{name} does not build {missing}"
+
+
+def test_the_host_still_builds_what_the_browser_does_not() -> None:
+    # Without this a `WASM_NEVER` crate that left every tree would pass the
+    # browser check for no reason.
+    host = read_allowlist(ALLOWLISTS / "polyoxide-ws.txt")
+    assert [name for name in WASM_NEVER if name not in host] == [], host
+
+
+def test_the_http_stack_crate_is_not_held_to_the_socket_only_deny_list() -> None:
+    assert denied("polyoxide-core", ["governor", "reqwest", "sha2"]) == []
+    # What core is exempt from is the HTTP stack alone: the keychain and the
+    # signing stack stay refused.
+    assert denied("polyoxide-core", ["alloy-primitives", "hmac", "keyring"]) == [
+        f"alloy-primitives ({SOCKET_ONLY})", f"hmac ({SOCKET_ONLY})",
+        f"keyring ({SOCKET_ONLY})"]
+    # Only core: any other crate without a rule of its own keeps the deny-list.
+    assert denied("polyoxide-rt", ["reqwest"]) == [f"reqwest ({SOCKET_ONLY})"]
 
 
 TREE = """\

@@ -1,17 +1,18 @@
 use std::{
-    net::SocketAddr,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures_util::{Stream, StreamExt};
+use polyoxide_rt::{default_runtime, Runtime};
+#[cfg(not(target_arch = "wasm32"))]
+use polyoxide_ws::TungsteniteTransport;
 use polyoxide_ws::{
-    connect_over,
-    tungstenite::{self, Message},
-    with_timeout, Connection, Kind, Mode, Socket, WsError,
+    tungstenite::{client::IntoClientRequest, Message},
+    BoxSocket, Connection, Kind, Mode, SocketTransport, WsError,
 };
-use tokio::net::TcpStream;
 
 use super::{
     auth::ApiCredentials,
@@ -37,106 +38,64 @@ const OUTBOUND_QUEUE_DEPTH: usize = 64;
 /// [`WebSocketBuilder::connect_timeout`].
 pub(super) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Interleave IPv6 and IPv4 addresses, Happy-Eyeballs style (RFC 8305 §4).
+/// The transport a CLOB socket dials with unless one was injected: the kit's
+/// per-address dial (divergence row D20).
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) fn clob_transport(
+    injected: Option<Arc<dyn SocketTransport>>,
+) -> Arc<dyn SocketTransport> {
+    injected.unwrap_or_else(|| Arc::new(TungsteniteTransport::per_address()))
+}
+
+/// The transport a CLOB socket dials with unless one was injected: on `wasm32`
+/// the kit's default, the browser's `WebSocket`, which has no addresses to try.
+#[cfg(target_arch = "wasm32")]
+pub(super) fn clob_transport(
+    injected: Option<Arc<dyn SocketTransport>>,
+) -> Arc<dyn SocketTransport> {
+    injected.unwrap_or_else(polyoxide_ws::default_socket_transport)
+}
+
+/// Open `url` through `transport`, each step bounded by `connect_timeout`.
 ///
-/// `lookup_host` typically returns all AAAA records before all A records, so a
-/// network with broken IPv6 would burn one full timeout per v6 address before
-/// ever trying v4. Alternating families bounds the damage to a single timeout.
-fn interleave_address_families(addrs: Vec<SocketAddr>) -> Vec<SocketAddr> {
-    let (v6, v4): (Vec<_>, Vec<_>) = addrs.into_iter().partition(SocketAddr::is_ipv6);
-    let mut out = Vec::with_capacity(v6.len() + v4.len());
-    let (mut v6, mut v4) = (v6.into_iter(), v4.into_iter());
-    loop {
-        match (v6.next(), v4.next()) {
-            (None, None) => return out,
-            (a, b) => out.extend(a.into_iter().chain(b)),
-        }
-    }
-}
-
-/// An I/O failure while connecting, as the kit reports a transport's.
-fn io_error(err: std::io::Error) -> ClobWsError {
-    WsError::from(tungstenite::Error::Io(err)).into()
-}
-
-/// A host that resolved to no address: a DNS miss, so a `Network` failure
-/// like any other I/O error, not a refusal of the request.
-fn no_addresses(url: &str) -> ClobWsError {
-    io_error(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("no addresses resolved for {url}"),
-    ))
-}
-
-/// The host a URL names and the port to dial: the URL's own, or its scheme's
-/// default (443 for `wss://`, 80 for `ws://`). `None` when it has no host.
-fn dial_target(parsed: &url::Url) -> Option<(url::Host<&str>, u16)> {
-    let host = parsed.host()?;
-    Some((host, parsed.port_or_known_default().unwrap_or(443)))
-}
-
-/// Open a TLS WebSocket connection with a per-address timeout and fallback,
-/// and return the upgraded socket unread.
-///
+/// With the default transport that is the CLOB's own connect (divergence row
+/// D20), which the kit now holds as `TungsteniteTransport::per_address`:
 /// [`polyoxide_ws::connect`] resolves DNS and connects to only the *first*
-/// address — a blackholed route (the classic broken-IPv6 case) burns the
-/// whole timeout there. This resolves every address up front, tries each in
-/// family-interleaved order with `connect_timeout` covering its TCP connect
-/// and again its TLS + WebSocket handshake ([`with_timeout`] around each,
-/// the upgrade through [`connect_over`]), and falls back to the next address
-/// on any failure but a refused upgrade, which it returns at once. This
-/// connect is clob's own (divergence row D20). The bare tier reads the socket
-/// through [`connect_ws`]; the supervised sockets return it from
-/// [`polyoxide_ws::Protocol::connect`].
-pub(super) async fn dial(url: &str, connect_timeout: Duration) -> Result<Socket, ClobWsError> {
-    let parsed = url::Url::parse(url)?;
-    let (host, port) = dial_target(&parsed)
-        .ok_or_else(|| ClobWsError::InvalidMessage(format!("URL has no host: {url}")))?;
+/// address, and a blackholed route (the classic broken-IPv6 case) burns the
+/// whole timeout there. A step that outlived its bound is the CLOB's own
+/// `ConnectTimeout`, which names the URL and says the timeout is per address
+/// and per step. The bare tier reads the socket through [`connect_ws`]; the
+/// supervised sockets return it from [`polyoxide_ws::Protocol::connect`].
+pub(super) async fn open_socket(
+    url: &str,
+    connect_timeout: Duration,
+    transport: Arc<dyn SocketTransport>,
+    runtime: Arc<dyn Runtime>,
+) -> Result<BoxSocket, ClobWsError> {
+    let request = url
+        .into_client_request()
+        .map_err(|err| ClobWsError::Connection(WsError::from(err)))?;
+    transport
+        .connect(request, connect_timeout, runtime)
+        .await
+        .map_err(|err| match err.kind() {
+            Kind::ConnectTimeout { .. } => ClobWsError::ConnectTimeout {
+                url: url.to_string(),
+                timeout: connect_timeout,
+            },
+            _ => ClobWsError::Connection(err),
+        })
+}
 
-    // An IP literal needs no lookup; only a name is resolved.
-    let addrs: Vec<SocketAddr> = match host {
-        url::Host::Ipv4(ip) => vec![SocketAddr::new(ip.into(), port)],
-        url::Host::Ipv6(ip) => vec![SocketAddr::new(ip.into(), port)],
-        url::Host::Domain(domain) => tokio::net::lookup_host((domain, port))
-            .await
-            .map_err(io_error)?
-            .collect(),
-    };
-
-    // A step that outlived its bound is clob's own `ConnectTimeout`, which
-    // names the URL and says the timeout is per address and per step.
-    let timed_out = |err: WsError| match err.kind() {
-        Kind::ConnectTimeout { .. } => ClobWsError::ConnectTimeout {
-            url: url.to_string(),
-            timeout: connect_timeout,
-        },
-        _ => ClobWsError::Connection(err),
-    };
-    let mut last_err = no_addresses(url);
-    for addr in interleave_address_families(addrs) {
-        let stream = match with_timeout(connect_timeout, TcpStream::connect(addr)).await {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(e)) => {
-                last_err = io_error(e);
-                continue;
-            }
-            Err(err) => {
-                last_err = timed_out(err);
-                continue;
-            }
-        };
-        // TCP is up; bound the TLS + WebSocket handshake by the same budget.
-        match with_timeout(connect_timeout, connect_over(url, stream)).await {
-            Ok(Ok(socket)) => return Ok(socket),
-            // The host answered and refused the upgrade. Another of its
-            // addresses would repeat the refusal, inside a 429's window, and
-            // its own failure would hide this one's status and `Retry-After`.
-            Ok(Err(e)) if matches!(e.kind(), Kind::Refused { .. }) => return Err(e.into()),
-            Ok(Err(e)) => last_err = e.into(),
-            Err(err) => last_err = timed_out(err),
-        }
-    }
-    Err(last_err)
+/// Open `url` on the per-address dial and the target's default runtime.
+pub(super) async fn dial(url: &str, connect_timeout: Duration) -> Result<BoxSocket, ClobWsError> {
+    open_socket(
+        url,
+        connect_timeout,
+        clob_transport(None),
+        default_runtime(),
+    )
+    .await
 }
 
 /// Open a TLS WebSocket connection through [`dial`], read through the kit's
@@ -145,6 +104,17 @@ async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, 
     dial(url, connect_timeout)
         .await
         .map(|socket| Connection::new(socket, Mode::Data))
+}
+
+/// As [`connect_ws`], dialling through `transport` and running on `runtime`.
+async fn connect_ws_with(
+    url: &str,
+    connect_timeout: Duration,
+    transport: Arc<dyn SocketTransport>,
+    runtime: Arc<dyn Runtime>,
+) -> Result<Connection, ClobWsError> {
+    let socket = open_socket(url, connect_timeout, transport, Arc::clone(&runtime)).await?;
+    Ok(Connection::with_runtime(socket, Mode::Data, runtime))
 }
 
 /// The text a data frame carries. A Binary frame is decoded as text (D12),
@@ -542,6 +512,8 @@ pub struct WebSocketBuilder {
     user_url: String,
     ping_interval: Option<Duration>,
     connect_timeout: Duration,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for WebSocketBuilder {
@@ -558,6 +530,8 @@ impl WebSocketBuilder {
             user_url: WS_USER_URL.to_string(),
             ping_interval: None,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -611,13 +585,33 @@ impl WebSocketBuilder {
         self
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the connection's timers and keep-alive run on. By
+        /// default the target's.
+        runtime;
+        /// How each connect dials. By default the kit's per-address dial,
+        /// which tries every address the host resolves to.
+        socket_transport;
+    }
+
+    /// The connection to `url` on this builder's transport and runtime.
+    async fn open(&self, url: &str) -> Result<Connection, ClobWsError> {
+        connect_ws_with(
+            url,
+            self.connect_timeout,
+            clob_transport(self.socket_transport.clone()),
+            self.runtime.clone().unwrap_or_else(default_runtime),
+        )
+        .await
+    }
+
     /// Connect to the market channel.
     pub async fn connect_market(
         self,
         asset_ids: Vec<String>,
     ) -> Result<WebSocketWithPing, ClobWsError> {
         validate_subscription_count(asset_ids.len())?;
-        let mut ws = connect_ws(&self.market_url, self.connect_timeout).await?;
+        let mut ws = self.open(&self.market_url).await?;
 
         let subscription = MarketSubscription::new(asset_ids);
         let msg = serde_json::to_string(&subscription)?;
@@ -658,7 +652,7 @@ impl WebSocketBuilder {
         if let Some(markets) = &subscription.markets {
             validate_subscription_count(markets.len())?;
         }
-        let mut ws = connect_ws(&self.user_url, self.connect_timeout).await?;
+        let mut ws = self.open(&self.user_url).await?;
 
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
@@ -806,16 +800,16 @@ impl WebSocketWithPing {
         Fut: std::future::Future<Output = Result<(), ClobWsError>>,
     {
         // Not `interval`: it panics on a zero period, and on `Duration::MAX`
-        // once a tick is late. `sleep` falls back to a far-future deadline.
+        // once a tick is late. A runtime's `sleep` takes any duration.
+        let runtime = Arc::clone(self.inner.runtime());
         let period = self.ping_interval.max(Duration::from_millis(1));
         // The first ping goes out at once.
-        let ping = tokio::time::sleep(Duration::ZERO);
-        tokio::pin!(ping);
+        let mut ping = runtime.sleep(Duration::ZERO);
 
         loop {
             tokio::select! {
                 () = &mut ping => {
-                    ping.set(tokio::time::sleep(period));
+                    ping = runtime.sleep(period);
                     self.inner.send(Message::Text("PING".into())).await?;
                 }
                 // `self` holds a sender, so this arm never sees `None`.
@@ -861,10 +855,6 @@ impl WebSocketWithPing {
 mod connect_tests {
     use super::*;
 
-    fn addr(s: &str) -> SocketAddr {
-        s.parse().unwrap()
-    }
-
     #[test]
     fn require_channel_rejects_the_other_channels() {
         assert!(require_channel(ChannelType::Market, ChannelType::Market).is_ok());
@@ -879,37 +869,6 @@ mod connect_tests {
             matches!(err, ClobWsError::InvalidMessage(ref m) if m.contains("User") && m.contains("Market")),
             "the error names both channels: {err}"
         );
-    }
-
-    #[test]
-    fn address_families_are_interleaved() {
-        // Resolvers return all AAAA then all A; a broken v6 network must not
-        // pay one timeout per v6 address before the first v4 attempt.
-        let addrs = vec![
-            addr("[2001:db8::1]:443"),
-            addr("[2001:db8::2]:443"),
-            addr("192.0.2.1:443"),
-            addr("192.0.2.2:443"),
-            addr("192.0.2.3:443"),
-        ];
-        let out = interleave_address_families(addrs);
-        assert_eq!(
-            out,
-            vec![
-                addr("[2001:db8::1]:443"),
-                addr("192.0.2.1:443"),
-                addr("[2001:db8::2]:443"),
-                addr("192.0.2.2:443"),
-                addr("192.0.2.3:443"),
-            ]
-        );
-    }
-
-    #[test]
-    fn single_family_lists_pass_through_unchanged() {
-        let v4 = vec![addr("192.0.2.1:443"), addr("192.0.2.2:443")];
-        assert_eq!(interleave_address_families(v4.clone()), v4);
-        assert!(interleave_address_families(Vec::new()).is_empty());
     }
 
     #[tokio::test]
@@ -1252,7 +1211,12 @@ mod connection_tests {
     fn a_dns_miss_is_a_network_failure() {
         // A host that resolves to no address was an `InvalidMessage`, an
         // `InvalidRequest` that nothing retried, though a DNS miss passes.
-        let err = no_addresses("wss://ws-subscriptions-clob.polymarket.com/ws/market");
+        let err = ClobWsError::from(WsError::from(polyoxide_ws::tungstenite::Error::Io(
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no addresses resolved for wss://ws-subscriptions-clob.polymarket.com/ws/market",
+            ),
+        )));
         assert!(matches!(err, ClobWsError::Connection(_)), "{err:?}");
         assert_eq!(err.class(), Class::Network);
         assert!(err.is_retriable());
@@ -1408,6 +1372,26 @@ mod dial_tests {
 
     use super::*;
 
+    #[test]
+    fn a_clob_socket_dials_per_address_unless_a_transport_was_injected() {
+        // The debug text is the only way to tell the two dials apart.
+        assert_eq!(
+            format!("{:?}", clob_transport(None)),
+            format!("{:?}", TungsteniteTransport::per_address()),
+            "the default is the per-address dial (D20)"
+        );
+        assert_ne!(
+            format!("{:?}", clob_transport(None)),
+            format!("{:?}", TungsteniteTransport::new()),
+            "the plain dial is told apart from the per-address one"
+        );
+        let injected: Arc<dyn SocketTransport> = Arc::new(TungsteniteTransport::new());
+        assert!(
+            Arc::ptr_eq(&clob_transport(Some(Arc::clone(&injected))), &injected),
+            "an injected transport is used as it is"
+        );
+    }
+
     #[tokio::test]
     async fn dial_returns_the_upgraded_socket_with_nothing_read() {
         let server = ScriptedServer::start(vec![Script::frames(&["hello"])]).await;
@@ -1422,24 +1406,6 @@ mod dial_tests {
         assert_eq!(first, Message::Text("hello".into()));
     }
 
-    #[test]
-    fn a_url_without_a_port_dials_its_schemes_default() {
-        for (url, port) in [
-            ("ws://127.0.0.1/", 80),
-            ("wss://127.0.0.1/", 443),
-            ("ws://127.0.0.1:9/", 9),
-            ("wss://example.com/ws/market", 443),
-        ] {
-            let parsed = url::Url::parse(url).unwrap();
-            let (_, dialled) = dial_target(&parsed).expect(url);
-            assert_eq!(dialled, port, "{url}");
-        }
-        assert_eq!(
-            dial_target(&url::Url::parse("ws://[::1]/").unwrap()),
-            Some((url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST), 80))
-        );
-    }
-
     #[tokio::test]
     async fn an_ipv6_loopback_literal_is_dialled_not_dropped() {
         // A port that was bound and released on `[::1]` is closed.
@@ -1451,7 +1417,8 @@ mod dial_tests {
 
         let err = dial(&format!("ws://[::1]:{port}/"), Duration::from_secs(2))
             .await
-            .expect_err("nothing listens there");
+            .err()
+            .expect("nothing listens there");
         // Refused by the host, so a connection failure, not a name lookup's.
         assert!(
             matches!(&err, ClobWsError::Connection(e) if e.kind() == Kind::Io),
@@ -1473,7 +1440,8 @@ mod dial_tests {
         let server = ScriptedServer::start(vec![Script::refuse_upgrade(503)]).await;
         let err = dial(&server.url, Duration::from_secs(2))
             .await
-            .expect_err("a refused upgrade must not connect");
+            .err()
+            .expect("a refused upgrade must not connect");
         assert!(matches!(err, ClobWsError::Connection(_)), "{err:?}");
         assert!(err.is_retriable(), "{err:?}");
     }

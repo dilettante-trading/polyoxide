@@ -2,7 +2,7 @@
 
 use std::{error::Error, fmt, time::Duration};
 
-use tokio_tungstenite::tungstenite::{self, http::header::RETRY_AFTER, protocol::CloseFrame};
+use crate::tungstenite::{self, http::header::RETRY_AFTER, protocol::CloseFrame};
 
 /// A WebSocket failure: a transport error, a refused upgrade, a server close,
 /// or one of the kit's own timeouts.
@@ -84,6 +84,11 @@ pub enum Kind<'a> {
     Capacity,
     /// The connection was used after it closed.
     AlreadyClosed,
+    /// The transport cannot perform the operation, such as a handshake header
+    /// or a control frame on a transport that has none. A transport reports it
+    /// as an I/O error of kind `std::io::ErrorKind::Unsupported`, so reconnecting
+    /// never fixes it.
+    Unsupported,
     /// The connection did not open within the connect timeout.
     ConnectTimeout {
         /// The timeout that elapsed.
@@ -133,6 +138,7 @@ impl WsError {
         use tungstenite::Error as Ws;
         match &*self.0 {
             Repr::Transport(err) => match err {
+                Ws::Io(err) if err.kind() == std::io::ErrorKind::Unsupported => Kind::Unsupported,
                 Ws::Io(_) => Kind::Io,
                 Ws::Protocol(_) => Kind::Protocol,
                 Ws::ConnectionClosed => Kind::ConnectionClosed,
@@ -223,6 +229,10 @@ mod tests {
             (
                 tungstenite::Error::Io(std::io::ErrorKind::UnexpectedEof.into()),
                 Kind::Io,
+            ),
+            (
+                tungstenite::Error::Io(std::io::ErrorKind::Unsupported.into()),
+                Kind::Unsupported,
             ),
             (
                 tungstenite::Error::Protocol(ProtocolError::ResetWithoutClosingHandshake),

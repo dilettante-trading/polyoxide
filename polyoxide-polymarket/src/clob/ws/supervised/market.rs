@@ -2,13 +2,14 @@
 //! kit's `Supervisor` drives it, its builder, and the membership calls on its
 //! handle.
 
-use std::{future::Future, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
+use polyoxide_rt::{default_runtime, Runtime};
 use polyoxide_venue::Classify;
 use polyoxide_ws::{
     tungstenite::{client::IntoClientRequest, handshake::client::Request as Handshake, Message},
-    Connection, Decoded, MembershipHandle, Offline, Outage, Protocol, Queue, Recovery, Socket,
-    Supervised, Supervisor, Timing, WsError,
+    BoxSocket, Connection, Decoded, MembershipHandle, Offline, Outage, Protocol, Queue, Recovery,
+    SocketTransport, Supervised, Supervisor, Timing, WsError,
 };
 
 use super::{
@@ -16,7 +17,7 @@ use super::{
     DisconnectReason,
 };
 use crate::clob::ws::{
-    client::{dial, validate_subscription_count},
+    client::{clob_transport, open_socket, validate_subscription_count},
     BookMessage, ClobWsError, MarketMessage, MarketSubscription, MarketSubscriptionOptions,
     MarketSubscriptionUpdate, WS_MARKET_URL,
 };
@@ -90,8 +91,8 @@ pub enum MarketChange {
 /// - **An empty membership stays wanted:** the connection stays, and keeps
 ///   pinging.
 ///
-/// Its queue holds 1024 events. The connection is dialled by the CLOB's own
-/// per-address connect (D20).
+/// Its queue holds 1024 events. The connection is dialled through the
+/// supervisor's transport, by default the kit's per-address connect (D20).
 #[derive(Debug)]
 pub struct ClobMarketProtocol {
     url: String,
@@ -151,9 +152,7 @@ impl Protocol for ClobMarketProtocol {
     type Change = MarketChange;
     type Ack = ();
 
-    /// The upgrade request for the URL. The supervisor does not send it:
-    /// `connect` is overridden, and the per-address dial upgrades each
-    /// address's connection from the URL itself. The trait requires it.
+    /// The upgrade request for the URL, which the supervisor dials through its transport.
     fn handshake(&mut self) -> Result<Handshake, ClobWsError> {
         Ok(self
             .url
@@ -162,10 +161,18 @@ impl Protocol for ClobMarketProtocol {
             .map_err(WsError::from)?)
     }
 
-    /// clob's per-address dial (D20), where the kit's default dials only
-    /// the first address `handshake`'s request names.
-    async fn connect(&mut self, timeout: Duration) -> Result<Socket, ClobWsError> {
-        dial(&self.url, timeout).await
+    /// Dials the URL through the supervisor's transport, which the builder
+    /// defaults to the per-address dial (D20). It is overridden only to map a
+    /// step that outlived its bound to clob's own `ConnectTimeout`, which names
+    /// the URL, where the default would return the kit's error wrapped in
+    /// `Connection`.
+    async fn connect(
+        &mut self,
+        transport: Arc<dyn SocketTransport>,
+        runtime: Arc<dyn Runtime>,
+        timeout: Duration,
+    ) -> Result<BoxSocket, ClobWsError> {
+        open_socket(&self.url, timeout, transport, runtime).await
     }
 
     /// One subscribe frame with the whole membership and the builder's
@@ -289,6 +296,8 @@ pub struct MarketWsBuilder {
     url: String,
     options: MarketSubscriptionOptions,
     timing: Timing,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for MarketWsBuilder {
@@ -304,6 +313,8 @@ impl MarketWsBuilder {
             url: WS_MARKET_URL.to_owned(),
             options: MarketSubscriptionOptions::default(),
             timing: default_timing(),
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -348,6 +359,15 @@ impl MarketWsBuilder {
         connect_timeout;
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the supervision task and its timers run on. By default
+        /// the target's.
+        runtime;
+        /// How each attempt dials. By default the kit's per-address dial,
+        /// which tries every address the host resolves to (D20).
+        socket_transport;
+    }
+
     /// Open the connection, subscribe to `asset_ids`, and start supervising.
     ///
     /// Fails with [`ClobWsError::InvalidMessage`] for more than 500 distinct
@@ -360,6 +380,8 @@ impl MarketWsBuilder {
         let mut membership: Vec<String> = Vec::new();
         change_membership(&mut membership, MarketChange::Subscribe(asset_ids))?;
         Supervisor::new(ClobMarketProtocol::new(self.url, self.options), self.timing)
+            .runtime(self.runtime.unwrap_or_else(default_runtime))
+            .socket_transport(clob_transport(self.socket_transport))
             .connect(membership)
             .await
     }
@@ -412,6 +434,7 @@ impl MarketMembership for MembershipHandle<ClobMarketProtocol> {
 
 #[cfg(test)]
 mod tests {
+    use crate::clob::ws::client::dial;
     use futures_util::StreamExt;
     use polyoxide_venue::Class;
     use polyoxide_ws::{
@@ -1030,11 +1053,56 @@ mod tests {
         assert_eq!(server.connection_count(), 1);
     }
 
+    /// A transport that records each dial and fails it.
+    #[derive(Debug, Default)]
+    struct Recording {
+        dials: std::sync::atomic::AtomicUsize,
+    }
+
+    impl polyoxide_ws::SocketTransport for Recording {
+        fn connect(
+            &self,
+            _request: polyoxide_ws::tungstenite::http::Request<()>,
+            _timeout: Duration,
+            _runtime: Arc<dyn Runtime>,
+        ) -> polyoxide_rt::BoxFuture<Result<polyoxide_ws::BoxSocket, polyoxide_ws::WsError>>
+        {
+            self.dials.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async {
+                Err(polyoxide_ws::WsError::from(
+                    polyoxide_ws::tungstenite::Error::Io(std::io::Error::other("recorded")),
+                ))
+            })
+        }
+
+        fn capabilities(&self) -> polyoxide_ws::Capabilities {
+            polyoxide_ws::Capabilities::FULL
+        }
+    }
+
     #[tokio::test]
-    async fn the_supervisor_dials_with_clobs_per_address_connect() {
+    async fn the_builder_dials_through_the_transport_it_was_given() {
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let recording = Arc::new(Recording::default());
+        let err = builder(&server)
+            .socket_transport(Arc::clone(&recording) as Arc<dyn polyoxide_ws::SocketTransport>)
+            .connect(ids(&["a"]))
+            .await
+            .expect_err("the recording transport never connects");
+        assert!(matches!(err, ClobWsError::Connection(_)), "{err:?}");
+        assert_eq!(
+            recording.dials.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the builder's dial went through the injected transport"
+        );
+        assert_eq!(server.connection_count(), 0, "the server was never dialled");
+    }
+
+    #[tokio::test]
+    async fn a_step_that_outlives_its_bound_is_clobs_connect_timeout() {
         // clob's dial maps a step that outlived its bound to its own
-        // `ConnectTimeout`, naming the URL; the kit's default connect would
-        // return the kit's error wrapped in `Connection`.
+        // `ConnectTimeout`, naming the URL; the kit's error would otherwise
+        // come back wrapped in `Connection`.
         let server = ScriptedServer::start(vec![Script::stall()]).await;
         let step = Duration::from_millis(200);
         let err = builder(&server)

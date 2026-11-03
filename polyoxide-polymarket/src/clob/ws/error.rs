@@ -30,7 +30,10 @@ pub enum ClobWsError {
     #[error("Invalid message: {0}")]
     InvalidMessage(String),
 
-    /// URL parse error
+    /// URL parse error.
+    ///
+    /// No longer constructed since the wasm32 Story 5: a malformed URL is now
+    /// `Connection(Kind::Url | Kind::HttpFormat)`. Kept until its removal.
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
 

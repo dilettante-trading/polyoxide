@@ -13,6 +13,7 @@ data-encoding
 digest
 displaydoc
 form_urlencoded
+futures-channel
 futures-core
 futures-macro
 futures-sink
@@ -43,6 +44,7 @@ openssl-probe
 percent-encoding
 pin-project-lite
 polyoxide-polymarket
+polyoxide-rt
 polyoxide-venue
 polyoxide-ws
 potential_utf
@@ -87,6 +89,7 @@ untrusted
 url
 utf-8
 utf8_iter
+web-time
 writeable
 yoke
 yoke-derive

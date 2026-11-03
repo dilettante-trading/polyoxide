@@ -19,11 +19,24 @@ paths:
   `Spot::builder()`, `Predictions::builder()`, `RelayClient::default_builder()`,
   `Polymarket::builder(account)`.
 - Each venue builder holds a `polyoxide_core::ClientConfig` (base URL, timeout, pool size, retry
-  config, concurrency, and the client's default concurrency: relay 2; gamma, data, perps, Binance
-  and Kalshi 4; clob 8) and gets its five transport setters, `base_url`, `timeout_ms`,
-  `pool_size`, `with_retry_config` and `max_concurrent`, from
-  `polyoxide_core::client_config_setters!`. Its `build` starts from `ClientConfig::http_builder()`
-  and adds the throttle and retry policy the venue installs; the config sets no `gzip`.
+  config, concurrency, runtime, transport, and the client's default concurrency: relay 2; gamma,
+  data, perps, Binance and Kalshi 4; clob 8) and gets its transport setters, `base_url`,
+  `timeout_ms`, `pool_size`, `with_retry_config`, `max_concurrent`, `runtime` and `http_transport`,
+  from `polyoxide_core::client_config_setters!`; `runtime` names `polyoxide_rt::Runtime` through
+  core's doc-hidden `__rt` re-export, so a crate invoking the macro needs no `polyoxide-rt`
+  dependency for it. Its `build` resolves the runtime once with `ClientConfig::runtime_or_default()`,
+  starts from `ClientConfig::http_builder()` and gives it `HttpClientBuilder::runtime`, and adds the
+  throttle (built on the same runtime) and retry policy the venue installs; the config sets no
+  `gzip`.
+- `http_transport(..)`, from the same macro, injects the `Arc<dyn HttpTransport>` every attempt is
+  sent on; with none set, `build` makes `ReqwestTransport` on a host target and `FetchTransport` on
+  `wasm32` (`send-loop.md`), and `pool_size` and the client's `gzip` feed only the host default.
+- Each socket builder (perps, Binance's `usdm` and `spot`, the CLOB's bare, market and user
+  sockets, sports, rtds, Kalshi) gets `runtime(..)` and `socket_transport(..)` from `polyoxide_ws::transport_setters!`,
+  beside `timing_setters!` (`transport_setters!` names the runtime through `polyoxide_ws`'s
+  doc-hidden `__rt`, as core's macro does); its `build` falls back to `polyoxide_rt::default_runtime()` and the
+  target's default transport (the CLOB's, on a host target: `TungsteniteTransport::per_address()`).
+  Nothing is installed process-wide.
 - A venue's own knobs stay on its builder:
   - data: `pnl_base_url`, `rankings_base_url`;
   - perps: `with_rate_limiter`;
@@ -35,13 +48,17 @@ paths:
     path prefix is kept;
   - clob: `chain`, `signature_type`, `builder_code`, `with_account`; `gamma` (built only with the
     `gamma` feature, which `clob` does not imply); `data` (built only with `data`, for the `Trades`
-    the CLOB reads through the Data API; `build` makes one with the builder's timeout and pool
-    size when none is given, and the unified client hands clob its own); `user_socket` (built
-    only with `clob-ws`: the URL and timing of the supervised user socket each
-    `Trading::events` stream opens).
+    the CLOB reads through the Data API; `build` makes one, and the Gamma one, with the builder's
+    timeout, pool size, runtime and transport when none is given, and the unified client hands clob
+    its own); `user_socket` (built only with `clob-ws`: the URL, timing, `runtime` and
+    `socket_transport` of the supervised user socket each `Trading::events` stream opens; `build`
+    gives it the client's runtime when the socket builder has none, and a runtime set on the socket
+    builder wins).
 - `polyoxide_polymarket::Polymarket`, the unified client (built with `clob`, `gamma` and `data`),
   builds one CLOB, Gamma and Data client from one `Account`, and the CLOB client reads through
-  that same Gamma and Data client. `Polymarket::new` and `PolymarketBuilder::build` return a
+  that same Gamma and Data client. `PolymarketBuilder` has `runtime(..)` and `http_transport(..)`
+  too, set on all three clients it builds (and so on the signer buckets the CLOB holds).
+  `Polymarket::new` and `PolymarketBuilder::build` return a
   `BuildError` whose `Clob`, `Gamma` and `Data` variants wrap the error of the client that could
   not be built and classify as it does. The umbrella re-exports it as
   `polyoxide::polymarket::Polymarket` and from its prelude.

@@ -9,13 +9,13 @@
 //! those. A product's `WeightBudget` is a handle to one engine with its own
 //! layer names.
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use polyoxide_core::{
     Charge, Hold, LayerCharge, LayerId, RequestMeta, ResponseMeta, WindowQuotaTable,
 };
-use tokio::time::Instant;
+use polyoxide_rt::{Instant, Runtime};
 
 /// The header carrying the IP's weight used in the current minute.
 pub const USED_WEIGHT_HEADER: &str = "x-mbx-used-weight-1m";
@@ -47,6 +47,13 @@ pub(crate) struct MinuteCharge {
     pub(crate) minute: Option<u64>,
 }
 
+/// The clock a paused-time test drives: tokio's own, which `Clock::Tokio`
+/// derives wall time from.
+#[cfg(test)]
+pub(crate) mod paused {
+    pub(crate) use tokio::time::Instant;
+}
+
 /// Where the current UTC minute comes from.
 #[derive(Debug, Clone)]
 pub(crate) enum Clock {
@@ -54,10 +61,13 @@ pub(crate) enum Clock {
     System,
     /// Wall time derived from tokio's clock, so a paused-time test controls it.
     #[cfg(test)]
-    Tokio { start: Instant, start_ms: u64 },
+    Tokio {
+        start: paused::Instant,
+        start_ms: u64,
+    },
     /// A clock a test sets by hand, to step it backwards.
     #[cfg(test)]
-    Manual(std::sync::Arc<std::sync::atomic::AtomicU64>),
+    Manual(Arc<std::sync::atomic::AtomicU64>),
 }
 
 impl Clock {
@@ -73,6 +83,9 @@ impl Clock {
 }
 
 /// One IP's request-weight minute, its optional paced layer and its cooldown.
+///
+/// It keeps time on its hold's runtime: its cooldown, its pace and its wait
+/// for the next minute all sleep on it, and the pace reads its clock.
 #[derive(Debug)]
 pub(crate) struct Engine {
     per_minute: u32,
@@ -94,11 +107,13 @@ impl Engine {
     /// An engine for a published limit of `published_per_minute` weight, less
     /// the reserved tenth. `paced` is a published request count and its
     /// period for the routes that carry no weight, paced with a depth of
-    /// one; `None` for a product with no such routes.
+    /// one; `None` for a product with no such routes. It keeps time on
+    /// `runtime`.
     pub(crate) fn new(
         published_per_minute: u32,
         paced: Option<(u32, Duration)>,
         clock: Clock,
+        runtime: Arc<dyn Runtime>,
     ) -> Self {
         // One slot of the paced target is the bucket's depth; the rest is
         // paced, so no window admits more than the target. Core's one pacing
@@ -109,7 +124,7 @@ impl Engine {
             per_minute: after_reserve(published_per_minute),
             paced_interval,
             clock,
-            hold: Hold::with_ceiling(MAX_COOLDOWN),
+            hold: Hold::with_ceiling_on(MAX_COOLDOWN, runtime),
             state: Mutex::new(State {
                 minute: 0,
                 used: 0,
@@ -121,6 +136,11 @@ impl Engine {
     /// The most weight this engine spends in one minute.
     pub(crate) fn per_minute(&self) -> u32 {
         self.per_minute
+    }
+
+    /// The runtime this engine keeps time on: its hold's.
+    pub(crate) fn runtime(&self) -> &Arc<dyn Runtime> {
+        self.hold.runtime()
     }
 
     /// Weight charged or reported in the current UTC minute.
@@ -140,7 +160,7 @@ impl Engine {
             self.await_cooldown().await;
             match self.try_charge(weight) {
                 Ok(charge) => return charge,
-                Err(until_next_minute) => tokio::time::sleep(until_next_minute).await,
+                Err(until_next_minute) => self.runtime().sleep(until_next_minute).await,
             }
         }
     }
@@ -158,7 +178,7 @@ impl Engine {
             // and every request parked that way would go at once.
             self.await_cooldown().await;
             let slot = self.reserve_paced_slot(interval);
-            tokio::time::sleep_until(slot).await;
+            self.runtime().sleep_until(slot).await;
             if !self.in_cooldown() {
                 return MinuteCharge { minute: None };
             }
@@ -224,7 +244,7 @@ impl Engine {
     }
 
     fn reserve_paced_slot(&self, interval: Duration) -> Instant {
-        let now = Instant::now();
+        let now = self.runtime().now();
         let mut state = self.lock();
         let slot = state.next_paced.map_or(now, |next| next.max(now));
         state.next_paced = Some(slot + interval);
@@ -296,7 +316,7 @@ impl Engine {
 }
 
 /// The IP's weight used this minute, as a response reports it.
-fn used_weight(headers: &polyoxide_core::reqwest::header::HeaderMap) -> Option<u32> {
+fn used_weight(headers: &polyoxide_core::http::header::HeaderMap) -> Option<u32> {
     headers
         .get(USED_WEIGHT_HEADER)?
         .to_str()
@@ -308,8 +328,9 @@ fn used_weight(headers: &polyoxide_core::reqwest::header::HeaderMap) -> Option<u
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue};
-    use polyoxide_core::reqwest::{Method, StatusCode};
+    use polyoxide_core::http::header::{HeaderMap, HeaderValue};
+    use polyoxide_core::http::{Method, StatusCode};
+    use tokio::time::Instant;
 
     use super::*;
 
@@ -327,6 +348,7 @@ mod tests {
                 start: Instant::now(),
                 start_ms: ON_A_MINUTE,
             },
+            polyoxide_rt::default_runtime(),
         )
     }
 
@@ -375,7 +397,12 @@ mod tests {
         // 2400 is the futures host's published limit and 6000 the spot
         // host's; the reserve is the same tenth of each.
         for (published, budget) in [(2400, 2160), (6000, 5400)] {
-            let engine = Engine::new(published, None, Clock::System);
+            let engine = Engine::new(
+                published,
+                None,
+                Clock::System,
+                polyoxide_rt::default_runtime(),
+            );
             assert_eq!(engine.per_minute(), budget, "{published}");
         }
     }

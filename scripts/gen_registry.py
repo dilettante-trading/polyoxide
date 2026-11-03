@@ -50,6 +50,9 @@ The crate table:
                               # job adds `--no-default-features`
     secrets = ["NAME"]        # every env name the target reads, exactly
     note = "..."              # optional, for SELF-HEALING.md's table
+    runner = "wasm-bindgen"   # optional: the target is not a nextest `live_*` test but a wasm32
+                              # browser test, run by the runner's script (RUNNERS); its job is
+                              # `live-<word>-<suite>`, holds no secrets, and no suite mixes runners
 
 The workspace table:
 
@@ -121,8 +124,12 @@ CRATE_KEYS = {"readme", "venue", "products", "classes", "mirrors", "notes", "liv
 EXCEPTION_KEYS = {"path", "term", "reason"}
 # The crates that may name no venue beyond the exceptions each venue declares
 # (CAP-7), which scripts/venue_gate.py reads.
-FOUNDATION = ("polyoxide-venue", "polyoxide-core", "polyoxide-ws", "polyoxide-test-support")
-LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note"}
+FOUNDATION = ("polyoxide-venue", "polyoxide-core", "polyoxide-ws", "polyoxide-rt",
+              "polyoxide-test-support")
+LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note", "runner"}
+# The runners a live entry may name: the word in the job's id (`live-<word>-<suite>`), and the
+# script that runs the target and writes libtest-json for the classifier.
+RUNNERS = {"wasm-bindgen": ("wasm", "scripts/wasm_live.sh")}
 MIRROR_KEYS = {"name", "section", "base_urls", "description", "crate_note", "exclude", "specs"}
 SPEC_KEYS = {"id", "kind", "url", "vendored", "covers", "note", "exclude"}
 
@@ -166,6 +173,7 @@ class Live:
     features: tuple[str, ...] = ()
     secrets: tuple[str, ...] = ()
     note: str | None = None
+    runner: str | None = None
 
 
 @dataclass(frozen=True)
@@ -222,7 +230,14 @@ class Job:
     targets: tuple[Live, ...]
 
     @property
+    def runner(self) -> str | None:
+        """The runner of the job's targets, which `_crate` holds to one."""
+        return self.targets[0].runner
+
+    @property
     def id(self) -> str:
+        if self.runner:
+            return f"live-{RUNNERS[self.runner][0]}-{self.suite}"
         return f"live-{self.crate}-{self.suite}"
 
     @property
@@ -323,7 +338,9 @@ def build(root: Path, metadata: dict, workspace: dict, manifests: dict[str, dict
     order += sorted(n for n, p in packages.items() if not publish_order.is_publishable(p))
     crates = tuple(_crate(root, packages[n], manifests[n], set(packages)) for n in order)
     _check_products(crates)
-    return Registry(crates, _mirrors(root, workspace, crates), _stage(workspace), _guide(root))
+    registry = Registry(crates, _mirrors(root, workspace, crates), _stage(workspace), _guide(root))
+    _check_job_ids(registry)
+    return registry
 
 
 def _get(table: dict, *keys: str) -> dict:
@@ -404,6 +421,7 @@ def _crate(root: Path, package: dict, manifest: dict, workspace: set[str]) -> Cr
     mirrors = _strings(f"{where} mirrors", meta.get("mirrors"))
     live = tuple(_live(f"{name}: [package.metadata.polyoxide.live.{target}]", target, entry)
                  for target, entry in _live_table(where, meta).items())
+    _check_runners(where, live)
     features = tuple((k, tuple(v)) for k, v in manifest.get("features", {}).items())
     directory = Path(package["manifest_path"]).resolve().parent
     return Crate(
@@ -458,6 +476,18 @@ def _live_table(where: str, meta: dict) -> dict:
     return live
 
 
+def _check_runners(where: str, live: tuple[Live, ...]) -> None:
+    """A suite is one job, so its targets share a runner."""
+    runners: dict[str, set[str | None]] = {}
+    for entry in live:
+        runners.setdefault(entry.suite, set()).add(entry.runner)
+    for suite, found in runners.items():
+        if len(found) > 1:
+            raise RegistryError(f"{where} suite {suite!r} mixes runners "
+                                f"({', '.join(sorted(map(str, found)))}); each suite is one job "
+                                f"with one runner")
+
+
 def _live(where: str, target: str, entry: dict) -> Live:
     _unknown(where, entry, LIVE_KEYS)
     missing = sorted({"suite", "timeout", "features", "secrets"} - set(entry))
@@ -475,8 +505,14 @@ def _live(where: str, target: str, entry: dict) -> Live:
     for minutes in re.findall(r"(\d+)-minute", note or ""):
         if int(minutes) != timeout:
             raise RegistryError(f"{where} note says {minutes} minutes, but timeout is {timeout}")
+    runner = _string(f"{where} runner", entry.get("runner"), optional=True)
+    if runner is not None and runner not in RUNNERS:
+        raise RegistryError(f"{where} runner {runner!r} is not one of {', '.join(RUNNERS)}")
+    if runner and secrets:
+        raise RegistryError(f"{where} names a runner, whose job holds no secrets; a target that "
+                            f"reads them is a native live test")
     return Live(target, _id(f"{where} suite", entry["suite"]), timeout,
-                _strings(f"{where} features", entry["features"]), secrets, note)
+                _strings(f"{where} features", entry["features"]), secrets, note, runner)
 
 
 def _default_closure(features: dict[str, tuple[str, ...]]) -> set[str]:
@@ -530,6 +566,17 @@ def _check_products(crates: tuple[Crate, ...]) -> None:
         if len(names) > 1:
             raise RegistryError(f"({venue}, {product}) is declared by more than one crate: "
                                 f"{', '.join(names)}. Each (venue, product) pair has one crate.")
+
+
+def _check_job_ids(registry: Registry) -> None:
+    owners: dict[str, list[str]] = {}
+    for job in registry.jobs():
+        owners.setdefault(job.id, []).append(job.crate)
+    for job_id, crates in owners.items():
+        if len(crates) > 1:
+            raise RegistryError(f"{job_id} is the job of more than one crate: "
+                                f"{', '.join(crates)}. A runner's job id has no crate in it, so "
+                                f"give each crate its own suite.")
 
 
 def _stage(workspace: dict) -> str:
@@ -1015,7 +1062,7 @@ def claude_graph(r: Registry) -> list[str]:
     for c in r.crates:
         needs = ", ".join(_dependency(d) for d in c.needs) or "nothing in the workspace"
         parts = [f"`{c.name}` — {c.readme}", f"needs: {needs}"]
-        if c.published_after:
+        if c.published and c.published_after:
             parts.append(f"published after {_code_list(c.published_after)}, "
                          f"a versioned dev-dependency")
         lines.append("- " + "; ".join(parts + list(c.notes)))
@@ -1120,11 +1167,71 @@ def selfheal_exclusions(r: Registry) -> list[str]:
     return lines
 
 
+def _runner_job(job: Job) -> list[str]:
+    """A job for a target the live-suite action cannot run: the runner's script writes
+    libtest-json, and the classifier's own two commands merge it into the artifact the aggregate
+    reads. The script's retry pass stands in for nextest's, so the merge's retry file is the
+    script's.
+
+    The steps below are wasm-bindgen's (the target, the CLI install, the output directory), though
+    RUNNERS is a table: a second runner needs its own steps, not these."""
+    if job.runner != "wasm-bindgen":
+        raise RegistryError(
+            f"{job.id}: runner {job.runner!r} has no job template; _runner_job writes only "
+            "wasm-bindgen's steps (the wasm32 target, the CLI install, target/wasm-live/)"
+        )
+    script = RUNNERS[job.runner][1]
+    out = f"artifacts/{job.crate}"
+    return [
+        f"{job.id}:",
+        f"  name: Live browser tests ({job.crate}, {job.suite})",
+        "  runs-on: ubuntu-latest",
+        f"  timeout-minutes: {job.timeout}",
+        "  steps:",
+        "    - uses: actions/checkout@v5",
+        "    - uses: dtolnay/rust-toolchain@stable",
+        "      with:",
+        "        targets: wasm32-unknown-unknown",
+        "    - id: wasm-bindgen",
+        "      name: Read the wasm-bindgen version Cargo.lock pins",
+        "      run: |",
+        "        version=$(awk '/^name = \"wasm-bindgen\"$/ { getline; "
+        "gsub(/version = |\"/, \"\"); print; exit }' Cargo.lock)",
+        "        echo \"version=$version\" >> \"$GITHUB_OUTPUT\"",
+        "    - uses: taiki-e/install-action@v2",
+        "      with:",
+        "        tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}",
+        "    - name: Run the browser tests",
+        f"      run: bash {script}",
+        "    - name: Classify and merge",
+        "      run: |",
+        f"        mkdir -p {out}",
+        f"        cp target/wasm-live/first-pass.json {out}/first-pass.json",
+        f"        cp target/wasm-live/retry.json {out}/retry.json",
+        "        python3 .github/scripts/classify_failures.py classify \\",
+        f"          --input {out}/first-pass.json \\",
+        f"          --output-dir {out}/classified",
+        "        python3 .github/scripts/classify_failures.py merge \\",
+        f"          --first-pass {out}/first-pass.json \\",
+        f"          --retry {out}/retry.json \\",
+        f"          --output-dir {out}/merged",
+        "    - name: Upload artifacts",
+        "      if: always()",
+        "      uses: actions/upload-artifact@v6",
+        "      with:",
+        f"        name: behavioral-{job.crate}-{job.suite}",
+        f"        path: {out}/",
+    ]
+
+
 def nightly_live_jobs(r: Registry) -> list[str]:
     lines = []
     for job in r.jobs():
         if lines:
             lines.append("")
+        if job.runner:
+            lines += _runner_job(job)
+            continue
         lines += [
             f"{job.id}:",
             f"  name: Live tests ({job.crate}, {job.suite})",

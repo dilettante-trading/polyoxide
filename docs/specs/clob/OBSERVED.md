@@ -39,3 +39,19 @@ flight ran for 30 minutes with every call answering `200` and no `429`.
 
 `Markets::{prices, midpoints, spreads}` decode a map whose values are either a
 string or a number. `POST /last-trades-prices` does answer an array.
+
+## Browser transport (2026-11)
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `clob.polymarket.com` answers `Access-Control-Allow-Origin: *`, and the preflight for
+  `POST /order` with the `POLY_*` headers is allowed (`Access-Control-Max-Age` 30 days).
+- It sets no `Access-Control-Expose-Headers`, so a browser cannot read `Retry-After` from it:
+  `ErrorResponse::retry_after` is `None` there, though the server sent one.
+- `ws-subscriptions-clob.polymarket.com` upgrades (101) on `/ws/market` and `/ws/user`. A browser
+  sends no protocol pings and shows none, so the text `PING` is the only keepalive it has. The
+  market path closes 1008 `invalid subscription payload` on a first frame that is not a
+  subscription (measured 2026-11-02 with `PING`), so the nightly job opens with the empty
+  subscription `{"assets_ids":[],"type":"market"}`, which the host keeps open, and holds the
+  socket until the first data frame or 20 s.

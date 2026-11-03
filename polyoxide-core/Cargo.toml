@@ -16,21 +16,41 @@ keychain = ["dep:keyring"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-# The one HTTP client, and the only member that declares it (AD-18): every
-# venue crate names its types through `polyoxide_core::reqwest`, so no other
-# crate can change its features for the rest. `gzip` is on, so every client
-# asks for compressed bodies unless a builder turns it off.
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
+# The runtime every wait, clock read and spawn goes through. Core does not
+# re-export it: a crate that names `Runtime` declares it itself.
+polyoxide-rt = { workspace = true }
+# The request vocabulary reqwest re-exports (`Method`, `StatusCode`, `HeaderMap`,
+# `HeaderValue`, `header`), re-exported as `polyoxide_core::http`. Reqwest 0.12
+# is built on `http` 1, so these are the same types.
+http = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
+# The body type of `HttpRequest` and `Response`; reqwest builds it already.
+bytes = "1"
 governor = { workspace = true }
 dynosaur = { workspace = true }
 fastrand = { workspace = true }
 keyring = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["time", "sync"] }
+tokio = { workspace = true, features = ["sync"] }
+
+# The one HTTP client, and the only member that declares it (AD-18): no other
+# crate declares reqwest, so none can change its features for the rest. Core
+# re-exports it as `polyoxide_core::reqwest` for `ReqwestTransport::new` and
+# for the tests and examples that open raw clients. `gzip` is on, so every
+# client asks for compressed bodies unless a builder turns it off.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
+
+# The browser's `fetch`, through reqwest's wasm client (`FetchTransport`): no
+# TLS, no compression setting and no pool, since the browser has its own.
+# Beyond spec D10: fastrand's `js` feature seeds the retry jitter, which otherwise has one fixed seed on wasm32.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { version = "0.12", default-features = false }
+send_wrapper = { workspace = true, features = ["futures"] }
+fastrand = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
 mockito = { workspace = true }

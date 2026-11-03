@@ -8,6 +8,8 @@ paths:
   - ".github/scripts/classify_failures.py"
   - ".github/scripts/tests/test_{classify_failures,live_registry,live_unwraps}.py"
   - "scripts/live_unwraps*"
+  - "scripts/wasm_live.sh"
+  - "polyoxide-wasm-smoke/tests/browser_live.rs"
   - ".env.example"
 ---
 
@@ -40,7 +42,7 @@ anywhere makes the failure `real`, and so does no tag at all. Nothing reads the 
 - The credential loaders (`load_env`, `optional_env`, `keychain`) count an empty value as absent
   and fail through `Missing::or_auth_gated()` as `auth-gated`.
 - `environmental(reason)` and `transient(reason)` tag what no error value carries.
-- Wrap a foreign error in the venue's own error first (`ApiError::Network`,
+- Wrap a foreign error in the venue's own error first (`ApiError::Transport`,
   `UsdmWsError::from(WsError::from(..))`, `SpotWsError::from(WsError::from(..))`,
   `RtdsError::from(WsError::from(..))`, `ClobWsError::from(WsError::from(..))`,
   `SportsError::Transport { source: WsError::from(..) }`),
@@ -83,6 +85,44 @@ each row naming an error the tests can build has a Rust twin in a failure-tags s
 tag that error prints: `polyoxide-test-support`'s `tests/failure_tags.rs` (core's `ApiError`),
 `polyoxide-binance`'s `tests/failure_tags_usdm.rs` and `tests/failure_tags_spot.rs`, and
 `polyoxide-polymarket`'s `tests/failure_tags_sports.rs` and `tests/failure_tags_rtds.rs`.
+
+## The browser job
+
+`live-wasm-browser` is the one nightly job that is not a nextest run. Its target, `polyoxide-wasm-smoke`'s
+`tests/browser_live.rs`, is a wasm32 test behind the `live` feature (not `#[ignore]`, which nextest
+reads), run by `scripts/wasm_live.sh` in headless Chrome inside a Worker; its live entry names
+`runner = "wasm-bindgen"`, which `gen_registry.py` turns into this job in place of a live-suite
+call (a runner job holds no secrets, and no suite mixes runners). The file is not a `live_*`
+target, so `live_unwraps.py` and `test_live_registry.py`'s per-target checks do not read it; its
+own rule is the same: a failure goes through the tags or is untagged on purpose.
+
+- The checks are spec D17's: per host, one GET bounded by 10 s and one socket held until its first
+  data frame or 20 s, each retried once after 5 s. A second failure is `real`, except a socket that
+  opened and then dropped, which is `transient`, and a host the runner cannot test is
+  `environmental`. That is only Binance's region block, which a page may not be able to read
+  (unmeasured): `scripts/wasm_live.sh` reads
+  `fapi.binance.com/fapi/v1/ping` natively with curl (10 s, no retry) first, and on a 451 builds the
+  suite with `POLYOXIDE_LIVE_BINANCE_STATUS=451` (`option_env!`, as `POLYOXIDE_LIVE_PROBE` is), so
+  the three Binance checks fail `environmental` at once without a browser call. With any other
+  status a failed Binance upgrade is `real`. A close frame is judged by its code on the socket
+  table (`class_for_close_code`), and a send that fails after the socket opened is `transient`.
+- The tags build on wasm32 and print their line through `console.error`, which wasm-bindgen-test
+  captures into the failing test's output. The script turns that output into libtest-json with
+  `.github/scripts/wasm_live_convert.py` (the block dedented, its `panicked at` line given the
+  `thread '...'` shape the classifier looks for), which exits 1 unless the runner's own
+  `test result:` counts equal the results it parsed, since a test that never reported (a runner
+  stopped early) would read as a pass. `WASM_BINDGEN_TEST_TIMEOUT=450` bounds each
+  run (the probe, the first pass and every retry), not the job: its 15 minutes also hold a cold
+  wasm32 build (the generated job has no build cache; the build is unmeasured), the probe run and
+  one more run for each transient test. The D17 worst case of about 7 minutes is the first pass
+  alone, so a slow build or several retries can reach the limit, and a job killed there uploads
+  no merged report. The script runs the classifier's
+  own `classify` on the result, and does one more run of the transient ones, each selected with
+  `--exact` and required to run that one test. Before
+  all that it runs `probe_tag_line`, a test built to fail with a `transient` tag, and exits 1 unless
+  the classifier lists it: a job that cannot read its tags would file every failure as `real`.
+- The runner's output format is read, not assumed: if a wasm-bindgen release changes how a test's
+  result or its output block is printed, the probe is what fails, in the script and so in the job.
 
 ## Reading the environment
 

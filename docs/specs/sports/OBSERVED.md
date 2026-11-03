@@ -89,3 +89,41 @@ form from this feed's `metadataGameId` (`1000170151LIVE2026` against
 `/games`, `/matches`, `/events`, `/v1`, `/v1/live`, `/v1/games`,
 `/v1/matches`, `/api`, `/api/live`, `/sports`, `/teams`, `/schedule`,
 `/scores`.
+
+## Browser transport (2026-11)
+
+A browser's WebSocket does not show protocol pings to the page, so a client
+there sees only the data and text frames, and has nothing to count in a quiet
+hour. A capture on 2026-11-02, from 19:06:55Z to 19:36:56Z, held one
+unauthenticated connection for 1800 s with no drop. It sent the text `ping` at
+600.01 s and 1200.01 s and nothing else. A game was live throughout, so the
+capture could not answer the question it was run for:
+
+- Data frames: 1695 in 1800 s; no binary frames. The longest stretch with no
+  data frame was 10.6 s, a live feed's gap, so some arrived in every minute.
+- Protocol pings arrived every 15 s as before: 119 of them, from 15.37 s to
+  1785.37 s, 14.8 to 15.2 s apart.
+- Text `ping` at 600.01 s: no answer within 10 s. At 1200.01 s: the same. The
+  script counts as an answer a text frame that is no match update arriving
+  within 10 s, and none did.
+- Drops: none.
+
+Two things stay unmeasured. The longest gap between data frames in a quiet
+hour is one: the 10.6 s above was read with a game live and says nothing about
+an hour with none. Whether the server answers a text `ping` on a quiet
+connection is the other: both pings went out with a game live. The script
+printed a rule from the live-feed gap, which is not a result of this capture
+and is not used here.
+
+The supervised feed's rule on such a transport is C: no staleness limit, and a
+lost connection ends through its close event. That is the owner's decision of
+2026-11-02 (spec D9), taken with the quiet-hour figures unmeasured, not a
+measurement's verdict; see `.claude/rules/polymarket-sports.md`.
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `sports-api.polymarket.com/ws` upgrades (101). The server's protocol pings are not visible to a
+  page, so the browser's only signal of a live connection is a data frame or a close event; the
+  nightly job sends nothing, holds the socket until its first data frame or 20 s, and counts a
+  close or an error before then as a drop (`transient`).

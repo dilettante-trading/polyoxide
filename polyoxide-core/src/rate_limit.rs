@@ -4,18 +4,49 @@
 //! A venue builds its own tables, in its own crate.
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use crate::hold::Hold;
 use crate::hooks::{AttemptInfo, Charge, Refused, RequestMeta, ResponseMeta, Throttle};
+use governor::clock::Clock;
 use governor::Quota;
-use reqwest::Method;
+use http::Method;
+use polyoxide_rt::{Instant, Runtime};
+
+/// Governor's clock over a [`Runtime`]: the time that has passed on the
+/// runtime's [`now`](Runtime::now) since the clock was made.
+///
+/// A bucket checks its token against this clock and sleeps the wait it reports
+/// on the same runtime, so the check and the sleep read one clock. On a paused
+/// tokio clock governor's own real-time clock would barely move while the
+/// sleep advances virtual time, and a bucket would spin through minutes of it.
+struct RuntimeClock {
+    runtime: Arc<dyn Runtime>,
+    origin: Instant,
+}
+
+impl RuntimeClock {
+    fn new(runtime: Arc<dyn Runtime>) -> Self {
+        let origin = runtime.now();
+        Self { runtime, origin }
+    }
+}
+
+impl Clock for RuntimeClock {
+    /// Governor measures a `Duration` since an origin of the clock's own.
+    type Instant = Duration;
+
+    fn now(&self) -> Duration {
+        self.runtime.now().saturating_duration_since(self.origin)
+    }
+}
 
 type DirectLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
     governor::state::InMemoryState,
-    governor::clock::DefaultClock,
+    RuntimeClock,
+    governor::middleware::NoOpMiddleware<Duration>,
 >;
 
 /// How a row's pattern is matched against a request path.
@@ -47,9 +78,12 @@ struct RateSpec {
 struct Bucket {
     id: BucketId,
     spec: RateSpec,
-    /// The quota `limiter` was built from, read back by [`EffectiveQuota`].
+    /// The quota `limiter` is built from, read back by [`EffectiveQuota`].
     quota: Quota,
-    limiter: DirectLimiter,
+    /// Made when the bucket is first awaited, on the runtime of the hold it is
+    /// awaited under, and full: a bucket is full whenever it is first used, so
+    /// a table may name its runtime before or after it makes its buckets.
+    limiter: OnceLock<DirectLimiter>,
 }
 
 impl Bucket {
@@ -59,7 +93,7 @@ impl Bucket {
             id,
             spec: RateSpec { count, period },
             quota,
-            limiter: DirectLimiter::direct(quota),
+            limiter: OnceLock::new(),
         })
     }
 
@@ -69,6 +103,25 @@ impl Bucket {
             count: self.spec.count,
             period: self.spec.period,
             quota: self.quota,
+        }
+    }
+
+    /// Wait until the bucket has a token and take it, on `runtime`.
+    ///
+    /// This is governor's `until_ready` with its clock and its timer both the
+    /// runtime's: `check` the bucket and, when it is not ready, sleep the time
+    /// `NotUntil` reports against the same clock, then `check` again. Only the
+    /// clock and the sleep moved; the bucket keeps its depth of one token.
+    async fn until_ready(&self, runtime: &Arc<dyn Runtime>) {
+        let limiter = self.limiter.get_or_init(|| {
+            DirectLimiter::direct_with_clock(self.quota, RuntimeClock::new(Arc::clone(runtime)))
+        });
+        loop {
+            let wait = match limiter.check() {
+                Ok(()) => return,
+                Err(not_until) => not_until.wait_time_from(limiter.clock().now()),
+            };
+            runtime.sleep(wait).await;
         }
     }
 }
@@ -401,7 +454,7 @@ pub struct QuotaRow<'a> {
 /// use std::time::Duration;
 ///
 /// use polyoxide_core::{Matching, WindowQuotaTable};
-/// use reqwest::Method;
+/// use polyoxide_core::http::Method;
 ///
 /// let ten_seconds = Duration::from_secs(10);
 /// let mut table = WindowQuotaTable::new(1_000, ten_seconds);
@@ -426,6 +479,9 @@ pub struct WindowQuotaTable {
     buckets: Vec<Arc<Bucket>>,
     rows: Vec<EndpointLimit>,
     hold: Hold,
+    /// Whether [`with_hold`](Self::with_hold) replaced the table's own hold,
+    /// which [`with_runtime`](Self::with_runtime) would undo.
+    hold_shared: bool,
 }
 
 impl WindowQuotaTable {
@@ -442,6 +498,7 @@ impl WindowQuotaTable {
             buckets: Vec::new(),
             rows: Vec::new(),
             hold: Hold::unbounded(),
+            hold_shared: false,
         };
         table.bucket(count, period);
         table
@@ -517,8 +574,29 @@ impl WindowQuotaTable {
 
     /// Wait out `hold` instead of a hold of the limiter's own, so that
     /// every layer sharing it holds together. Default: [`Hold::unbounded`].
+    /// The limiter keeps time on the hold's runtime.
     pub fn with_hold(&mut self, hold: Hold) -> &mut Self {
         self.hold = hold;
+        self.hold_shared = true;
+        self
+    }
+
+    /// Keep time on `runtime`: the limiter's waits for a bucket and for its
+    /// hold sleep on it. This gives the table a hold of its own on `runtime`,
+    /// replacing the one it has, so call it before
+    /// [`with_hold`](Self::with_hold), whose hold brings its own runtime.
+    /// Default: the target's default runtime.
+    ///
+    /// # Panics
+    ///
+    /// In a debug build, when [`with_hold`](Self::with_hold) was called
+    /// first, since this would silently undo the shared hold.
+    pub fn with_runtime(&mut self, runtime: Arc<dyn Runtime>) -> &mut Self {
+        debug_assert!(
+            !self.hold_shared,
+            "WindowQuotaTable::with_runtime called after with_hold: it would replace the shared hold; call with_runtime first"
+        );
+        self.hold = Hold::unbounded_on(runtime);
         self
     }
 
@@ -564,14 +642,16 @@ impl RateLimiter {
     /// Waits out any hold a previous 429 imposed, then awaits the default
     /// (general) limiter, then additionally awaits the first matching
     /// endpoint-specific limiter (burst + sustained), then waits out the hold
-    /// again, in case it moved while this call waited on a bucket.
+    /// again, in case it moved while this call waited on a bucket. Every wait
+    /// sleeps on the hold's runtime.
     pub async fn acquire(&self, path: &str, method: Option<&Method>) {
+        let runtime = self.inner.hold.runtime();
         self.inner.hold.wait().await;
-        self.inner.general.limiter.until_ready().await;
+        self.inner.general.until_ready(runtime).await;
 
         if let Some(limit) = self.row_for(path, method) {
             for bucket in &limit.buckets {
-                bucket.limiter.until_ready().await;
+                bucket.until_ready(runtime).await;
             }
         }
         // AD-23: a hold set while this call waited on a bucket is honoured,
@@ -1118,5 +1198,14 @@ mod tests {
         assert!(!check("/trades/123"), "sub-path should not match");
         assert!(!check("/trades?limit=10"), "query params should not match");
         assert!(!check("/traded"), "different word should not match");
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "with_runtime called after with_hold")]
+    fn with_runtime_after_with_hold_is_refused() {
+        let mut table = WindowQuotaTable::new(10, Duration::from_secs(1));
+        table.with_hold(Hold::unbounded());
+        table.with_runtime(polyoxide_rt::default_runtime());
     }
 }

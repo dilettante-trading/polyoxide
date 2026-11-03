@@ -88,6 +88,21 @@
 # Add each [[drift]] or [[retired]] entry below as its own table. S2's entries
 # went with the switch to S3, whose baseline is the S2 release.
 
+# The kit's host-only code is gated off wasm32 (the wasm32 seams' story 7): the scripted
+# test server and the TLS install sit under `not(target_arch = "wasm32")`, which changes no
+# test's body, only what gates it, so the gate is dropped at HEAD. Test-support's modules are
+# gated the same way (story 10), since only its failure tags build in a browser.
+[gates]
+"polyoxide-ws/src/test_server" = 'not(target_arch = "wasm32")'
+"polyoxide-ws/src/tls.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/agreement" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/creds.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/fixtures.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/minute.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/openapi.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/query.rs" = 'not(target_arch = "wasm32")'
+"polyoxide-test-support/src/soak" = 'not(target_arch = "wasm32")'
+
 [[drift]]
 file = "polyoxide-polymarket/tests/mock_gamma.rs"
 item = "get_many_fans_out_closed_true_and_false"
@@ -257,8 +272,285 @@ row = "R21"
 sha256 = "6103b1930eb27050c934d6b301ec99abc9ca274a2f52169f464ab7ab5e2271f4"
 
 [[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::an_expired_cooldown_stops_delaying"
+row = "R22"
+sha256 = "587011b6ff011697ce6899d1de6670d5d548b7d4d5a3f857b692b35f95405d2b"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_post_sends_its_body_serialised_once"
+row = "R22"
+sha256 = "fb08704f8b44af8cd4447d7dfdcde81db1144d5e05a1d716ead8581725938173"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_request_s_costs_reach_the_throttle"
+row = "R22"
+sha256 = "ef7ace6413e8d69c2fd3986bcb623d9ebc8acd5a5d4415179e09687303f1ae44"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_request_parts_timeout_bounds_its_attempt"
+row = "R22"
+sha256 = "4a5976058f7e6b6ebbf372f96ecdad586ca03fe979155231e0aa3c7726c569cc"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "a_request_parts_timeout_outlasts_the_client_s"
+row = "R22"
+sha256 = "fba60726dd0ec8bad291aac7a82bc9f3744664501b76614ab8ebc5c67a4c7782"
+
+[[drift]]
+file = "polyoxide-binance/examples/weight_probe.rs"
+item = "used_after"
+row = "R22"
+sha256 = "752465a1851832a5fadf9b25b8de9599c198928c474c42267a488afcd0c1ed27"
+
+[[drift]]
+file = "polyoxide-binance/src/usdm/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "cb219300127bdd95384e55f366d9beccd85b619a683501b19bd17b24c4537ea7"
+
+[[drift]]
+file = "polyoxide-binance/tests/failure_tags_usdm.rs"
+item = "raw"
+row = "R22"
+sha256 = "6c45de9ddf27866576688e6b904bc750d9ddee4ea40f49fbe153ca05132c7102"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "15df3e7f56e253ba67afa8fe7137292a19c2bf0e4465eaaf51a0e089527bf521"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "adb3f5f9de89c296b5fc57afaffbe545b468be8840c15e2c24a20ec50c615882"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/v2/error.rs"
+item = "tests::parts"
+row = "R22"
+sha256 = "cb4080877ff97e41920de87b0c0fea4bcbd4310f1348beea4e3c2b5903352101"
+
+[[drift]]
+file = "polyoxide-polymarket/src/gamma/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "e95e0ca7b67d938b97cc1e8ca709a7cbb72e76d9e67f4e243e90b7b8d6ba7de6"
+
+[[drift]]
+file = "polyoxide-polymarket/src/perps/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "d5a466512abbd534dbfb77b44adca87e88820a6cef6e8d5f612a0dbe31574aa6"
+
+[[drift]]
+file = "polyoxide-polymarket/src/relay/error.rs"
+item = "tests::response"
+row = "R22"
+sha256 = "772db09f794672dfff6f6eb745e72fc720c1cb6028d0fd4239a25130d5a24c35"
+
+[[drift]]
+file = "polyoxide-polymarket/src/shared/policy.rs"
+item = "tests::retries_a_429"
+row = "R22"
+sha256 = "0aed6510685c73bd2fbee458c6e60470faefaf2114031aa90c87fc262ef0c251"
+
+[[drift]]
+file = "polyoxide-polymarket/src/shared/policy.rs"
+item = "tests::retries"
+row = "R22"
+sha256 = "a4ab0773bac0df362c5ba5d662ed7c82aeb60de861788acd421d8945f68adad1"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/send_loop.rs"
+item = "a_429_with_no_retry_left_is_fail_with_its_hold"
+row = "R22"
+sha256 = "e8ddce0c273b51ae5226bd38408c66ae05d095eff6b9fb4d82ec32cc1d5ca529"
+
+[[drift]]
+file = "polyoxide-binance/tests/live_usdm.rs"
+item = "raw"
+row = "R22"
+sha256 = "72cf318da96532c7cb122a84f9a11c5e516b465aa89c3bfacf5f080555df3b8e"
+
+[[drift]]
+file = "polyoxide-core/src/config.rs"
+item = "tests::http_builder_applies_every_knob_that_is_set"
+row = "R22"
+sha256 = "5d926c7be269a67f3dec6a66ae7f23ab182ad4ba95f76d9055ab1af811487dcf"
+
+[[drift]]
+file = "polyoxide-core/src/error.rs"
+item = "tests::every_variant_classifies"
+row = "R22"
+sha256 = "d44b5de9f3b1fe2f4c546746437767ec1d94edb131c90780da8cc24983ed5808"
+
+[[drift]]
+file = "polyoxide-core/src/error.rs"
+item = "tests::reqwest_errors"
+row = "R22"
+sha256 = "965410d3b986445dee94bfa562c7657bbe822c5a4e8179b7bea7be8750d612fb"
+
+[[drift]]
+file = "polyoxide-core/src/error.rs"
+item = "tests::ReqwestErrors"
+kind = "struct"
+row = "R22"
+sha256 = "4ad8d6267cca26e915ef5eac5226f33757d634ad1c497c361a74437a1f963dca"
+
+[[drift]]
+file = "polyoxide-core/tests/health.rs"
+item = "a_transport_failure_on_health_is_the_callers_error"
+row = "R22"
+sha256 = "8a9617b569d464434a022fd7e1d4d783968ce8728c678994888de133265606e0"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "retries_on_429_then_succeeds"
+row = "R22"
+sha256 = "ebc79280c8806c04703d552f28ca1d961a3ee2a1b75c5162ef1c7ace42b968e5"
+
+[[drift]]
+file = "polyoxide-polymarket/src/relay/error.rs"
+item = "tests::every_variant_classifies"
+row = "R22"
+sha256 = "0436b067413ea35333c0d7444ed3deb2db19e9c9f8f09e93f5f8cc2818850d14"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_relay.rs"
+item = "relay_timeout_ms_bounds_a_plain_request"
+row = "R22"
+sha256 = "ea3ab3891c425640075d01127c60ad60172229c8d12da6398eb2abf2500c2336"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/send_loop.rs"
+item = "a_transport_error_is_not_retried_and_skips_observe_and_decide"
+row = "R22"
+sha256 = "70603cd7665b46c85ee4ef9e948270974967de2a2023c061cb48357e673d7602"
+
+[[drift]]
+file = "polyoxide-test-support/tests/failure_tags.rs"
+item = "network_connect"
+row = "R22"
+sha256 = "28cf0c6d7fdd4452162868268a1900a3c649e715158e987d45e37dbcdf57dc09"
+
+[[drift]]
+file = "polyoxide-test-support/tests/failure_tags.rs"
+item = "network_timeout"
+row = "R22"
+sha256 = "d65b466db8ff77bebde309a54acedd60ea9ea2312fade7a861910cf86d0a0341"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connection_tests::a_dns_miss_is_a_network_failure"
+row = "R22"
+sha256 = "4f8b28f3acba6ffe4d2cc408f476d6541d53594eafd7b5f77be3261033a845bf"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connect_tests::addr"
+row = "R22"
+sha256 = "035dcceb6c9abca5e20b1baee5e6a7219d7e8161a49b34222a3c57c3a97e5b23"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connect_tests::address_families_are_interleaved"
+row = "R22"
+sha256 = "73cbca14c19ede0635ae6bf99c467ca46d0571e0698328df00dd0b7cd222f60c"
+
+[[drift]]
+file = "polyoxide-polymarket/src/clob/ws/client.rs"
+item = "connect_tests::single_family_lists_pass_through_unchanged"
+row = "R22"
+sha256 = "48c277e6768a43d968fca2c7d9561d999ea3a8cbbcd1bc8c80982452cced1839"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_sports.rs"
+item = "connect_raw"
+row = "R22"
+sha256 = "f63c4ed40e7476423007f93240581170c3ef44d75de9e475d0661b689ba41bc9"
+
+[[drift]]
+file = "polyoxide-venue/tests/ws_classification.rs"
+item = "every_other_kind"
+row = "R22"
+sha256 = "cd6f015ec150b6174aed3f73e6baa7e2f9ef4acad583bdf3de4d2c6c211987bd"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_503_upgrade_is_worth_retrying_and_a_404_is_not"
+row = "R22"
+sha256 = "d2e6b95476530117af28fc1072418d0f28614c54d7bcd1353dafcf92cdc15205"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_failure_that_replays_on_every_attempt_is_not_retried"
+row = "R22"
+sha256 = "5e7d94abe38dcb1b03dfb75a17b8aabbf47e5b1cc5a864acf068594166b5daab"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_hung_handshake_times_out_at_the_default"
+row = "R22"
+sha256 = "0dd7d8c127c8ca48c6aeaa68a3ac1fe1376da931416acf4dedc8418843fad412"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::a_refused_upgrade_keeps_its_status_and_retry_after"
+row = "R22"
+sha256 = "da76532632306f605c0838b9d3aa599194889b96b424d24a088a0c48f01848d9"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::connect_over_is_bounded_by_with_timeout"
+row = "R22"
+sha256 = "7444acf0fe17b79ae7aded8eb469361bb3f65d8cb6e526f2226c5626654c2a7c"
+
+[[drift]]
+file = "polyoxide-ws/src/connect.rs"
+item = "tests::connect_over_keeps_a_refusals_status_and_retry_after"
+row = "R22"
+sha256 = "e5048743819dac1be76429955092955237f8fdca72db3e39e740a565978dcac1"
+
+[[drift]]
+file = "polyoxide-ws/src/error.rs"
+item = "tests::every_transport_error_has_its_kind"
+row = "R22"
+sha256 = "666c82e6a6cd385024f331e50b3ba57dcdac4d9a2ce8365f1546c9eac1140ee1"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/tests.rs"
+item = "actions_and_recorders::a_refused_upgrade_carries_its_status_and_headers"
+row = "R22"
+sha256 = "dd6f3b93b08aa9f0c8d8554706cec0459e45bce254a4eb53046e294215a5820c"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/tests.rs"
+item = "actions_and_recorders::a_stalled_handshake_never_completes"
+row = "R22"
+sha256 = "634a7e28ee828553dfd7b45d5e56bd4f2234b4529b5018bc29a6fae60b20443a"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/tests.rs"
+item = "as_rtds_used_it::reject_handshake_fails_the_connection_attempt_recoverably"
+row = "R22"
+sha256 = "06dab212886dbf7e71330fb17c5cb1af135a99911ebda21c043777103a8f1001"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_throttle.rs"
+item = "the_hold_survives_a_tier_change"
+row = "R23"
+sha256 = "42df712360946e3af0baf097378aa751ea65dfb24ca078311e1c1e0a1bb2650e"
+
+[[drift]]
 file = "polyoxide-binance/src/usdm/ws/client.rs"
 item = "UsdmWs::close_frame"
 kind = "method"
-row = "R22"
+row = "R24"
 sha256 = "0d4a05039a271ac9bbdacec37f21429625b7552f7ad95f291b643c0b9f544c85"

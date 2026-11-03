@@ -208,7 +208,7 @@ impl Protocol for PerpsProtocol {
                             attempt += 1;
                             let delay = backoff.take();
                             tracing::warn!(%err, ?delay, attempt, "subscribe rate limited, retrying");
-                            tokio::time::sleep(delay).await;
+                            connection.runtime().sleep(delay).await;
                         }
                         result => {
                             result?;

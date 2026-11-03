@@ -225,6 +225,44 @@ jobs:
           crate: polyoxide-cli
           suite: live
           flags: "--no-default-features --test live_api"
+
+  live-wasm-browser:
+    name: Live browser tests (polyoxide-wasm-smoke, browser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - id: wasm-bindgen
+        name: Read the wasm-bindgen version Cargo.lock pins
+        run: |
+          version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
+      - name: Run the browser tests
+        run: bash scripts/wasm_live.sh
+      - name: Classify and merge
+        run: |
+          mkdir -p artifacts/polyoxide-wasm-smoke
+          cp target/wasm-live/first-pass.json artifacts/polyoxide-wasm-smoke/first-pass.json
+          cp target/wasm-live/retry.json artifacts/polyoxide-wasm-smoke/retry.json
+          python3 .github/scripts/classify_failures.py classify \
+            --input artifacts/polyoxide-wasm-smoke/first-pass.json \
+            --output-dir artifacts/polyoxide-wasm-smoke/classified
+          python3 .github/scripts/classify_failures.py merge \
+            --first-pass artifacts/polyoxide-wasm-smoke/first-pass.json \
+            --retry artifacts/polyoxide-wasm-smoke/retry.json \
+            --output-dir artifacts/polyoxide-wasm-smoke/merged
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: behavioral-polyoxide-wasm-smoke-browser
+          path: artifacts/polyoxide-wasm-smoke/
   # generated:end nightly-live-jobs
 
   aggregate:
@@ -244,6 +282,7 @@ jobs:
       - live-polyoxide-polymarket-sports
       - live-polyoxide-venue
       - live-polyoxide-cli-live
+      - live-wasm-browser
     # generated:end nightly-aggregate-needs
     if: always()
     runs-on: ubuntu-latest

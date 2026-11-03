@@ -4,7 +4,7 @@ use alloy::primitives::Address;
 use std::sync::Arc;
 
 use crate::shared::{SessionSignerScope, Tier};
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -76,12 +76,7 @@ impl AccountApi {
         // The endpoint returns 200 with an empty body on success, so parse the
         // body manually and treat an empty body as a null JSON value rather than
         // letting `send()` fail with "EOF while parsing a value".
-        let text = request
-            .send_raw()
-            .await?
-            .text()
-            .await
-            .map_err(ApiError::from)?;
+        let text = request.send_raw().await?.text().await?;
         if text.trim().is_empty() {
             return Ok(serde_json::Value::Null);
         }

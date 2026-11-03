@@ -137,6 +137,10 @@ impl UsdmWs {
     }
 
     /// Send a protocol ping and wait for the pong, returning the round trip.
+    /// On a transport that sends no protocol pings (`client_pings` false, a
+    /// browser's) it fails with [`Kind::Unsupported`](polyoxide_ws::Kind::Unsupported)
+    /// and sends nothing; [`list_subscriptions`](Self::list_subscriptions) is
+    /// the keepalive there.
     pub async fn ping(&mut self) -> Result<Duration, UsdmWsError> {
         self.inner.ping().await
     }
@@ -304,6 +308,31 @@ mod tests {
         assert_eq!(ws.list_subscriptions().await.unwrap(), ["ethusdt@aggTrade"]);
         // The supervised tier replays from this list after a reconnect.
         assert_eq!(ws.streams(), &[agg("ETHUSDT")]);
+    }
+
+    #[tokio::test]
+    async fn a_ping_is_refused_where_the_transport_sends_none_and_nothing_is_sent_d9() {
+        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let mut ws = UsdmWs::connect_to(&server.url, StreamPath::Market, [agg("BTCUSDT")])
+            .await
+            .unwrap();
+        // What `open` reads from a transport whose capabilities say
+        // `client_pings: false`, as a browser's does.
+        ws.inner.set_client_pings(false);
+        let err = ws.ping().await.unwrap_err();
+        assert!(
+            matches!(&err, UsdmWsError::Connect(source) if matches!(source.kind(), polyoxide_ws::Kind::Unsupported)),
+            "{err:?}"
+        );
+        // The browser transport's own wording, the contract text.
+        assert!(
+            err.to_string()
+                .contains("a ping frame is not supported by the browser transport"),
+            "{err}"
+        );
+        assert_eq!(server.ping_count(), 0, "a ping reached the server");
+        // The refusal sends nothing and leaves the connection usable.
+        assert_eq!(ws.list_subscriptions().await.unwrap(), ["btcusdt@aggTrade"]);
     }
 
     #[tokio::test]

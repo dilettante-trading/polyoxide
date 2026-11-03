@@ -1,8 +1,11 @@
 //! Macros for reducing boilerplate in API client implementations
 
-/// Generates a client builder's five transport setters over a
-/// `ClientConfig` field: `base_url`, `timeout_ms`, `pool_size`,
-/// `with_retry_config` and `max_concurrent`.
+/// Generates a client builder's transport setters over a `ClientConfig`
+/// field: `base_url`, `timeout_ms`, `pool_size`, `with_retry_config`,
+/// `max_concurrent`, `runtime` and `http_transport`.
+///
+/// `runtime` names `polyoxide_rt::Runtime` through a doc-hidden re-export of
+/// core's, so the invoking crate needs no `polyoxide-rt` dependency for it.
 ///
 /// Invoke it inside the builder's `impl`, naming the field that holds the
 /// config. The builder's `build` reads the config back through
@@ -59,6 +62,24 @@ macro_rules! client_config_setters {
         /// request, so every send waits forever.
         pub fn max_concurrent(mut self, max: usize) -> Self {
             self.$config.max_concurrent = Some(max);
+            self
+        }
+
+        /// Send every attempt on `transport` instead of the target's default,
+        /// which is built from the timeout, the pool size and `gzip`.
+        pub fn http_transport(
+            mut self,
+            transport: ::std::sync::Arc<dyn $crate::HttpTransport>,
+        ) -> Self {
+            self.$config.http_transport = Some(transport);
+            self
+        }
+
+        /// Set the runtime the client's waits, clock reads and spawns go
+        /// through. Unset, the target's default is used
+        /// (`polyoxide_rt::default_runtime`).
+        pub fn runtime(mut self, runtime: ::std::sync::Arc<dyn $crate::__rt::Runtime>) -> Self {
+            self.$config.runtime = Some(runtime);
             self
         }
     };

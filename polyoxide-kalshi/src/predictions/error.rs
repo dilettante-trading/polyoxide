@@ -151,8 +151,8 @@ impl Classify for VenueError {
 mod tests {
     use std::sync::Arc;
 
-    use polyoxide_core::reqwest::header::{HeaderMap, RETRY_AFTER};
-    use polyoxide_core::reqwest::StatusCode;
+    use polyoxide_core::http::header::{HeaderMap, RETRY_AFTER};
+    use polyoxide_core::http::StatusCode;
 
     use super::*;
 

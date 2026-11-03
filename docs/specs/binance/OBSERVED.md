@@ -111,6 +111,36 @@ Payloads:
   `AAVEUSD_PERP` in `!ticker@arr`.
 - The kline's `B` is documented as "Ignore" and is not modelled.
 
+## Browser transport (2026-11)
+
+A browser's WebSocket cannot send a protocol ping, so a client there keeps a
+connection alive with a request the server answers instead.
+
+- `LIST_SUBSCRIPTIONS` as a keepalive: on `/market/stream` subscribed to
+  `btcusdt@markPrice@1s`, six requests 20 s apart on 2026-11-02 were all
+  answered, in 0.301 s, 0.319 s, 0.322 s, 0.318 s, 0.319 s and 0.319 s. An
+  answer is the request's id with `result` the subscribed names, so it is a
+  frame like any other and counts as liveness.
+
+Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly by
+`polyoxide-wasm-smoke`'s `browser_live` (the `live-wasm-browser` job).
+
+- `fapi.binance.com` answers `Access-Control-Allow-Origin: *` (with `Access-Control-Allow-Headers:
+  *` and `Access-Control-Allow-Credentials: true`) and sets no `Access-Control-Expose-Headers`: the
+  response carries `X-MBX-USED-WEIGHT-1M`, and a browser does not show it. The weight header is
+  unreadable in a browser, so the client's weight accounting has nothing to read there.
+- `fstream.binance.com` upgrades (101) on `/market/stream`. A browser sends no protocol ping, so
+  the supervised protocol's keepalive is the `LIST_SUBSCRIPTIONS` request: the nightly job
+  subscribes to `btcusdt@markPrice@1s`, sends it 250 ms later and expects an answer with its id
+  within 5 s whose `result` names the stream.
+- Whether a browser can read Binance's 451 is unmeasured: the 451 was "not provoked from a test IP"
+  (see the REST section), and nobody has checked that it carries `Access-Control-Allow-Origin`. A
+  page that cannot read it sees a failed fetch or a failed upgrade, like any other. So the nightly's
+  `scripts/wasm_live.sh` reads `https://fapi.binance.com/fapi/v1/ping` natively with curl (10 s, no
+  retry) before the browser run, and on a 451 builds `browser_live` with
+  `POLYOXIDE_LIVE_BINANCE_STATUS=451`, which fails the three Binance checks `environmental` without
+  calling Binance from the browser. With any other status, a failed upgrade is `real`.
+
 ## Spot
 
 Measured against `api.binance.com`, and `data-api.binance.vision` where a section says so, with `docs/specs/binance/probes/probe_rest.py --product spot`, and the streams on `stream.binance.com` with `docs/specs/binance/probes/probe_ws.py --product spot`; the design is `docs/superpowers/specs/2026-11-02-binance-spot-design.md`. Each section names the day it was measured. A later finding goes directly above the last line of this file, under a heading of its own.

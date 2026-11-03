@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
-use polyoxide_core::reqwest::{self, Method, StatusCode};
+use polyoxide_core::http::{Method, StatusCode};
 use polyoxide_core::{
     ApiError, AttemptInfo, Authenticator, Charge, Decision, DynAuthenticator, HttpClient,
     HttpClientBuilder, LayerId, Refused, RequestMeta, RequestParts, ResponseMeta, RetryConfig,
@@ -409,7 +409,7 @@ async fn a_transport_error_is_not_retried_and_skips_observe_and_decide() {
         .unwrap();
 
     let err = http.send(rows(), &[], None).await.unwrap_err();
-    assert!(matches!(err, ApiError::Network(_)), "{err:?}");
+    assert!(matches!(err, ApiError::Transport(_)), "{err:?}");
     assert_eq!(err.class(), Class::Network);
     assert_eq!(
         throttle.log.entries(),
@@ -579,7 +579,7 @@ async fn a_hold_with_no_retry_left_warns() {
 #[test]
 fn a_429_with_no_retry_left_is_fail_with_its_hold() {
     let schedule = schedule(3, 400);
-    let headers = reqwest::header::HeaderMap::new();
+    let headers = polyoxide_core::http::header::HeaderMap::new();
     let decide = |status: StatusCode, attempt: u32| {
         PolymarketRetryPolicy.decide(
             &ResponseMeta {

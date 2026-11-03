@@ -5,12 +5,12 @@
 //! half-open socket is therefore indistinguishable from a quiet market except
 //! by timing the gap between updates, which is what [`SupervisedRtds`] does.
 
-use std::{future::Future, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
+use polyoxide_rt::{default_runtime, timeout, Instant, Runtime};
 use polyoxide_venue::Classify;
-use polyoxide_ws::{Backoff, DEFAULT_CONNECT_TIMEOUT};
-use tokio::time::{timeout, Instant};
+use polyoxide_ws::{default_socket_transport, Backoff, SocketTransport, DEFAULT_CONNECT_TIMEOUT};
 
 use crate::rtds::{
     client::{Rtds, RTDS_URL},
@@ -38,6 +38,8 @@ pub struct RtdsBuilder {
     initial_backoff: Duration,
     max_backoff: Duration,
     connect_timeout: Duration,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for RtdsBuilder {
@@ -56,6 +58,8 @@ impl RtdsBuilder {
             initial_backoff: DEFAULT_INITIAL_BACKOFF,
             max_backoff: DEFAULT_MAX_BACKOFF,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -108,18 +112,40 @@ impl RtdsBuilder {
         self
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the stream's timers, keep-alive and reconnect waits run
+        /// on. By default the target's.
+        runtime;
+        /// How each connect dials. By default the target's.
+        socket_transport;
+    }
+
     /// Connect and subscribe.
     pub async fn connect(
         self,
         subscriptions: impl IntoIterator<Item = Subscription>,
     ) -> Result<SupervisedRtds, RtdsError> {
         let subscriptions: Vec<_> = subscriptions.into_iter().collect();
-        let stream = Rtds::open(&self.url, subscriptions.clone(), self.connect_timeout).await?;
+        let runtime = self.runtime.clone().unwrap_or_else(default_runtime);
+        let transport = self
+            .socket_transport
+            .clone()
+            .unwrap_or_else(default_socket_transport);
+        let stream = Rtds::open_with(
+            &self.url,
+            subscriptions.clone(),
+            self.connect_timeout,
+            Arc::clone(&transport),
+            Arc::clone(&runtime),
+        )
+        .await?;
         Ok(SupervisedRtds {
             config: self,
             subscriptions,
             stream,
             delivered: false,
+            runtime,
+            transport,
         })
     }
 }
@@ -149,9 +175,18 @@ pub struct SupervisedRtds {
     /// lifetime, or a failure count that decays rather than resetting. Worth
     /// doing only if a real host is ever observed behaving that way.
     delivered: bool,
+    /// The runtime its waits and clock reads go through.
+    runtime: Arc<dyn Runtime>,
+    /// How a reconnect dials.
+    transport: Arc<dyn SocketTransport>,
 }
 
 impl SupervisedRtds {
+    /// The time since `at` on this connection's runtime.
+    fn since(&self, at: Instant) -> Duration {
+        self.runtime.now().saturating_duration_since(at)
+    }
+
     /// Run until the handler errors or the subscription is rejected.
     ///
     /// Recoverable failures — drops and stalls — reconnect with backoff.
@@ -215,12 +250,14 @@ impl SupervisedRtds {
                         // on a retry.
                         let delay = backoff.take_at_least(asked.take().unwrap_or_default());
                         tracing::debug!(?delay, "waiting before the next RTDS connection attempt");
-                        tokio::time::sleep(delay).await;
+                        self.runtime.sleep(delay).await;
 
-                        let attempt = Rtds::open(
+                        let attempt = Rtds::open_with(
                             &self.config.url,
                             self.subscriptions.clone(),
                             self.config.connect_timeout,
+                            Arc::clone(&self.transport),
+                            Arc::clone(&self.runtime),
                         );
                         match attempt.await {
                             Ok(stream) => {
@@ -255,32 +292,32 @@ impl SupervisedRtds {
     {
         // Wake often enough to honour whichever deadline is nearer.
         let tick = self.config.ping_interval.min(self.config.stale_after);
-        let mut last_frame = Instant::now();
-        let mut last_ping = Instant::now();
+        let mut last_frame = self.runtime.now();
+        let mut last_ping = self.runtime.now();
 
         loop {
-            match timeout(tick, self.stream.next()).await {
+            match timeout(self.runtime.as_ref(), tick, self.stream.next()).await {
                 // No frame this tick. Check for death first, then keep alive.
-                Err(_) => {
-                    let elapsed = last_frame.elapsed();
+                None => {
+                    let elapsed = self.since(last_frame);
                     if elapsed >= self.config.stale_after {
                         return Err(RtdsError::Stalled { elapsed });
                     }
-                    if last_ping.elapsed() >= self.config.ping_interval {
+                    if self.since(last_ping) >= self.config.ping_interval {
                         self.stream.ping().await?;
-                        last_ping = Instant::now();
+                        last_ping = self.runtime.now();
                     }
                 }
-                Ok(None) => return Err(RtdsError::ConnectionClosed),
+                Some(None) => return Err(RtdsError::ConnectionClosed),
                 // A bad frame is not a bad connection. Surface it and keep
                 // reading, or one unparseable message ends a 24/7 feed.
-                Ok(Some(Err(err))) if err.recovery() == Recovery::SkipFrame => {
-                    last_frame = Instant::now();
+                Some(Some(Err(err))) if err.recovery() == Recovery::SkipFrame => {
+                    last_frame = self.runtime.now();
                     tracing::warn!(%err, "skipping an RTDS frame this client could not read");
                 }
-                Ok(Some(Err(err))) => return Err(err),
-                Ok(Some(Ok(event))) => {
-                    last_frame = Instant::now();
+                Some(Some(Err(err))) => return Err(err),
+                Some(Some(Ok(event))) => {
+                    last_frame = self.runtime.now();
                     self.delivered = true;
                     handler(event).await?;
                 }

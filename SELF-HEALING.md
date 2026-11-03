@@ -41,6 +41,11 @@ the live loaders treat as absent. Besides the 06:00 UTC run, it also runs on
 Saturday and Sunday at 18:30 UTC. The sports feed carries only what is live,
 and that is when North American leagues and weekend soccer are on.
 
+One job is not a nextest run: `live-wasm-browser` runs `polyoxide-wasm-smoke`'s `browser_live`
+in headless Chrome through `scripts/wasm_live.sh`, which hands the classifier the same
+`polyoxide-class=<tag>` lines in libtest-json, and its artifact is read by the aggregate like the
+others. It needs no secrets.
+
 <!-- generated:begin selfheal-behavioral -->
 | Crate | Test binaries |
 |-------|---------------|
@@ -49,6 +54,7 @@ and that is when North American leagues and weekend soccer are on.
 | polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_trading` (built with `--features clob-ws,data,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
 | polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm,binance-spot,kalshi-predictions`) |
 | polyoxide-cli | `live_api` |
+| polyoxide-wasm-smoke | `browser_live` (built with `--features live`; wasm-bindgen-test in headless Chrome through scripts/wasm_live.sh, no secrets; 15-minute budget) |
 <!-- generated:end selfheal-behavioral -->
 
 Failures are classified by `.github/scripts/classify_failures.py`. It reads one

@@ -86,6 +86,11 @@ def test_a_clean_tree_passes(tmp_path: Path) -> None:
     assert (result.status, result.hits, result.stale) == (0, [], [])
 
 
+def test_the_runtime_crate_is_read_by_the_gate(tmp_path: Path) -> None:
+    root = tree(tmp_path, {"polyoxide-rt/src/time.rs": "/// A timer.\n/// As binance does.\n"})
+    assert findings(run(root)) == [("polyoxide-rt/src/time.rs", 2, "binance", "binance")]
+
+
 def test_a_venue_word_in_a_foundation_comment_fails_naming_file_line_and_term(
         tmp_path: Path) -> None:
     root = tree(tmp_path, {"polyoxide-core/src/hooks.rs": "/// A window.\n/// As binance does.\n"})

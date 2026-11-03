@@ -227,4 +227,14 @@ mod tests {
         assert!(!protocol.delivered(&bad, &decoded));
         assert!(protocol.is_live(&Message::Pong(Vec::new().into()), &Decoded::Nothing));
     }
+
+    #[test]
+    fn the_answer_to_a_list_subscriptions_keepalive_is_nothing_and_is_live_d9() {
+        let mut protocol = UsdmProtocol::new(USDM_WS_BASE.to_owned(), StreamPath::Market);
+        let answer = Message::Text(r#"{"result":["btcusdt@markPrice@1s"],"id":7}"#.into());
+        let decoded = protocol.decode(&answer);
+        assert!(matches!(decoded, Decoded::Nothing));
+        assert!(protocol.is_live(&answer, &decoded));
+        assert!(!protocol.delivered(&answer, &decoded));
+    }
 }

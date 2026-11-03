@@ -62,3 +62,10 @@ this.
 
 Symbol sets moved beyond the documented four within one observation window, so
 symbols are modelled as `String` rather than an enum.
+
+## Browser transport (2026-11)
+
+Probed with `Origin: https://prader.example` on 2026-11-02. `rtds` is native-only (spec D1), so
+the nightly browser job, `browser_live`, does not open it.
+
+- `ws-live-data.polymarket.com` upgrades (101) from a browser origin.

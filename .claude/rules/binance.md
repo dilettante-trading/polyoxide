@@ -44,7 +44,11 @@ builds each product without the other, so every item in it compiles under either
   `Hold` for a `429` or `418`, only ever extended, with the 3-day ceiling; an optional paced layer,
   which only `usdm`'s funding routes use), its `Clock` and the `USED_WEIGHT_HEADER`, `DEFAULT_BAN`
   and `MAX_COOLDOWN` constants. A product's `WeightBudget` is a handle to one `Engine` with its own
-  layers and its own `Throttle` impl.
+  layers and its own `Throttle` impl. The engine keeps time on its hold's `polyoxide_rt::Runtime`:
+  its cooldown, its paced layer and its wait for the next minute sleep on it and the pace reads its
+  clock, so no production code in `shared/` names `tokio::time` or `Instant::now`
+  (`runtime_gate.py` scans it, and `usdm` builds on wasm32). A product's `WeightBudget::new_on`
+  builds its engine on a given runtime, and its builder uses the client's.
 - `shared::policy::decide`: the retry decision as a function of the response, the attempt, the
   schedule and the time to the next minute. "The retry policy" below is its rules.
 - `shared::error`: `decode` by status first into `Decoded`, `retry_after_secs`, `clip` and
@@ -59,7 +63,11 @@ builds each product without the other, so every item in it compiles under either
   the errors the shared code makes, and a `Shape` view the recovery and the router match on): the
   request correlation (`request`), the bare connection (`Bare`), the kit `Protocol`
   (`BinanceProtocol<S>`), and the router with its forwarding queue of 1024 and its stop
-  (`supervised`). Each product's public socket types stay its own structs and enums over it.
+  (`supervised`). Each product's public socket types stay its own structs and enums over it. The
+  router's `Settings` carry the builder's runtime and `SocketTransport` (each `None` for the
+  target's default, resolved once in `connect`), every supervisor gets both, and the router and its
+  forwarders spawn on that runtime; the bare tier's `ping` times its round trip on the connection's
+  runtime.
 - `shared::symbol`: `Symbol` and `InvalidSymbol`. Nothing else is shared: response types,
   `Interval` and `Filter` stay per product, so one product's wire change never reaches the other.
 - **A product keeps** its `WeightBudget`, its `<Module>RetryPolicy`, its `<Module>Error`, its
@@ -87,7 +95,9 @@ crate has its own `usdm::WeightBudget` (`src/usdm/weight.rs`) instead of core's 
 The budget is the client's `Throttle` on core's send loop: each route builder (`GetKlines`,
 `GetTime` and the rest, over a private `Routed<T>`) hands core's `Request` its weight as a `Cost`
 on `usdm::weight::WEIGHT_LAYER` or `FUNDING_LAYER`, and every `Usdm` built with one budget shares
-its hold. Pass one with `UsdmBuilder::weight_budget`.
+its hold. Pass one with `UsdmBuilder::weight_budget`. The budget keeps time on its hold's runtime
+(its cooldown, its funding pace and its wait for the next minute sleep on it): the builder makes
+one with `WeightBudget::new_on` the client's runtime, and a budget passed in keeps its own.
 
 The weight table, `Route::cost`, is measured, not copied: Binance's page is one off at the 100 and
 500 `klines` edges, and does not say that omitting `limit` costs 5 on `klines` and 1 on `depth`.
@@ -140,6 +150,8 @@ fourteen methods over eleven routes, with no credentials. It is the first produc
   layer. The `RAW_REQUESTS` limit (300,000 per 5 minutes) is not modelled: every request weighs at
   least 1, so the budget caps a client at 27,000 requests per 5 minutes, and the module docs say
   so. Pass a budget with `SpotBuilder::weight_budget`; every `Spot` built with one shares its hold.
+  `SpotBuilder::build` makes one with `WeightBudget::new_on` the client's runtime, as `usdm`'s does,
+  and a budget passed in keeps its own.
 - **The weight table**, `spot::weight::Route::cost`, is measured over distinct URLs, not copied,
   and pinned by its `documented_weights` test: `ping` and `time` 1, `exchangeInfo` 20, `depth` 5
   without `limit` and for 1 to 100, 25 for 101 to 500, 50 for 501 to 1000 and 250 above (each band
@@ -191,7 +203,11 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
   `usdm::ws`'s public types wrap them.
 - The crate-private `BinanceProtocol<S>` (`src/shared/ws/protocol.rs`, generic over the product's
   `StreamSet`; `UsdmProtocol` is its alias on `UsdmStreams`) keeps Binance's rows: pings on the wall
-  clock, also while the queue is full, so a slow consumer is never stale; staleness counting every
+  clock, also while the queue is full, so a slow consumer is never stale (on a transport with no
+  protocol pings, a browser's, the ping is a `LIST_SUBSCRIPTIONS` request under an id of its own,
+  paced as every request is by `MIN_REQUEST_INTERVAL` (a tick inside it sends nothing and the next
+  sends), and its answer is the liveness; the bare tier's `ping()` (`shared::ws`'s `Bare`) fails
+  with `Kind::Unsupported` there); staleness counting every
   frame, pongs and the server's pings included; reconnect with a paced replay, bounded as a whole
   by `stale_after`; rotation at 23 h 50 min, under Binance's 24-hour cutoff; a change recorded
   before it is sent, so one whose connection dies under it, or that the server leaves unanswered
@@ -225,7 +241,13 @@ kit's `Connection`) and `UsdmWsBuilder`/`SupervisedUsdmWs`.
 
 Nine spot market streams on `stream.binance.com`: `SpotWs` (one connection) and
 `SpotWsBuilder`/`SupervisedSpotWs`, on the same `shared::ws` code as `usdm::ws`, with `SpotStreams`
-as spot's `StreamSet`. `spot-ws` turns `spot` on.
+as spot's `StreamSet`. `spot-ws` turns `spot` on. `SpotWsBuilder` takes `runtime(..)` and
+`socket_transport(..)` from `polyoxide_ws::transport_setters!`, as `UsdmWsBuilder` does.
+
+- **Native-only.** Spot is not in the wasm32 set (README's WebAssembly section): its hosts'
+  CORS and socket upgrade were never probed from a browser, so `scripts/wasm_check.sh` names no
+  spot feature. Its code is on the same seams as `usdm`'s, so admitting it is a probe and a line
+  in that script, not a port.
 
 - **One path.** Every stream is on `/stream` of `SPOT_WS_BASE`, `wss://stream.binance.com:9443`:
   `base_url` sets another host and the client appends `/stream`, so a test server's base works as it

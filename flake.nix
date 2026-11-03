@@ -42,6 +42,8 @@
               "clippy"
               "rustfmt"
             ];
+            # The browser build (`scripts/wasm_check.sh`).
+            targets = [ "wasm32-unknown-unknown" ];
           };
           # The MSRV job's toolchain. It sits behind `msrv-cargo`, so it never shadows the
           # default `cargo`, and it builds into its own target directory.
@@ -64,6 +66,15 @@
               pkgs.cargo-nextest
               pkgs.uv
               pkgs.python3
+              # The browser smoke suite (scripts/wasm_smoke.sh): the runner must be the
+              # wasm-bindgen version Cargo.lock pins, which the script checks.
+              pkgs.wasm-bindgen-cli
+            ]
+            # nixpkgs has no chromium for darwin; there the installed Chrome and a chromedriver
+            # on PATH (or CHROMEDRIVER) do.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              pkgs.chromium
+              pkgs.chromedriver
             ];
           };
         }

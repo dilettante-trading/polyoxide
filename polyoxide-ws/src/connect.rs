@@ -3,72 +3,82 @@
 
 use std::{future::Future, time::Duration};
 
+use polyoxide_rt::{default_runtime, Runtime};
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    client_async_tls, connect_async, tungstenite::client::IntoClientRequest, MaybeTlsStream,
-    WebSocketStream,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio_tungstenite::client_async_tls;
 
-use crate::{ensure_crypto_provider, Kind, WsError};
+use crate::{
+    default_socket_transport, tungstenite::client::IntoClientRequest, BoxSocket, Kind, WsError,
+};
 
 /// How long one connection attempt may take unless a venue says otherwise:
 /// the TCP connect, the TLS handshake and the WebSocket upgrade together.
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// An open connection, over TLS or plain TCP.
-pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-
-/// Open a connection, giving up after `timeout`.
+/// Open a connection through the target's default [`SocketTransport`](crate::SocketTransport)
+/// and runtime, giving up after `timeout`.
 ///
 /// `request` is a URL, or a handshake request with its own headers, built
-/// afresh for each attempt so any authentication in it is recomputed. The
-/// rustls provider is installed first ([`ensure_crypto_provider`]). A
-/// connection not open within `timeout` fails as
-/// [`Kind::ConnectTimeout`]; every other failure is the transport's, such as
-/// [`Kind::Refused`] for an upgrade the server answered with an HTTP status.
-///
-/// The basis is two socket crates' former connects, one crate's `open`
-/// (`src/client.rs`) and the other's bare-tier `open`, each on this function
-/// since Stories 4.7 and 4.10. A venue whose connect is its own bounds it
-/// with [`with_timeout`] instead, as one venue's per-address connect does
-/// (D20), each step bounded and the upgrade through [`connect_over`].
-pub async fn connect<R>(request: R, timeout: Duration) -> Result<Socket, WsError>
+/// afresh for each attempt so any authentication in it is recomputed. A
+/// connection not open within `timeout` fails as [`Kind::ConnectTimeout`];
+/// every other failure is the transport's, such as [`Kind::Refused`] for an
+/// upgrade the server answered with an HTTP status. A caller that injects its
+/// own transport or runtime opens its connections through them instead.
+pub async fn connect<R>(request: R, timeout: Duration) -> Result<BoxSocket, WsError>
 where
     R: IntoClientRequest + Unpin,
 {
-    ensure_crypto_provider();
-    let (socket, _response) = with_timeout(timeout, connect_async(request)).await??;
-    Ok(socket)
+    let request = request.into_client_request()?;
+    default_socket_transport()
+        .connect(request, timeout, default_runtime())
+        .await
 }
 
 /// Upgrade a TCP connection the caller opened itself: the TLS handshake when
 /// `request` is a `wss://` URL, then the WebSocket upgrade.
 ///
-/// For a venue whose connect is its own: one that resolves the host and
+/// For a transport whose connect is its own: one that resolves the host and
 /// dials each address itself, and hands the first TCP connection that opens
-/// to this (D20). The rustls provider is installed first
-/// ([`ensure_crypto_provider`]). It has no timeout of its own, so bound it
-/// with [`with_timeout`]. A refused upgrade fails as [`Kind::Refused`], as it
-/// does through [`connect`].
-pub async fn connect_over<R>(request: R, tcp: TcpStream) -> Result<Socket, WsError>
+/// to this. The rustls provider is installed first
+/// ([`ensure_crypto_provider`](crate::ensure_crypto_provider)). It has no
+/// timeout of its own, so bound it with [`with_timeout`]. A refused upgrade
+/// fails as [`Kind::Refused`], as it does through [`connect`]. Native only.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn connect_over<R>(request: R, tcp: TcpStream) -> Result<BoxSocket, WsError>
 where
     R: IntoClientRequest + Unpin,
 {
-    ensure_crypto_provider();
+    crate::ensure_crypto_provider();
     let (socket, _response) = client_async_tls(request, tcp).await?;
-    Ok(socket)
+    Ok(Box::new(socket))
 }
 
 /// Run a caller's own connect future, giving up after `timeout` with
 /// [`Kind::ConnectTimeout`].
 ///
 /// The future's own output comes back as it is, so its errors stay the
-/// caller's. Install the rustls provider before a TLS connect of its own
-/// ([`ensure_crypto_provider`]).
+/// caller's. It runs on the target's default runtime; a transport bounds its
+/// own steps on the runtime it is given instead. Install the rustls provider
+/// before a TLS connect of its own
+/// ([`ensure_crypto_provider`](crate::ensure_crypto_provider)).
 pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F::Output, WsError> {
-    tokio::time::timeout(timeout, connect)
+    let runtime = default_runtime();
+    bounded(runtime.as_ref(), timeout, connect).await
+}
+
+/// Run `future` within `timeout` on `runtime`, giving up with
+/// [`Kind::ConnectTimeout`]. A transport bounds each of its own steps with the
+/// runtime it is given.
+pub(crate) async fn bounded<F: Future>(
+    runtime: &dyn Runtime,
+    timeout: Duration,
+    future: F,
+) -> Result<F::Output, WsError> {
+    polyoxide_rt::timeout(runtime, timeout, future)
         .await
-        .map_err(|_| WsError::connect_timeout(timeout))
+        .ok_or_else(|| WsError::connect_timeout(timeout))
 }
 
 /// Whether reconnecting can help after a connect failed this way.
@@ -79,9 +89,10 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 /// `|status| class_for_handshake_status(status).is_retriable()`.
 ///
 /// A bad URL, an upgrade request that could not be built, a refused TLS
-/// configuration, an attack detection and a capacity limit replay the same
-/// failure on every attempt, so they are `false`. Everything else, an I/O
-/// failure, a timeout or a lost connection among them, is `true`.
+/// configuration, an attack detection, a capacity limit and an operation the
+/// transport cannot perform replay the same failure on every attempt, so they
+/// are `false`. Everything else, an I/O failure, a timeout or a lost
+/// connection among them, is `true`.
 ///
 /// This decides only whether a reconnect can help, not what a failure is:
 /// that is the venue's classification. What to do after
@@ -96,7 +107,12 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 pub fn retrying_can_fix(err: &WsError, retriable_status: impl Fn(u16) -> bool) -> bool {
     match err.kind() {
         Kind::Refused { status, .. } => retriable_status(status),
-        Kind::Url | Kind::HttpFormat | Kind::Tls | Kind::AttackAttempt | Kind::Capacity => false,
+        Kind::Url
+        | Kind::HttpFormat
+        | Kind::Tls
+        | Kind::AttackAttempt
+        | Kind::Capacity
+        | Kind::Unsupported => false,
         _ => true,
     }
 }
@@ -130,7 +146,8 @@ mod tests {
         let server = ScriptedServer::start(vec![Script::stall()]).await;
         let err = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
-            .expect_err("a server that never upgrades must not connect");
+            .err()
+            .expect("a server that never upgrades must not connect");
         assert_eq!(
             err.kind(),
             Kind::ConnectTimeout {
@@ -147,7 +164,8 @@ mod tests {
         .await;
         let err = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
-            .expect_err("a refused upgrade must not connect");
+            .err()
+            .expect("a refused upgrade must not connect");
         assert_eq!(
             err.kind(),
             Kind::Refused {
@@ -166,7 +184,8 @@ mod tests {
         .await;
         let unwell = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
-            .expect_err("503");
+            .err()
+            .expect("503");
         assert_eq!(
             unwell.kind(),
             Kind::Refused {
@@ -178,7 +197,8 @@ mod tests {
 
         let missing = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
-            .expect_err("404");
+            .err()
+            .expect("404");
         assert!(!retrying_can_fix(&missing, rule));
     }
 
@@ -231,7 +251,8 @@ mod tests {
         let tcp = dial(&server).await;
         let err = connect_over(server.url.as_str(), tcp)
             .await
-            .expect_err("a refused upgrade must not connect");
+            .err()
+            .expect("a refused upgrade must not connect");
         assert_eq!(
             err.kind(),
             Kind::Refused {
@@ -250,7 +271,8 @@ mod tests {
         let after = Duration::from_millis(100);
         let err = with_timeout(after, connect_over(server.url.as_str(), tcp))
             .await
-            .expect_err("a stalled upgrade must time out");
+            .err()
+            .expect("a stalled upgrade must time out");
         assert_eq!(err.kind(), Kind::ConnectTimeout { after });
     }
 
@@ -273,6 +295,7 @@ mod tests {
             tungstenite::Error::Tls(TlsError::InvalidDnsName),
             tungstenite::Error::AttackAttempt,
             tungstenite::Error::Capacity(CapacityError::TooManyHeaders),
+            tungstenite::Error::Io(std::io::ErrorKind::Unsupported.into()),
         ] {
             let err = WsError::from(err);
             assert!(!retrying_can_fix(&err, |_| true), "{err:?}");

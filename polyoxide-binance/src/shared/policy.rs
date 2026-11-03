@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::reqwest::StatusCode;
+use polyoxide_core::http::StatusCode;
 use polyoxide_core::{AttemptInfo, Decision, Outcome, ResponseMeta, RetryConfig};
 
 use crate::shared::error::retry_after_secs;

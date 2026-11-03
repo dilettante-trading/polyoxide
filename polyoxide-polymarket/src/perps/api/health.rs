@@ -40,7 +40,7 @@ impl Health {
         let pong = self.http_client.health::<PerpsError>(PATH, &[]).await?;
         let status = pong.response.status();
         let headers = pong.response.headers().clone();
-        let text = pong.response.text().await.map_err(ApiError::from)?;
+        let text = pong.response.text().await?;
         let ping: Ping = decode_json(PATH, &text).map_err(ApiError::from)?;
         if ping.status != "ok" {
             // A 2xx whose body says the host is not ok, classed `Decode`.

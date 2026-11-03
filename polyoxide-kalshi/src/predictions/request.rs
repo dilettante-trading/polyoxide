@@ -483,7 +483,7 @@ mod tests {
 #[cfg(test)]
 mod routed_tests {
     use mockito::{Matcher, Server};
-    use polyoxide_core::reqwest::header::{HeaderName, HeaderValue};
+    use polyoxide_core::http::header::{HeaderName, HeaderValue};
     use polyoxide_core::{ApiError, Authenticator, DynAuthenticator, RequestParts};
     use polyoxide_test_support::query::{headers_sent, pairs_sent};
     use polyoxide_venue::{Class, Classify};

@@ -4,8 +4,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use polyoxide_rt::Instant;
 use tokio::sync::Notify;
-use tokio::time::Instant;
 
 use crate::hold::Hold;
 use crate::hooks::{LayerId, Refused};
@@ -45,6 +45,9 @@ use crate::hooks::{LayerId, Refused};
 /// charging, and again after any wait of its own, so a hold set while it
 /// waited for tokens is honoured. Every layer of one throttle shares one
 /// `Hold`, and [`resize`](Self::resize) keeps it.
+///
+/// The bucket keeps time on its hold's [`runtime`](Hold::runtime): its refill
+/// reads that clock and its waits for tokens sleep on it.
 ///
 /// A clone shares the tokens and the hold.
 #[derive(Clone)]
@@ -118,6 +121,7 @@ impl CapacityBucket {
         provisional: bool,
     ) -> Self {
         assert!(refill_per_sec > 0, "a bucket that never refills");
+        let updated = hold.runtime().now();
         Self {
             inner: Arc::new(Inner {
                 layer,
@@ -126,7 +130,7 @@ impl CapacityBucket {
                     capacity,
                     refill_per_sec,
                     tokens: f64::from(capacity),
-                    updated: Instant::now(),
+                    updated,
                     provisional,
                 }),
                 sized: Notify::new(),
@@ -171,7 +175,7 @@ impl CapacityBucket {
             match self.step(units, exact) {
                 Step::Taken => break,
                 Step::Refused(refused) => return Err(refused),
-                Step::WaitFor(wait) => tokio::time::sleep(wait).await,
+                Step::WaitFor(wait) => self.inner.hold.runtime().sleep(wait).await,
                 Step::WaitForSize => sized.await,
             }
         }
@@ -194,7 +198,7 @@ impl CapacityBucket {
     /// wait.
     fn step(&self, units: u32, exact: bool) -> Step {
         let mut state = self.lock();
-        state.refill(Instant::now());
+        state.refill(self.inner.hold.runtime().now());
         let units = if units > state.capacity {
             if state.provisional {
                 return Step::WaitForSize;
@@ -233,7 +237,7 @@ impl CapacityBucket {
         assert!(refill_per_sec > 0, "a bucket that never refills");
         {
             let mut state = self.lock();
-            state.refill(Instant::now());
+            state.refill(self.inner.hold.runtime().now());
             state.capacity = capacity;
             state.refill_per_sec = refill_per_sec;
             state.tokens = state.tokens.min(f64::from(capacity));
@@ -279,6 +283,8 @@ impl std::fmt::Debug for CapacityBucket {
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::Instant;
+
     use super::*;
 
     const LAYER: LayerId = LayerId("test");

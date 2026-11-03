@@ -32,6 +32,10 @@ EIP-712 domains and are verified by different parties.
 | **L2** | everything else authenticated: orders, balances, trades | HMAC-SHA256 over `timestamp + method + path [+ body]`, url-safe base64 |
 | **Order signing** | the signed order payload itself, posted under L2 | EIP-712 `Order`, domain `Polymarket CTF Exchange` v2, **with** `verifyingContract` |
 
+On `wasm32` alloy declares its `Signer` futures `!Send`, so `core/eip712.rs` signs every digest
+through one private `sign_digest`, which holds the future in a `send_wrapper::SendWrapper` there
+(single-threaded, as in `rt.md`) and keeps the `Send` bound of the authenticator and `Trading`.
+
 The two EIP-712 domains are unrelated: order signing needs a verifying contract, L1 auth must not
 have one. `docs/specs/clob/auth.md` has both type strings; `src/clob/core/eip712.rs` pins them
 against golden vectors from `py-clob-client`. Signature type 3 (Deposit Wallets) and session keys:
@@ -140,8 +144,8 @@ reuse guard that refuses a second order with the same id.
 
 ### `events()`
 
-It opens its own socket when first polled (`ClobBuilder::user_socket` sets its URL and timing)
-and yields:
+It opens its own socket when first polled (`ClobBuilder::user_socket` sets its URL and timing;
+it runs on the client's runtime unless the socket builder set its own) and yields:
 
 - a leading `Resync`; a `Resync` after every reconnect, and for a `FAILED` trade (the venue voided
   a fill the stream reported, and the trait has no event that takes one back);

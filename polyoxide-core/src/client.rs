@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::Method;
+use http::Method;
+use polyoxide_rt::Runtime;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
-use reqwest::header::RETRY_AFTER;
+use http::header::RETRY_AFTER;
 
 use crate::error::ApiError;
 use crate::hooks::{
@@ -13,15 +14,11 @@ use crate::hooks::{
     Throttle,
 };
 use crate::rate_limit::{RateLimiter, RetryConfig};
+use crate::transport::{default_transport, HttpTransport};
 
 /// Extract the `Retry-After` header value as a string, if present and valid UTF-8.
-pub fn retry_after_header(response: &reqwest::Response) -> Option<String> {
-    response
-        .headers()
-        .get(RETRY_AFTER)?
-        .to_str()
-        .ok()
-        .map(String::from)
+pub fn retry_after_header(headers: &http::HeaderMap) -> Option<String> {
+    headers.get(RETRY_AFTER)?.to_str().ok().map(String::from)
 }
 
 /// Default request timeout in milliseconds
@@ -32,17 +29,21 @@ pub const DEFAULT_POOL_SIZE: usize = 10;
 /// Shared HTTP client with base URL, throttle, retry policy and retry config.
 ///
 /// This is the common structure used by all API clients to hold the
-/// configured reqwest client, base URL, and the hooks its send loop,
-/// [`send`](Self::send), runs on every request.
+/// transport every attempt is sent on, the base URL, and the hooks its send
+/// loop, [`send`](Self::send), runs on every request.
 #[derive(Clone)]
 pub struct HttpClient {
-    /// The underlying reqwest HTTP client
-    pub client: reqwest::Client,
+    /// The transport every attempt is sent on, shared with every
+    /// [`with_base_url`](Self::with_base_url) sibling.
+    pub(crate) transport: Arc<dyn HttpTransport>,
+    /// How long an attempt may take unless its request sets its own.
+    pub(crate) timeout: Duration,
     /// Base URL for API requests
     pub base_url: Url,
     pub(crate) throttle: Arc<DynThrottle<'static>>,
     pub(crate) policy: Arc<DynRetryPolicy<'static>>,
     pub(crate) retry_config: RetryConfig,
+    pub(crate) runtime: Arc<dyn Runtime>,
     concurrency_limiter: Option<Arc<Semaphore>>,
 }
 
@@ -51,9 +52,10 @@ pub struct HttpClient {
 impl std::fmt::Debug for HttpClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpClient")
-            .field("client", &self.client)
+            .field("transport", &self.transport)
             .field("base_url", &self.base_url)
             .field("retry_config", &self.retry_config)
+            .field("runtime", &self.runtime)
             .field("concurrency_limiter", &self.concurrency_limiter)
             .finish_non_exhaustive()
     }
@@ -62,8 +64,8 @@ impl std::fmt::Debug for HttpClient {
 impl HttpClient {
     /// Clone this client, pointed at a different base URL.
     ///
-    /// The underlying reqwest client (and so its connection pool), throttle
-    /// (and so its hold), retry policy, retry config, and concurrency limiter
+    /// The transport (and so its connection pool), throttle
+    /// (and so its hold), retry policy, retry config, runtime, and concurrency limiter
     /// are all shared with the original. Use this to reach a sibling API host
     /// that should share the same transport configuration and request budget —
     /// a venue whose APIs live on their own subdomains is consumed by one
@@ -92,6 +94,13 @@ impl HttpClient {
             base_url: Url::parse(base_url)?,
             ..self.clone()
         })
+    }
+
+    /// The runtime this client's waits, clock reads and spawns go through:
+    /// the one its builder was given, else the target's default. Shared with
+    /// every [`with_base_url`](Self::with_base_url) sibling.
+    pub fn runtime(&self) -> &Arc<dyn Runtime> {
+        &self.runtime
     }
 
     /// Acquire a concurrency permit, if a limiter is configured.
@@ -170,7 +179,9 @@ pub struct HttpClientBuilder {
     policy: Option<Arc<DynRetryPolicy<'static>>>,
     retry_config: RetryConfig,
     max_concurrent: Option<usize>,
+    runtime: Option<Arc<dyn Runtime>>,
     gzip: Option<bool>,
+    http_transport: Option<Arc<dyn HttpTransport>>,
 }
 
 impl HttpClientBuilder {
@@ -184,7 +195,9 @@ impl HttpClientBuilder {
             policy: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
+            runtime: None,
             gzip: None,
+            http_transport: None,
         }
     }
 
@@ -244,6 +257,18 @@ impl HttpClientBuilder {
         self
     }
 
+    /// Set the runtime this client's waits, clock reads and spawns go
+    /// through, shared with every [`with_base_url`](HttpClient::with_base_url)
+    /// sibling.
+    ///
+    /// Default: [`polyoxide_rt::default_runtime`]. A throttle installed with
+    /// [`with_throttle`](Self::with_throttle) keeps time on the runtime it was
+    /// built on: build it on this one, as the venue crates do.
+    pub fn runtime(mut self, runtime: Arc<dyn Runtime>) -> Self {
+        self.runtime = Some(runtime);
+        self
+    }
+
     /// Ask for gzip-compressed responses and decode them, or pin that off.
     ///
     /// Unset by default, which leaves reqwest's own default. This crate enables
@@ -256,23 +281,31 @@ impl HttpClientBuilder {
         self
     }
 
+    /// Send every attempt on `transport` instead of the target's default,
+    /// shared with every [`with_base_url`](HttpClient::with_base_url) sibling.
+    ///
+    /// The builder's timeout still travels with each request, as its
+    /// `HttpRequest::timeout`, but [`pool_size`](Self::pool_size) and
+    /// [`gzip`](Self::gzip) feed only the default `ReqwestTransport`: a
+    /// transport you inject owns its own connections and compression.
+    pub fn http_transport(mut self, transport: Arc<dyn HttpTransport>) -> Self {
+        self.http_transport = Some(transport);
+        self
+    }
+
     /// Build the HTTP client.
     pub fn build(self) -> Result<HttpClient, ApiError> {
-        let mut builder = reqwest::Client::builder();
-        if let Some(enabled) = self.gzip {
-            builder = builder.gzip(enabled);
-        }
-        let client = builder
-            .timeout(Duration::from_millis(self.timeout_ms))
-            .connect_timeout(Duration::from_secs(10))
-            .redirect(reqwest::redirect::Policy::none())
-            .pool_max_idle_per_host(self.pool_size)
-            .build()?;
+        let timeout = Duration::from_millis(self.timeout_ms);
+        let transport = match self.http_transport {
+            Some(transport) => transport,
+            None => default_transport(timeout, self.pool_size, self.gzip)?,
+        };
 
         let base_url = Url::parse(&self.base_url)?;
 
         Ok(HttpClient {
-            client,
+            transport,
+            timeout,
             base_url,
             throttle: self
                 .throttle
@@ -281,6 +314,7 @@ impl HttpClientBuilder {
                 .policy
                 .unwrap_or_else(|| DynRetryPolicy::new_arc(DefaultRetryPolicy)),
             retry_config: self.retry_config,
+            runtime: self.runtime.unwrap_or_else(polyoxide_rt::default_runtime),
             concurrency_limiter: self.max_concurrent.map(|n| Arc::new(Semaphore::new(n))),
         })
     }
@@ -295,7 +329,7 @@ impl Default for HttpClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::StatusCode;
+    use http::StatusCode;
 
     #[test]
     fn test_should_retry_uses_retry_after_header() {

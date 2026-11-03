@@ -29,13 +29,14 @@
 /// | --- | --- |
 /// | `Io` (a TLS EOF included), `Protocol`, `ConnectionClosed`, `Other`, `ConnectTimeout`, `NoAnswer` | [`Network`](crate::Class::Network) |
 /// | `Closed { code }` | [`class_for_close_code`](crate::class_for_close_code): 1000, 1001, 1006, 1011–1013 and no code are `Network`; 1002, 1003, 1007–1010 and 4000–4999 are `VenueRefusal` with the code |
-/// | `Url`, `HttpFormat`, `Tls`, `AttackAttempt`, `Capacity`, `AlreadyClosed` | [`InvalidRequest`](crate::Class::InvalidRequest) |
+/// | `Url`, `HttpFormat`, `Tls`, `AttackAttempt`, `Capacity`, `AlreadyClosed`, `Unsupported` (an operation the transport cannot perform) | [`InvalidRequest`](crate::Class::InvalidRequest) |
 /// | `Refused { status, retry_after }` | [`class_for_handshake_status`](crate::class_for_handshake_status), with the `Retry-After` read by [`parse_retry_after`](crate::parse_retry_after) and no clamp: a 429 carries its wait, a zero none; a 418 and a 451 are `Restricted` |
 ///
 /// Any kind a later `polyoxide-ws` adds is `Network`. `ws_is_fault` is
 /// `false` only for an upgrade refused with 451, a region the venue does not
-/// serve; a 418 ban is a fault the client earned. `ws_retry_after` is a
-/// refused upgrade's `Retry-After`, whatever its status, read by
+/// serve; a 418 ban is a fault the client earned, and an `Unsupported` is the
+/// caller's, so it is a fault too. `ws_retry_after` is a refused upgrade's
+/// `Retry-After`, whatever its status, read by
 /// [`parse_retry_after`](crate::parse_retry_after) with no clamp, and `None`
 /// for a zero, for no header and for every other failure: a socket error
 /// surfaces the wait as HTTP's `ErrorResponse::retry_after` does, though only
@@ -117,7 +118,8 @@ macro_rules! impl_ws_classification {
                 | ::polyoxide_ws::Kind::Tls
                 | ::polyoxide_ws::Kind::AttackAttempt
                 | ::polyoxide_ws::Kind::Capacity
-                | ::polyoxide_ws::Kind::AlreadyClosed => $crate::Class::InvalidRequest,
+                | ::polyoxide_ws::Kind::AlreadyClosed
+                | ::polyoxide_ws::Kind::Unsupported => $crate::Class::InvalidRequest,
                 // Io (a TLS EOF included), Protocol, ConnectionClosed, Other,
                 // ConnectTimeout, NoAnswer, and any kind added later.
                 _ => $crate::Class::Network,

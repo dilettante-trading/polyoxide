@@ -22,13 +22,14 @@
 //! The URL must be `wss://`, or `ws://` to a loopback host, so credentials
 //! never travel unencrypted to a remote host.
 
-use std::{collections::HashSet, future::Future, time::Duration};
+use std::{collections::HashSet, future::Future, sync::Arc, time::Duration};
 
+use polyoxide_rt::{default_runtime, Runtime};
 use polyoxide_venue::Classify;
 use polyoxide_ws::{
     tungstenite::{client::IntoClientRequest, handshake::client::Request, Message},
-    Connection, Decoded, MembershipHandle, Offline, Outage, Protocol, Queue, Recovery, Socket,
-    Supervisor, Timing, WsError,
+    BoxSocket, Connection, Decoded, MembershipHandle, Offline, Outage, Protocol, Queue, Recovery,
+    SocketTransport, Supervisor, Timing, WsError,
 };
 
 use super::{
@@ -36,7 +37,7 @@ use super::{
     DisconnectReason,
 };
 use crate::clob::ws::{
-    client::{dial, validate_subscription_count},
+    client::{clob_transport, open_socket, validate_subscription_count},
     ApiCredentials, ClobWsError, UserMessage, UserSubscription, UserSubscriptionUpdate,
     WS_USER_URL,
 };
@@ -202,9 +203,7 @@ impl Protocol for ClobUserProtocol {
     type Change = UserChange;
     type Ack = ();
 
-    /// The upgrade request for the URL. The supervisor does not send it:
-    /// `connect` is overridden, and the per-address dial upgrades each
-    /// address's connection from the URL itself. The trait requires it.
+    /// The upgrade request for the URL, which the supervisor dials through its transport.
     fn handshake(&mut self) -> Result<Request, ClobWsError> {
         self.url
             .as_str()
@@ -212,14 +211,18 @@ impl Protocol for ClobUserProtocol {
             .map_err(|err| ClobWsError::Connection(WsError::from(err)))
     }
 
-    /// Dial through clob's per-address connect (D20), so every address of a
-    /// blackholed route is tried within the connect timeout per step.
+    /// Dial through the supervisor's transport, which the builder defaults to
+    /// the per-address connect (D20), so every address of a blackholed route
+    /// is tried within the connect timeout per step. Overridden only to map a
+    /// timed-out step to clob's own `ConnectTimeout`.
     fn connect(
         &mut self,
+        transport: Arc<dyn SocketTransport>,
+        runtime: Arc<dyn Runtime>,
         timeout: Duration,
-    ) -> impl Future<Output = Result<Socket, ClobWsError>> + Send {
+    ) -> impl Future<Output = Result<BoxSocket, ClobWsError>> + Send {
         let url = self.url.clone();
-        async move { dial(&url, timeout).await }
+        async move { open_socket(&url, timeout, transport, runtime).await }
     }
 
     async fn replay(
@@ -357,6 +360,8 @@ impl UserMembership for MembershipHandle<ClobUserProtocol> {
 pub struct UserWsBuilder {
     url: String,
     timing: Timing,
+    runtime: Option<Arc<dyn Runtime>>,
+    socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl Default for UserWsBuilder {
@@ -373,6 +378,8 @@ impl UserWsBuilder {
         Self {
             url: WS_USER_URL.to_owned(),
             timing: default_timing(),
+            runtime: None,
+            socket_transport: None,
         }
     }
 
@@ -402,6 +409,27 @@ impl UserWsBuilder {
         connect_timeout;
     }
 
+    polyoxide_ws::transport_setters! {
+        /// The runtime the supervision task and its timers run on. By default
+        /// the target's.
+        runtime;
+        /// How each attempt dials. By default the kit's per-address dial,
+        /// which tries every address the host resolves to (D20).
+        socket_transport;
+    }
+
+    /// Run on `runtime` unless `runtime(..)` already chose one.
+    pub(crate) fn runtime_unless_set(mut self, runtime: Arc<dyn Runtime>) -> Self {
+        self.runtime.get_or_insert(runtime);
+        self
+    }
+
+    /// The runtime set on this builder, if any.
+    #[cfg(test)]
+    pub(crate) fn chosen_runtime(&self) -> Option<&Arc<dyn Runtime>> {
+        self.runtime.as_ref()
+    }
+
     /// Open the connection, subscribe with `markets` (`None` for every market)
     /// and the credentials, and start supervising.
     ///
@@ -413,9 +441,7 @@ impl UserWsBuilder {
         credentials: ApiCredentials,
     ) -> Result<SupervisedUserWs, ClobWsError> {
         let membership = Self::membership(markets)?;
-        Supervisor::new(self.protocol(credentials), self.timing)
-            .connect(membership)
-            .await
+        self.supervisor(credentials).connect(membership).await
     }
 
     /// As [`connect`](Self::connect), except that a first attempt that fails in
@@ -428,9 +454,7 @@ impl UserWsBuilder {
         credentials: ApiCredentials,
     ) -> Result<SupervisedUserWs, ClobWsError> {
         let membership = Self::membership(markets)?;
-        Supervisor::new(self.protocol(credentials), self.timing)
-            .start(membership)
-            .await
+        self.supervisor(credentials).start(membership).await
     }
 
     /// The initial membership: without repeats, then refused past 500 markets.
@@ -448,10 +472,20 @@ impl UserWsBuilder {
     fn protocol(&self, credentials: ApiCredentials) -> ClobUserProtocol {
         ClobUserProtocol::new(self.url.clone(), credentials)
     }
+
+    /// The supervisor for a connection with `credentials`, on this builder's
+    /// runtime and transport.
+    fn supervisor(self, credentials: ApiCredentials) -> Supervisor<ClobUserProtocol> {
+        let protocol = self.protocol(credentials);
+        Supervisor::new(protocol, self.timing)
+            .runtime(self.runtime.unwrap_or_else(default_runtime))
+            .socket_transport(clob_transport(self.socket_transport))
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::clob::ws::client::dial;
     use futures_util::StreamExt;
     use polyoxide_venue::Class;
     use polyoxide_ws::{

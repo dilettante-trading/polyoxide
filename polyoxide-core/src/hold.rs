@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use tokio::time::Instant;
+use polyoxide_rt::{Instant, Runtime};
 
 /// Thirty years: where a deadline that would overflow the clock lands instead.
 const FAR_FUTURE: Duration = Duration::from_secs(86_400 * 365 * 30);
@@ -23,6 +23,14 @@ const FAR_FUTURE: Duration = Duration::from_secs(86_400 * 365 * 30);
 /// release all of them early. [`wait`](Self::wait) re-reads the deadline
 /// after waking, so a hold extended mid-wait is honoured in full.
 ///
+/// A hold keeps time on a [`Runtime`]: it reads its
+/// deadline off the runtime's clock and its waits sleep on the runtime.
+/// [`unbounded`](Self::unbounded) and [`with_ceiling`](Self::with_ceiling)
+/// take the target's default runtime, [`unbounded_on`](Self::unbounded_on) and
+/// [`with_ceiling_on`](Self::with_ceiling_on) the one given. Every layer that
+/// waits and shares the hold keeps time on the hold's runtime, so one throttle
+/// never mixes two clocks.
+///
 /// A clone shares the deadline. Every layer of one throttle holds a clone of
 /// one `Hold`, so replacing or resizing a layer keeps it.
 #[derive(Clone)]
@@ -33,28 +41,47 @@ pub struct Hold {
 struct HoldInner {
     until: Mutex<Option<Instant>>,
     ceiling: Option<Duration>,
+    runtime: Arc<dyn Runtime>,
 }
 
 impl Hold {
-    /// A hold with no ceiling: every [`extend`](Self::extend) is taken as
-    /// asked.
+    /// A hold with no ceiling, on the target's default runtime: every
+    /// [`extend`](Self::extend) is taken as asked.
     pub fn unbounded() -> Self {
-        Self::new(None)
+        Self::unbounded_on(polyoxide_rt::default_runtime())
+    }
+
+    /// As [`unbounded`](Self::unbounded), keeping time on `runtime`.
+    pub fn unbounded_on(runtime: Arc<dyn Runtime>) -> Self {
+        Self::new(None, runtime)
     }
 
     /// A hold that clamps every [`extend`](Self::extend) to `ceiling`, so a
-    /// server asking for longer holds for `ceiling`.
+    /// server asking for longer holds for `ceiling`, on the target's default
+    /// runtime.
     pub fn with_ceiling(ceiling: Duration) -> Self {
-        Self::new(Some(ceiling))
+        Self::with_ceiling_on(ceiling, polyoxide_rt::default_runtime())
     }
 
-    fn new(ceiling: Option<Duration>) -> Self {
+    /// As [`with_ceiling`](Self::with_ceiling), keeping time on `runtime`.
+    pub fn with_ceiling_on(ceiling: Duration, runtime: Arc<dyn Runtime>) -> Self {
+        Self::new(Some(ceiling), runtime)
+    }
+
+    fn new(ceiling: Option<Duration>, runtime: Arc<dyn Runtime>) -> Self {
         Self {
             inner: Arc::new(HoldInner {
                 until: Mutex::new(None),
                 ceiling,
+                runtime,
             }),
         }
+    }
+
+    /// The runtime this hold keeps time on, which every layer sharing the
+    /// hold keeps time on too.
+    pub fn runtime(&self) -> &Arc<dyn Runtime> {
+        &self.inner.runtime
     }
 
     /// Hold every request for `delay` from now, clamped to the ceiling.
@@ -66,7 +93,7 @@ impl Hold {
             .inner
             .ceiling
             .map_or(delay, |ceiling| delay.min(ceiling));
-        let now = Instant::now();
+        let now = self.inner.runtime.now();
         let until = now.checked_add(delay).unwrap_or(now + FAR_FUTURE);
         let mut slot = self.lock();
         if slot.is_none_or(|current| until > current) {
@@ -82,19 +109,20 @@ impl Hold {
             // `!Send`, which every throttle's `acquire` needs it to be.
             let deadline = *self.lock();
             let Some(deadline) = deadline else { return };
-            if deadline <= Instant::now() {
+            if deadline <= self.inner.runtime.now() {
                 return;
             }
             // Loop rather than return after sleeping: a sibling's 429 can push
             // the deadline out while we wait, and waking into a still-active
             // block is how the storm restarts.
-            tokio::time::sleep_until(deadline).await;
+            self.inner.runtime.sleep_until(deadline).await;
         }
     }
 
     /// Whether a hold is in force now.
     pub fn is_held(&self) -> bool {
-        self.lock().is_some_and(|until| until > Instant::now())
+        self.lock()
+            .is_some_and(|until| until > self.inner.runtime.now())
     }
 
     /// A poison-tolerant lock on the deadline.
@@ -119,7 +147,7 @@ impl Default for Hold {
 impl std::fmt::Debug for Hold {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let remaining =
-            (*self.lock()).and_then(|until| until.checked_duration_since(Instant::now()));
+            (*self.lock()).and_then(|until| until.checked_duration_since(self.inner.runtime.now()));
         f.debug_struct("Hold")
             .field("remaining", &remaining)
             .field("ceiling", &self.inner.ceiling)
@@ -129,6 +157,8 @@ impl std::fmt::Debug for Hold {
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::Instant;
+
     use super::*;
 
     #[tokio::test(start_paused = true)]

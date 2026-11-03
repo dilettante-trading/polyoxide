@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use polyoxide_core::reqwest::header::{HeaderName, HeaderValue};
+use polyoxide_core::http::header::{HeaderName, HeaderValue};
 use polyoxide_core::{ApiError, Authenticator, DynAuthenticator, RequestParts};
 use polyoxide_venue::{Class, Classify, Secret, UnixMillis};
 use ring::rand::SystemRandom;

@@ -4,16 +4,16 @@
 //! so the suite runs fast. The windows are generous, to stay steady on a
 //! loaded machine.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
 use polyoxide_polymarket::sports::{
     fixtures, Event, SportsError, SportsWsBuilder, SupervisedSportsWs,
 };
 use polyoxide_ws::{
-    test_server::{Script, ScriptedServer},
+    test_server::{browser_like, Script, ScriptedServer},
     tungstenite::Message,
-    Kind,
+    Kind, TungsteniteTransport,
 };
 use tokio::time::{timeout, Instant};
 
@@ -384,4 +384,67 @@ async fn a_ping_alone_counts_as_having_received_something() {
         gaps.iter().all(|gap| *gap < Duration::from_millis(300)),
         "backoff grew although every connection received a ping: {gaps:?}"
     );
+}
+
+#[tokio::test]
+async fn a_transport_that_hides_the_servers_pings_never_goes_stale_d9() {
+    // The server's pings flow, but the transport does not show them, so the
+    // feed has nothing to count in a quiet hour and must not drop the
+    // connection for it.
+    let server = ScriptedServer::start(vec![Script::pings_only(Duration::from_millis(100))]).await;
+    let mut feed = builder(&server)
+        .socket_transport(browser_like())
+        .connect()
+        .await
+        .unwrap();
+    assert!(
+        timeout(STALE * 4, feed.next()).await.is_err(),
+        "went stale although the transport shows no ping"
+    );
+    assert_eq!(server.connection_count(), 1);
+}
+
+#[tokio::test]
+async fn a_transport_that_shows_the_servers_pings_still_goes_stale_d9() {
+    // The same silence on a transport that reports it sees the server's pings,
+    // injected explicitly: the rule follows the capability, not the injection.
+    let server = ScriptedServer::start(vec![Script::hold(), Script::hold()]).await;
+    let mut feed = builder(&server)
+        .socket_transport(Arc::new(TungsteniteTransport::new()))
+        .connect()
+        .await
+        .unwrap();
+    match next_item(&mut feed).await {
+        Ok(Event::Disconnected {
+            reason: SportsError::Stale { after },
+        }) => assert_eq!(after, STALE),
+        other => panic!("expected a stale disconnect, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_close_still_ends_a_feed_whose_staleness_is_off_d9() {
+    // The close arrives after STALE, on a connection whose pings the transport
+    // hides: with staleness on, the feed would go `Stale` first.
+    let server = ScriptedServer::start(vec![
+        Script {
+            ping_every: Some(STALE / 3),
+            drop_after: Some(STALE * 3),
+            ..Script::hold()
+        },
+        Script::hold(),
+    ])
+    .await;
+    let mut feed = builder(&server)
+        .socket_transport(browser_like())
+        .connect()
+        .await
+        .unwrap();
+    assert!(matches!(
+        next_item(&mut feed).await,
+        Ok(Event::Disconnected {
+            reason: SportsError::Closed { .. }
+        })
+    ));
+    assert!(matches!(next_item(&mut feed).await, Ok(Event::Reconnected)));
 }

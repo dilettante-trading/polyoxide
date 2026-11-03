@@ -16,9 +16,9 @@
 use std::future::Future;
 use std::time::Duration;
 
+use http::header::{HeaderMap, RETRY_AFTER};
+use http::{Method, StatusCode};
 use polyoxide_venue::{Class, Classify};
-use reqwest::header::{HeaderMap, RETRY_AFTER};
-use reqwest::{Method, StatusCode};
 
 use crate::error::ApiError;
 use crate::rate_limit::RetryConfig;

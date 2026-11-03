@@ -18,7 +18,7 @@ use alloy::primitives::{address, keccak256, Address, Bytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
-use polyoxide_core::reqwest::Method;
+use polyoxide_core::http::Method;
 use polyoxide_core::{
     ApiError, Authenticator, ClientConfig, DynAuthenticator, HttpClient, RequestParts,
 };
@@ -290,7 +290,7 @@ impl RelayClient {
         parts: RequestParts,
         auth: Option<&DynAuthenticator<'_>>,
         log_failure: Option<&str>,
-    ) -> Result<polyoxide_core::reqwest::Response, RelayError> {
+    ) -> Result<polyoxide_core::Response, RelayError> {
         self.http_client
             .send(parts, &[], auth)
             .await
@@ -320,7 +320,7 @@ impl RelayClient {
     }
 
     /// GET `url` with no auth.
-    async fn get(&self, url: &Url) -> Result<polyoxide_core::reqwest::Response, RelayError> {
+    async fn get(&self, url: &Url) -> Result<polyoxide_core::Response, RelayError> {
         self.send(Self::parts(Method::GET, url), None, None).await
     }
 
@@ -349,7 +349,7 @@ impl RelayClient {
         url: &Url,
         allow_builder: bool,
         allow_relayer_api_key: bool,
-    ) -> Result<polyoxide_core::reqwest::Response, RelayError> {
+    ) -> Result<polyoxide_core::Response, RelayError> {
         let auth = self.auth()?;
         if !allow_builder && matches!(auth, AuthConfig::Builder(_)) {
             return Err(RelayError::validation(format!(
@@ -405,7 +405,7 @@ impl RelayClient {
             ))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<NonceResponse>().await.map_err(ApiError::from)?;
+        let data = resp.json::<NonceResponse>().await?;
         Ok(data.nonce)
     }
 
@@ -422,7 +422,7 @@ impl RelayClient {
         let resp = self.get(&url).await?;
         resp.json::<RelayerTransaction>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// List the most recent relayer transactions owned by the authenticated user.
@@ -443,7 +443,7 @@ impl RelayClient {
         let resp = self.get_authed("/transactions", &url, true, true).await?;
         resp.json::<Vec<RelayerTransaction>>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// List all relayer API keys owned by the authenticated address.
@@ -464,7 +464,7 @@ impl RelayClient {
             .await?;
         resp.json::<Vec<RelayerApiKey>>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// Check whether a Safe wallet has been deployed on-chain.
@@ -475,10 +475,7 @@ impl RelayClient {
             .join(&format!("deployed?address={}", safe_address))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp
-            .json::<DeployedResponse>()
-            .await
-            .map_err(ApiError::from)?;
+        let data = resp.json::<DeployedResponse>().await?;
         Ok(data.deployed)
     }
 
@@ -501,11 +498,7 @@ impl RelayClient {
             ))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        Ok(resp
-            .json::<DeployedResponse>()
-            .await
-            .map_err(ApiError::from)?
-            .deployed)
+        Ok(resp.json::<DeployedResponse>().await?.deployed)
     }
 
     /// Fetch the next nonce for `owner`'s wallet of `wallet_type`
@@ -528,11 +521,7 @@ impl RelayClient {
             ))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        Ok(resp
-            .json::<ExecuteParams>()
-            .await
-            .map_err(ApiError::from)?
-            .nonce)
+        Ok(resp.json::<ExecuteParams>().await?.nonce)
     }
 
     /// Poll a submitted transaction (`GET /v1/account/transactions/{id}`).
@@ -556,7 +545,7 @@ impl RelayClient {
         let resp = self.get(&url).await?;
         resp.json::<GaslessTransaction>()
             .await
-            .map_err(|e| ApiError::from(e).into())
+            .map_err(RelayError::from)
     }
 
     /// Find which account wallet `owner` has deployed.
@@ -649,7 +638,7 @@ impl RelayClient {
             .join(&format!("relay-payload?address={}&type=PROXY", address))
             .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<RelayPayload>().await.map_err(ApiError::from)?;
+        let data = resp.json::<RelayPayload>().await?;
         let relay_address: Address = data
             .address
             .parse()
@@ -1379,15 +1368,15 @@ impl RelayClient {
     /// The `Idempotency-Key` header map, with the key trimmed; a blank key is refused.
     fn idempotency_headers(
         idempotency_key: &str,
-    ) -> Result<polyoxide_core::reqwest::header::HeaderMap, RelayError> {
+    ) -> Result<polyoxide_core::http::header::HeaderMap, RelayError> {
         let idempotency_key = idempotency_key.trim();
         if idempotency_key.is_empty() {
             return Err(RelayError::validation("idempotency key must not be empty"));
         }
-        let mut headers = polyoxide_core::reqwest::header::HeaderMap::new();
+        let mut headers = polyoxide_core::http::header::HeaderMap::new();
         headers.insert(
             "Idempotency-Key",
-            polyoxide_core::reqwest::header::HeaderValue::from_str(idempotency_key)
+            polyoxide_core::http::header::HeaderValue::from_str(idempotency_key)
                 .map_err(|e| RelayError::validation(format!("invalid idempotency key: {e}")))?,
         );
         Ok(headers)
@@ -1786,7 +1775,7 @@ impl RelayClient {
         self.post_json(
             endpoint,
             body,
-            polyoxide_core::reqwest::header::HeaderMap::new(),
+            polyoxide_core::http::header::HeaderMap::new(),
             true,
             None,
         )
@@ -1805,7 +1794,7 @@ impl RelayClient {
         &self,
         endpoint: &str,
         body: &B,
-        extra_headers: polyoxide_core::reqwest::header::HeaderMap,
+        extra_headers: polyoxide_core::http::header::HeaderMap,
         allow_relayer_api_key: bool,
         timeout: Option<Duration>,
     ) -> Result<T, RelayError> {
@@ -1836,7 +1825,7 @@ impl RelayClient {
                 Some(endpoint),
             )
             .await?;
-        let response_text = resp.text().await.map_err(ApiError::from)?;
+        let response_text = resp.text().await?;
         polyoxide_core::decode_json(&path, &response_text).map_err(|e| ApiError::from(e).into())
     }
 }
@@ -1865,7 +1854,7 @@ impl Authenticator for RelayGetAuth<'_> {
 /// every attempt.
 struct RelayPostAuth<'a> {
     auth: &'a AuthConfig,
-    extra_headers: &'a polyoxide_core::reqwest::header::HeaderMap,
+    extra_headers: &'a polyoxide_core::http::header::HeaderMap,
 }
 
 impl Authenticator for RelayPostAuth<'_> {
@@ -1878,8 +1867,8 @@ impl Authenticator for RelayPostAuth<'_> {
             headers.insert(name.clone(), value.clone());
         }
         headers.insert(
-            polyoxide_core::reqwest::header::CONTENT_TYPE,
-            polyoxide_core::reqwest::header::HeaderValue::from_static("application/json"),
+            polyoxide_core::http::header::CONTENT_TYPE,
+            polyoxide_core::http::header::HeaderValue::from_static("application/json"),
         );
         parts.headers.extend(headers);
         Ok(())
@@ -2027,10 +2016,12 @@ impl RelayClientBuilder {
             RelayError::validation(format!("Unsupported chain ID: {}", self.chain_id))
         })?;
 
+        let runtime = self.config.runtime_or_default();
         let http_client = self
             .config
             .http_builder()
-            .with_rate_limiter(shared::relay_limits())
+            .runtime(runtime.clone())
+            .with_rate_limiter(shared::relay_limits_on(runtime))
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 
@@ -2058,6 +2049,21 @@ mod tests {
     use super::*;
     use alloy::primitives::address;
     use polyoxide_core::RetryConfig;
+
+    #[test]
+    fn the_builders_runtime_is_the_clients() {
+        let runtime: std::sync::Arc<dyn polyoxide_rt::Runtime> =
+            std::sync::Arc::new(polyoxide_rt::TokioRuntime);
+        let client = RelayClient::builder()
+            .unwrap()
+            .runtime(runtime.clone())
+            .build()
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            client.http_client.runtime(),
+            &runtime
+        ));
+    }
 
     #[tokio::test]
     async fn test_ping() {

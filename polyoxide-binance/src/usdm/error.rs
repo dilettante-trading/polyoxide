@@ -159,15 +159,15 @@ mod tests {
 
     /// A response with `status`, `body` and, when given, a `Retry-After`.
     fn response(status: u16, retry_after: Option<&str>, body: &str) -> ApiError {
-        let mut headers = polyoxide_core::reqwest::header::HeaderMap::new();
+        let mut headers = polyoxide_core::http::header::HeaderMap::new();
         if let Some(value) = retry_after {
             headers.insert(
-                polyoxide_core::reqwest::header::RETRY_AFTER,
+                polyoxide_core::http::header::RETRY_AFTER,
                 value.parse().unwrap(),
             );
         }
         ErrorResponse::new(
-            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
+            polyoxide_core::http::StatusCode::from_u16(status).unwrap(),
             headers,
             body,
         )

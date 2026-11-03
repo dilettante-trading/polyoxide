@@ -81,7 +81,7 @@ fn from_response(mut response: ErrorResponse) -> Decoded {
     let retry_after = retry_after_secs(
         response
             .headers
-            .get(polyoxide_core::reqwest::header::RETRY_AFTER)
+            .get(polyoxide_core::http::header::RETRY_AFTER)
             .and_then(|value| value.to_str().ok()),
     );
     match status {
@@ -137,8 +137,8 @@ pub(crate) fn venue_class(status: u16, code: i64) -> Class {
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::header::HeaderMap;
-    use polyoxide_core::reqwest::StatusCode;
+    use polyoxide_core::http::header::HeaderMap;
+    use polyoxide_core::http::StatusCode;
 
     use super::*;
 

@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use polyoxide_core::{AttemptInfo, Charge, LayerId, Refused, RequestMeta, ResponseMeta, Throttle};
+use polyoxide_rt::Runtime;
 
 use crate::shared::request::Priced;
 use crate::shared::weight::{Clock, Engine};
@@ -195,14 +196,30 @@ impl Default for WeightBudget {
 }
 
 impl WeightBudget {
-    /// A budget for Binance spot's published limit, less the reserve.
+    /// A budget for Binance spot's published limit, less the reserve, on the
+    /// target's default runtime.
     pub fn new() -> Self {
         Self::with_clock(Clock::System)
     }
 
+    /// As [`new`](Self::new), keeping time on `runtime`: its cooldown and its
+    /// wait for the next minute both sleep on it.
+    pub fn new_on(runtime: Arc<dyn Runtime>) -> Self {
+        Self::with_clock_on(Clock::System, runtime)
+    }
+
     fn with_clock(clock: Clock) -> Self {
+        Self::with_clock_on(clock, polyoxide_rt::default_runtime())
+    }
+
+    fn with_clock_on(clock: Clock, runtime: Arc<dyn Runtime>) -> Self {
         Self {
-            inner: Arc::new(Engine::new(PUBLISHED_WEIGHT_PER_MINUTE, None, clock)),
+            inner: Arc::new(Engine::new(
+                PUBLISHED_WEIGHT_PER_MINUTE,
+                None,
+                clock,
+                runtime,
+            )),
         }
     }
 
@@ -223,6 +240,12 @@ impl WeightBudget {
     /// The most weight this budget spends in one minute.
     pub fn per_minute(&self) -> u32 {
         self.inner.per_minute()
+    }
+
+    /// The runtime this budget keeps time on: its hold's.
+    #[cfg(test)]
+    pub(crate) fn runtime(&self) -> &Arc<dyn Runtime> {
+        self.inner.runtime()
     }
 
     /// Weight charged or reported in the current UTC minute.
@@ -260,7 +283,7 @@ impl Throttle for WeightBudget {
 
 #[cfg(test)]
 mod tests {
-    use polyoxide_core::reqwest::{
+    use polyoxide_core::http::{
         header::{HeaderMap, HeaderValue},
         Method, StatusCode,
     };
@@ -399,5 +422,79 @@ mod tests {
         let clone = budget.clone();
         assert!(budget.is_shared_with(&clone));
         assert!(!budget.is_shared_with(&WeightBudget::at_ms(ON_A_MINUTE)));
+    }
+
+    /// A runtime over tokio's that records its sleeps, so a paused-clock test
+    /// can say which waits went through it.
+    #[derive(Debug, Default)]
+    struct Counting {
+        inner: polyoxide_rt::TokioRuntime,
+        sleeps: std::sync::Mutex<Vec<Duration>>,
+    }
+
+    impl Runtime for Counting {
+        fn spawn(&self, task: polyoxide_rt::BoxFuture<()>) {
+            self.inner.spawn(task);
+        }
+
+        fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
+            self.sleeps.lock().unwrap().push(duration);
+            self.inner.sleep(duration)
+        }
+
+        fn now(&self) -> polyoxide_rt::Instant {
+            self.inner.now()
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_wait_for_the_next_minute_is_slept_on_the_budgets_runtime() {
+        let counting = Arc::new(Counting::default());
+        let budget = WeightBudget::with_clock_on(
+            Clock::Tokio {
+                start: tokio::time::Instant::now(),
+                start_ms: ON_A_MINUTE + 15_000,
+            },
+            counting.clone(),
+        );
+        let get = Method::GET;
+        let full = [polyoxide_core::Cost::from(Cost::Weight(5400))];
+        Throttle::acquire(&budget, &meta(&get, &full))
+            .await
+            .unwrap();
+        let one = [polyoxide_core::Cost::from(Cost::Weight(1))];
+        Throttle::acquire(&budget, &meta(&get, &one)).await.unwrap();
+
+        // 15 s into the minute, 45 s are left of it.
+        let slept = counting.sleeps.lock().unwrap().clone();
+        assert!(
+            slept.contains(&Duration::from_secs(45)),
+            "the wait for the next minute did not sleep on the runtime: {slept:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cooldown_is_waited_out_on_the_budgets_runtime() {
+        let counting = Arc::new(Counting::default());
+        let budget = WeightBudget::new_on(counting.clone());
+        assert!(Arc::ptr_eq(
+            budget.runtime(),
+            &(counting.clone() as Arc<dyn Runtime>)
+        ));
+
+        Throttle::hold(&budget, Duration::from_secs(7));
+        let get = Method::GET;
+        let costs = [polyoxide_core::Cost::from(Cost::Weight(1))];
+        Throttle::acquire(&budget, &meta(&get, &costs))
+            .await
+            .unwrap();
+
+        let slept = counting.sleeps.lock().unwrap().clone();
+        assert!(
+            slept
+                .iter()
+                .any(|d| *d > Duration::from_secs(6) && *d <= Duration::from_secs(7)),
+            "the cooldown was not waited out on the runtime: {slept:?}"
+        );
     }
 }

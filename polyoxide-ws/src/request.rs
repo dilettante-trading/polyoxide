@@ -1,12 +1,11 @@
 //! Request/answer correlation on one connection (W12).
 
-use std::{future::Future, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
-use tokio::time::Instant;
-use tokio_tungstenite::tungstenite::Message;
+use polyoxide_rt::{Instant, Runtime};
 
-use crate::{Connection, WsError};
+use crate::{tungstenite::Message, Connection, WsError};
 
 /// What a frame read while a request awaits its answer is, as the caller's
 /// matcher reads it.
@@ -68,9 +67,9 @@ impl Default for Requests {
 /// neither.
 impl Connection {
     /// Send requests no sooner than `interval` apart. Only
-    /// [`request`](Self::request) is paced: a frame sent with
-    /// [`send`](Self::send), under an id from [`take_id`](Self::take_id) or
-    /// not, neither waits nor counts.
+    /// [`request`](Self::request) and [`take_paced_id`](Self::take_paced_id)
+    /// are paced: a frame sent with [`send`](Self::send), under an id from
+    /// [`take_id`](Self::take_id) or not, neither waits nor counts.
     pub fn min_request_interval(mut self, interval: Duration) -> Self {
         self.requests.min_interval = Some(interval);
         self
@@ -97,6 +96,30 @@ impl Connection {
         id
     }
 
+    /// Take the next id for a request that is sent now and paced like
+    /// [`request`](Self::request), without waiting: for a synchronous hook
+    /// such as a protocol's ping, which cannot await.
+    ///
+    /// `None`, taking no id, while [`min_request_interval`](Self::min_request_interval)
+    /// has not passed since the last paced send on the connection's runtime
+    /// clock. Otherwise the next id, and now is recorded as the last paced
+    /// send, so the next [`request`](Self::request) waits from it. The caller
+    /// must send the frame it builds for the id; an id taken and not sent
+    /// still delays the next paced request. With no interval set, or one too
+    /// long to add (never reached, as for `request`), it always takes the id.
+    pub fn take_paced_id(&mut self) -> Option<u64> {
+        let now = self.runtime.now();
+        let held_back = match (self.requests.last_request, self.requests.min_interval) {
+            (Some(last), Some(interval)) => last.checked_add(interval).is_some_and(|at| now < at),
+            _ => false,
+        };
+        if held_back {
+            return None;
+        }
+        self.requests.last_request = Some(now);
+        Some(self.take_id())
+    }
+
     /// Send the request `build` writes for the next id, and read until
     /// `answer` recognises its answer.
     pub async fn request<A>(
@@ -112,19 +135,20 @@ impl Connection {
         if self.is_finished() {
             return Err(already_closed());
         }
+        let runtime = Arc::clone(&self.runtime);
         if let (Some(last), Some(interval)) =
             (self.requests.last_request, self.requests.min_interval)
         {
             // An interval too long to add is one never reached.
             if let Some(at) = last.checked_add(interval) {
-                tokio::time::sleep_until(at).await;
+                runtime.sleep_until(at).await;
             }
         }
         let id = self.take_id();
         let timeout = self.requests.answer_timeout;
-        within(timeout, async {
+        within(runtime.as_ref(), timeout, async {
             self.send(build(id)).await?;
-            self.requests.last_request = Some(Instant::now());
+            self.requests.last_request = Some(self.runtime.now());
             self.read_until(&mut |message: &Message| answer(id, message))
                 .await
         })
@@ -141,7 +165,8 @@ impl Connection {
         mut answer: impl FnMut(&Message) -> Correlated<A>,
     ) -> Result<A, WsError> {
         let timeout = self.requests.answer_timeout;
-        within(timeout, self.read_until(&mut answer)).await
+        let runtime = Arc::clone(&self.runtime);
+        within(runtime.as_ref(), timeout, self.read_until(&mut answer)).await
     }
 
     async fn read_until<A>(
@@ -186,20 +211,21 @@ impl Connection {
 
 /// Run `exchange` within `timeout`, if one is set, failing as `NoAnswer`.
 async fn within<A>(
+    runtime: &dyn Runtime,
     timeout: Option<Duration>,
     exchange: impl Future<Output = Result<A, WsError>>,
 ) -> Result<A, WsError> {
     match timeout {
-        Some(timeout) => tokio::time::timeout(timeout, exchange)
+        Some(timeout) => polyoxide_rt::timeout(runtime, timeout, exchange)
             .await
-            .map_err(|_| WsError::no_answer(timeout))?,
+            .ok_or_else(|| WsError::no_answer(timeout))?,
         None => exchange.await,
     }
 }
 
 /// The error for a connection used after its read failed.
 fn already_closed() -> WsError {
-    WsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed)
+    WsError::from(crate::tungstenite::Error::AlreadyClosed)
 }
 
 #[cfg(test)]

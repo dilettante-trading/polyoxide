@@ -4,14 +4,14 @@
 use std::{
     collections::VecDeque,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
 use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::time::Instant;
-use tokio_tungstenite::tungstenite::Message;
+use polyoxide_rt::{default_runtime, Instant, Runtime};
 
-use crate::{request::Requests, Socket, WsError};
+use crate::{request::Requests, tungstenite::Message, BoxSocket, WsError};
 
 /// Which frames a [`Connection`] yields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,8 +58,10 @@ impl Mode {
 /// [`last_inbound`](Self::last_inbound) let a venue decide, and what a Binary
 /// frame means (D12): one venue decodes it as text, and the others skip it.
 pub struct Connection {
-    socket: Socket,
+    socket: BoxSocket,
     mode: Mode,
+    /// The runtime the connection's clock reads, pacing and timeouts use.
+    pub(crate) runtime: Arc<dyn Runtime>,
     buffered: VecDeque<Message>,
     last_inbound: Instant,
     /// The server's close code and reason, once the stream ended on them.
@@ -82,18 +84,30 @@ impl std::fmt::Debug for Connection {
 }
 
 impl Connection {
-    /// Read `socket` in `mode`.
-    pub fn new(socket: Socket, mode: Mode) -> Self {
+    /// Read `socket` in `mode`, on the target's default runtime.
+    pub fn new(socket: BoxSocket, mode: Mode) -> Self {
+        Self::with_runtime(socket, mode, default_runtime())
+    }
+
+    /// Read `socket` in `mode`, on `runtime`: its clock stamps the frames, and
+    /// it paces and bounds the connection's requests.
+    pub fn with_runtime(socket: BoxSocket, mode: Mode, runtime: Arc<dyn Runtime>) -> Self {
         Self {
             socket,
             mode,
+            last_inbound: runtime.now(),
+            runtime,
             buffered: VecDeque::new(),
-            last_inbound: Instant::now(),
             close: None,
             replying: false,
             finished: false,
             requests: Requests::default(),
         }
+    }
+
+    /// The runtime this connection runs on, for a protocol's own timers.
+    pub fn runtime(&self) -> &Arc<dyn Runtime> {
+        &self.runtime
     }
 
     /// Which frames this connection yields.
@@ -139,7 +153,7 @@ impl Connection {
             return Ok(());
         }
         // Sends the close frame and flushes it.
-        self.socket.close(None).await?;
+        self.socket.send(Message::Close(None)).await?;
         Ok(())
     }
 
@@ -161,7 +175,7 @@ impl Connection {
     /// Send the queued close reply, if there is one.
     pub(crate) async fn flush_reply(&mut self) {
         if self.replying {
-            if let Err(err) = self.socket.flush().await {
+            if let Err(err) = SinkExt::<Message>::flush(&mut self.socket).await {
                 tracing::debug!(%err, "the close reply could not be sent");
             }
             self.replying = false;
@@ -176,13 +190,13 @@ impl Connection {
     }
 
     /// The underlying socket, for the request module's reads.
-    pub(crate) fn socket(&mut self) -> &mut Socket {
+    pub(crate) fn socket(&mut self) -> &mut BoxSocket {
         &mut self.socket
     }
 
     /// Note that a frame arrived now.
     pub(crate) fn touch(&mut self) {
-        self.last_inbound = Instant::now();
+        self.last_inbound = self.runtime.now();
     }
 
     /// End the stream after a failed read.
@@ -210,7 +224,7 @@ impl Stream for Connection {
             // RFC 6455 requires the close reply, and this stream may never be
             // read again once it has yielded its last item.
             if this.replying {
-                match this.socket.poll_flush_unpin(cx) {
+                match SinkExt::<Message>::poll_flush_unpin(&mut this.socket, cx) {
                     Poll::Pending => return Poll::Pending,
                     Poll::Ready(Err(err)) => {
                         tracing::debug!(%err, "the close reply could not be sent");
@@ -246,7 +260,7 @@ impl Stream for Connection {
                 Message::Ping(_) if this.mode == Mode::All => {
                     // tungstenite has queued the pong, and sends it on the
                     // next read or flush; the caller may not read again soon.
-                    let _ = this.socket.poll_flush_unpin(cx);
+                    let _ = SinkExt::<Message>::poll_flush_unpin(&mut this.socket, cx);
                     return Poll::Ready(Some(Ok(message)));
                 }
                 message if this.mode.yields(&message) => return Poll::Ready(Some(Ok(message))),

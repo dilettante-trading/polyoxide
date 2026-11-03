@@ -12,7 +12,11 @@ use std::{
 };
 
 use futures_util::StreamExt;
-use polyoxide_ws::{MembershipHandle as PathHandle, Supervised, Supervisor, Timing};
+use polyoxide_rt::{default_runtime, spawn, Runtime, Task};
+use polyoxide_ws::{
+    default_socket_transport, MembershipHandle as PathHandle, SocketTransport, Supervised,
+    Supervisor, Timing,
+};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{
@@ -28,15 +32,29 @@ pub(crate) struct Settings<S: StreamSet> {
     pub(crate) timing: Timing,
     /// The streams to open with.
     pub(crate) streams: Vec<S::Name>,
+    /// The runtime the paths' supervision tasks, the router and its
+    /// forwarders run on; the target's when `None`.
+    pub(crate) runtime: Option<Arc<dyn Runtime>>,
+    /// How each path's connection dials; the target's when `None`.
+    pub(crate) socket_transport: Option<Arc<dyn SocketTransport>>,
 }
 
 impl<S: StreamSet> Settings<S> {
-    /// The supervisor for one path's connection.
+    /// The supervisor for one path's connection, on the settings' runtime and
+    /// transport when they are set.
     fn supervisor(&self, path: S::Path) -> Supervisor<BinanceProtocol<S>> {
-        Supervisor::new(
+        let supervisor = Supervisor::new(
             BinanceProtocol::new(self.base_url.clone(), path),
             self.timing,
-        )
+        );
+        let supervisor = match &self.runtime {
+            Some(runtime) => supervisor.runtime(Arc::clone(runtime)),
+            None => supervisor,
+        };
+        match &self.socket_transport {
+            Some(transport) => supervisor.socket_transport(Arc::clone(transport)),
+            None => supervisor,
+        }
     }
 }
 
@@ -51,7 +69,14 @@ type Reply<S> = oneshot::Sender<Result<(), <S as StreamSet>::Error>>;
 /// Fails if any first connect fails, closing the others: a setup that is
 /// wrong is reported, not retried. With no streams it opens nothing until the
 /// first [`Handle::subscribe`].
-pub(crate) async fn connect<S: StreamSet>(settings: Settings<S>) -> Result<Running<S>, S::Error> {
+pub(crate) async fn connect<S: StreamSet>(
+    mut settings: Settings<S>,
+) -> Result<Running<S>, S::Error> {
+    // Resolved once, so every path's supervisor and the router share them.
+    let runtime = Arc::clone(settings.runtime.get_or_insert_with(default_runtime));
+    settings
+        .socket_transport
+        .get_or_insert_with(default_socket_transport);
     let mut membership: HashMap<S::Path, Vec<S::Name>> = HashMap::new();
     for stream in settings.streams.iter().cloned() {
         let wanted = membership.entry(S::path(&stream)).or_default();
@@ -89,6 +114,7 @@ pub(crate) async fn connect<S: StreamSet>(settings: Settings<S>) -> Result<Runni
     let stop = Stop::<S>::new();
     let mut router = Router {
         config: settings,
+        runtime: Arc::clone(&runtime),
         paths: HashMap::new(),
         membership,
         events,
@@ -101,7 +127,7 @@ pub(crate) async fn connect<S: StreamSet>(settings: Settings<S>) -> Result<Runni
     for (path, supervised) in opened {
         router.adopt(path, supervised);
     }
-    let task = tokio::spawn(route(router, commands_rx, ended_rx));
+    let task = spawn(runtime.as_ref(), route(router, commands_rx, ended_rx));
     Ok(Running {
         events: events_rx,
         commands,
@@ -202,7 +228,7 @@ impl<S: StreamSet> Stop<S> {
 pub(crate) struct Running<S: StreamSet> {
     events: mpsc::Receiver<Item<S>>,
     commands: mpsc::Sender<Command<S>>,
-    task: tokio::task::JoinHandle<Result<(), S::Error>>,
+    task: Task<Result<(), S::Error>>,
     stop: Stop<S>,
 }
 
@@ -245,8 +271,8 @@ impl<S: StreamSet> Running<S> {
         let _ = commands.send(Command::Close).await;
         drop(commands);
         match task.await {
-            Ok(result) => result,
-            Err(_) => Err(stop.error()),
+            Some(result) => result,
+            None => Err(stop.error()),
         }
     }
 }
@@ -274,6 +300,8 @@ struct Ended<S: StreamSet> {
 /// first stream, and lets it close when its last leaves.
 struct Router<S: StreamSet> {
     config: Settings<S>,
+    /// The runtime the router spawns each path's forwarder on.
+    runtime: Arc<dyn Runtime>,
     paths: HashMap<S::Path, Path<S>>,
     /// Each path's streams, as its supervisor last reported them.
     membership: HashMap<S::Path, Vec<S::Name>>,
@@ -281,7 +309,7 @@ struct Router<S: StreamSet> {
     /// Set when the router closes, which closes every path.
     closing: watch::Sender<bool>,
     ended: mpsc::UnboundedSender<Ended<S>>,
-    forwarders: Vec<tokio::task::JoinHandle<()>>,
+    forwarders: Vec<Task<()>>,
     generation: u64,
     /// The cause the client stopped on, shared with the stream and handles.
     stop: Stop<S>,
@@ -294,14 +322,17 @@ impl<S: StreamSet> Router<S> {
         self.generation += 1;
         let handle = supervised.membership();
         self.forwarders.retain(|forwarder| !forwarder.is_finished());
-        self.forwarders.push(tokio::spawn(forward::<S>(
-            path,
-            self.generation,
-            supervised,
-            self.events.clone(),
-            self.closing.subscribe(),
-            self.ended.clone(),
-        )));
+        self.forwarders.push(spawn(
+            self.runtime.as_ref(),
+            forward::<S>(
+                path,
+                self.generation,
+                supervised,
+                self.events.clone(),
+                self.closing.subscribe(),
+                self.ended.clone(),
+            ),
+        ));
         self.paths.insert(
             path,
             Path {

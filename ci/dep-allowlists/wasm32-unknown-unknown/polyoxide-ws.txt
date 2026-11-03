@@ -1,0 +1,58 @@
+# The crates `cargo tree -p polyoxide-ws -e normal --target wasm32-unknown-unknown` builds,
+# sorted and unique, the crate itself left out. CI's scripts job fails on any
+# difference (.github/scripts/tests/test_dep_allowlists.py). Regenerate with
+# `uv run python -m tests.test_dep_allowlists --write` in .github/scripts, and
+# say in the commit why the tree changed.
+block-buffer
+bumpalo
+bytes
+cfg-if
+crypto-common
+data-encoding
+digest
+futures-channel
+futures-core
+futures-macro
+futures-sink
+futures-task
+futures-util
+generic-array
+getrandom
+gloo-timers
+http
+httparse
+itoa
+js-sys
+log
+once_cell
+pin-project-lite
+polyoxide-rt
+ppv-lite86
+proc-macro2
+quote
+rand
+rand_chacha
+rand_core
+send_wrapper
+sha1
+slab
+syn
+thiserror
+thiserror-impl
+tokio
+tokio-macros
+tracing
+tracing-attributes
+tracing-core
+tungstenite
+typenum
+unicode-ident
+utf-8
+wasm-bindgen
+wasm-bindgen-futures
+wasm-bindgen-macro
+wasm-bindgen-macro-support
+wasm-bindgen-shared
+web-sys
+web-time
+zerocopy

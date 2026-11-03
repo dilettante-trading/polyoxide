@@ -2423,7 +2423,7 @@ async fn relay_timeout_ms_bounds_a_plain_request() {
     assert!(
         matches!(
             &err,
-            polyoxide_polymarket::relay::RelayError::Api(polyoxide_core::ApiError::Network(e)) if e.is_timeout()
+            polyoxide_polymarket::relay::RelayError::Api(polyoxide_core::ApiError::Transport(e)) if e.kind() == polyoxide_core::TransportKind::Timeout
         ),
         "{err:?}"
     );

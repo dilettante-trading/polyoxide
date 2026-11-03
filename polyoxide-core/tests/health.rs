@@ -229,7 +229,7 @@ async fn a_transport_failure_on_health_is_the_callers_error() {
         .await
         .expect_err("nothing listens there");
     assert!(
-        matches!(&err, PingError::Api(ApiError::Network(_))),
+        matches!(&err, PingError::Api(ApiError::Transport(_))),
         "{err:?}"
     );
 }

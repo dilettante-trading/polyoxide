@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use mockito::Server;
+use polyoxide_core::http::StatusCode;
 use polyoxide_core::{ApiError, HttpClientBuilder, Request, RetryConfig};
-use reqwest::StatusCode;
 use serde::Deserialize;
 
 /// Simple response type for testing deserialization.
@@ -42,21 +42,22 @@ fn test_request_with_retry(
 async fn retries_on_429_then_succeeds() {
     let mut server = Server::new_async().await;
 
-    // mockito matches in reverse creation order (LIFO), so create the success mock first
-    // and the 429 mock second. The 429 will be matched first, then removed, leaving the 200.
+    // mockito answers with the first matching mock still short of its expected hits, so the 429
+    // mock goes first with `expect(1)`: it answers once, and the success mock, made second,
+    // answers the retry.
+    let retry_mock = server
+        .mock("GET", "/retry-test")
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .expect(1)
+        .create_async()
+        .await;
+
     let success_mock = server
         .mock("GET", "/retry-test")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"value": "ok"}"#)
-        .create_async()
-        .await;
-
-    let retry_mock = server
-        .mock("GET", "/retry-test")
-        .with_status(429)
-        .with_header("retry-after", "0")
-        .expect_at_most(1)
         .create_async()
         .await;
 
@@ -449,7 +450,7 @@ async fn a_post_sends_its_body_serialised_once() {
         .unwrap();
     let auth = polyoxide_core::DynAuthenticator::new_arc(StampAttempt(seen.clone()));
     let resp = Request::<TestResponse, TestError>::new(http, "/order")
-        .method(reqwest::Method::POST)
+        .method(polyoxide_core::http::Method::POST)
         .authenticator(auth)
         .body(&Order {
             side: "BUY",
@@ -550,7 +551,7 @@ async fn a_request_s_costs_reach_the_throttle() {
         exact: false,
     };
     Request::<TestResponse, TestError>::new(http, "/orders")
-        .method(reqwest::Method::DELETE)
+        .method(polyoxide_core::http::Method::DELETE)
         .with_cost(write)
         .with_cost(read)
         .send()
@@ -572,14 +573,14 @@ async fn a_request_parts_timeout_bounds_its_attempt() {
     let http = HttpClientBuilder::new(format!("http://{}", silent.local_addr().unwrap()))
         .build()
         .unwrap();
-    let mut parts = polyoxide_core::RequestParts::new(reqwest::Method::GET, "/slow");
+    let mut parts = polyoxide_core::RequestParts::new(polyoxide_core::http::Method::GET, "/slow");
     parts.timeout = Some(Duration::from_millis(200));
 
     let start = std::time::Instant::now();
     let err = http.send(parts, &[], None).await.unwrap_err();
     let elapsed = start.elapsed();
     assert!(
-        matches!(&err, ApiError::Network(e) if e.is_timeout()),
+        matches!(&err, ApiError::Transport(e) if e.kind() == polyoxide_core::TransportKind::Timeout),
         "{err:?}"
     );
     assert!(
@@ -612,9 +613,9 @@ async fn a_request_parts_timeout_outlasts_the_client_s() {
         .timeout_ms(100)
         .build()
         .unwrap();
-    let mut parts = polyoxide_core::RequestParts::new(reqwest::Method::GET, "/slow");
+    let mut parts = polyoxide_core::RequestParts::new(polyoxide_core::http::Method::GET, "/slow");
     parts.timeout = Some(Duration::from_secs(5));
 
     let response = http.send(parts, &[], None).await.unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(response.status(), polyoxide_core::http::StatusCode::OK);
 }

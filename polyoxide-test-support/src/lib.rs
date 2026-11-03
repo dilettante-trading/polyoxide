@@ -92,23 +92,41 @@
 //!
 //! Their failures panic with no tag, so the nightly classifier files them as
 //! `real`: a wire or schema disagreement is a fault.
+//!
+//! # In a browser
+//!
+//! On `wasm32-unknown-unknown` only the tags build: [`fail`], [`environmental`],
+//! [`transient`], [`tag_for`] and the extension traits. The loaders, the fixture,
+//! agreement and soak helpers read files, the keychain and native clocks, and are
+//! absent. The tag line goes to `console.error`, since std's stderr prints
+//! nothing there and wasm-bindgen-test captures the console into the failing
+//! test's output, where `scripts/wasm_live.sh` reads it.
 
 #![warn(missing_docs)]
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod agreement;
+#[cfg(not(target_arch = "wasm32"))]
 mod creds;
+#[cfg(not(target_arch = "wasm32"))]
 mod fixtures;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod minute;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod openapi;
-#[cfg(feature = "query")]
+#[cfg(all(feature = "query", not(target_arch = "wasm32")))]
 pub mod query;
+#[cfg(not(target_arch = "wasm32"))]
 mod registration;
-#[cfg(feature = "soak")]
+#[cfg(all(feature = "soak", not(target_arch = "wasm32")))]
 pub mod soak;
 mod tag;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use creds::{keychain, load_env, optional_env, Creds, Missing};
+#[cfg(not(target_arch = "wasm32"))]
 pub use fixtures::Fixtures;
+#[cfg(not(target_arch = "wasm32"))]
 pub use registration::Registration;
 pub use tag::{
     environmental, fail, fail_classified, tag_for, transient, ClassifiedResultExt, ResultExt, Tag,

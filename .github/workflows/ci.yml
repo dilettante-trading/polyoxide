@@ -256,3 +256,34 @@ jobs:
         working-directory: .github/scripts
       - run: uv run pytest tests/ -v
         working-directory: .github/scripts
+      # The runtime seam's line (spec D3): no timer, clock read or spawn outside the injected
+      # runtime. It needs only python3.
+      - run: python3 scripts/runtime_gate.py
+
+  # The browser seam (spec D13): the supported crates build for wasm32-unknown-unknown, and the
+  # three browser implementations run in headless Chrome, inside a Worker, against the local
+  # smoke server. wasm-bindgen-cli must be the version Cargo.lock pins, so the version is read
+  # from it. The runner's own Chrome and chromedriver do the browsing, started with the
+  # arguments in polyoxide-wasm-smoke/webdriver.json.
+  wasm:
+    name: WebAssembly
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.14.0"
+      - id: wasm-bindgen
+        run: |
+          version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
+      - run: bash scripts/wasm_check.sh
+      - run: bash scripts/wasm_smoke.sh

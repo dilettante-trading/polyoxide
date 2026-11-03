@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Server, ServerGuard};
-use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue};
-use polyoxide_core::reqwest::{Method, StatusCode};
+use polyoxide_core::http::header::{HeaderMap, HeaderValue};
+use polyoxide_core::http::{Method, StatusCode};
 use polyoxide_core::{
     ApiError, AttemptInfo, Charge, HttpClient, HttpClientBuilder, LayerCharge, Refused,
     RequestMeta, RequestParts, ResponseMeta, RetryConfig, Throttle,
@@ -184,6 +184,9 @@ async fn a_hold_on_the_throttle_stops_both_layers() {
 #[tokio::test]
 async fn the_hold_survives_a_tier_change() {
     let throttle = clob_throttle();
+    // Before the hold is set, so a stall between the two cannot shorten the
+    // reading below the hold's real length.
+    let start = Instant::now();
     throttle.hold(Duration::from_millis(400));
 
     let mut headers = HeaderMap::new();
@@ -203,7 +206,6 @@ async fn the_hold_survives_a_tier_change() {
 
     // 500 orders fit Gold's bucket of 600 and never Standard's 60, so this is
     // the new bucket; it still waits out the hold set before it existed.
-    let start = Instant::now();
     throttle
         .signer()
         .acquire(TradingRequest::PostOrders { count: 500 })
