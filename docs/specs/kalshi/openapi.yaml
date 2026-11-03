@@ -6556,6 +6556,7 @@ components:
         details:
           type: object
           additionalProperties: true
+          x-go-type: json.RawMessage
           description: Live data details as a flexible object
         milestone_id:
           type: string
@@ -6591,6 +6592,7 @@ components:
         details:
           type: object
           additionalProperties: true
+          x-go-type: json.RawMessage
           description: Live data details as a flexible object whose shape depends on the type.
         is_historical:
           type: boolean
@@ -7715,6 +7717,7 @@ components:
         details:
           type: object
           additionalProperties: true
+          x-go-type: json.RawMessage
           description: >-
             Additional details about the milestone.
             `details.status`, when present, is maintained by a periodic background job. It lags the game's live state and may be stale or inaccurate, for example remaining `live` after the game ends. For game status, prefer live data, which is updated far more often: `live_data.details.status` from `GET /live_data/milestone/{milestone_id}`, or each entry's `details.status` from `GET /live_data/batch`. Scores are in the sport-specific fields of that live data `details` object.
@@ -11395,7 +11398,9 @@ components:
           description: Shortened title for the yes side of this market
         no_sub_title:
           type: string
-          description: Shortened title for the no side of this market
+          deprecated: true
+          description: |
+            Deprecated. Use `yes_sub_title` instead. Equal to `yes_sub_title` on every market created since September 2024.
         created_time:
           type: string
           format: date-time
@@ -11545,6 +11550,8 @@ components:
           type: object
           nullable: true
           x-omitempty: true
+          x-go-type: json.RawMessage
+          x-go-type-skip-optional-pointer: true
           description: Expiration value for each target that leads to a YES settlement
         rules_primary:
           type: string
