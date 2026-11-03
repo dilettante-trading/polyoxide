@@ -33,7 +33,8 @@ pings included; counting only data would drop a healthy connection every quiet h
 
 On a transport that hides the server's pings (`Capabilities::sees_server_pings` false, a
 browser's), `connect` turns the staleness limit off, as `Duration::MAX`, and `stale_after` is
-ignored there. With the limit off no timer is armed at all: the staleness future is
+ignored there. `stale_after(Duration::MAX)` turns the check off on any transport, a host's too.
+With the limit off no timer is armed at all: the staleness future is
 `std::future::pending()`, and an inbound frame re-arms nothing (owner, 2026-11-03). A lost
 connection ends through its close event or a failed read, and a half-open browser socket goes
 undetected. That is the owner's decision of 2026-11-02 (spec D9), not a

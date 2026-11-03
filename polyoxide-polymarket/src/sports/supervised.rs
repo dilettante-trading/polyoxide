@@ -112,6 +112,9 @@ impl SportsWsBuilder {
     /// On a transport that hides the server's pings, a browser's, there is
     /// nothing to count in a quiet hour, so the limit is not enforced there
     /// and this value is ignored.
+    ///
+    /// `Duration::MAX` turns the check off on any transport: no timer is
+    /// armed.
     pub fn stale_after(mut self, stale_after: Duration) -> Self {
         self.stale_after = stale_after;
         self
@@ -676,8 +679,13 @@ mod tests {
                 .expect("the feed is open");
             assert!(matches!(item, Ok(Event::Update(_))), "{item:?}");
         }
-        // The connect's own 10 s bound is the only timer asked for.
+        // The connect's own 10 s bound is the only timer asked for, and it
+        // proves the injected runtime was consulted at all.
         let asked = runtime.asked.lock().unwrap().clone();
+        assert!(
+            asked.contains(&Duration::from_secs(10)),
+            "the injected runtime was never asked for the connect bound: {asked:?}"
+        );
         assert!(
             asked.iter().all(|duration| *duration < Duration::MAX),
             "armed a never-stale timer: {asked:?}"
