@@ -283,7 +283,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 72 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 73 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -335,7 +335,9 @@ stage does not hold, printing each one's key to copy there.
   whose body changed with its dial, and the three address tests that moved with that dial into the
   kit, gated to native (`connect_tests::addr`, `address_families_are_interleaved` and
   `single_family_lists_pass_through_unchanged`); and `live_sports`' `connect_raw`, returning a
-  `BoxSocket`.
+  `BoxSocket`. R23 is `polymarket_throttle`'s `the_hold_survives_a_tier_change`, which takes its
+  start instant before the hold it measures, since a stall between the two shortened its reading
+  under load.
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.

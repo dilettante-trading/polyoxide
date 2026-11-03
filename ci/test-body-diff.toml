@@ -541,3 +541,9 @@ file = "polyoxide-ws/src/test_server/tests.rs"
 item = "as_rtds_used_it::reject_handshake_fails_the_connection_attempt_recoverably"
 row = "R22"
 sha256 = "06dab212886dbf7e71330fb17c5cb1af135a99911ebda21c043777103a8f1001"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_throttle.rs"
+item = "the_hold_survives_a_tier_change"
+row = "R23"
+sha256 = "42df712360946e3af0baf097378aa751ea65dfb24ca078311e1c1e0a1bb2650e"
