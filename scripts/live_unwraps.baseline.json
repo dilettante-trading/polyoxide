@@ -3,6 +3,7 @@
   "bare": {},
   "opted_out": {
     "polyoxide-binance/tests/live_spot.rs": 6,
+    "polyoxide-binance/tests/live_spot_ws.rs": 6,
     "polyoxide-binance/tests/live_usdm.rs": 5,
     "polyoxide-binance/tests/live_usdm_ws.rs": 6,
     "polyoxide-cli/tests/live_api.rs": 17,

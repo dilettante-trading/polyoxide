@@ -5,8 +5,9 @@
 //! `usdm` (feature `usdm`, on by default) reads USDⓈ-M futures public market
 //! data (`fapi.binance.com`), and with `usdm-ws` its market streams
 //! (`fstream.binance.com`). `spot` (feature `spot`, on by default) reads spot
-//! public market data (`api.binance.com`). No credentials are needed. Each
-//! module's own docs carry its example.
+//! public market data (`api.binance.com`), and with `spot-ws` its market
+//! streams (`stream.binance.com`). No credentials are needed. Each module's
+//! own docs carry its example.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `doctest` keeps this out of normal builds and `cargo doc`.
@@ -54,6 +55,10 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<spot::SpotError>();
     is::<spot::types::InvalidSymbol>();
+    #[cfg(feature = "spot-ws")]
+    is::<spot::ws::SpotWsError>();
+    #[cfg(feature = "spot-ws")]
+    is::<spot::ws::InvalidStreamName>();
 };
 
 // Every product implements its class's bundle; one that drops a defining

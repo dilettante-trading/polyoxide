@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Rust client library for Binance USDⓈ-M futures and spot market data, and USDⓈ-M streams"
+description = "Rust client library for Binance USDⓈ-M futures and spot market data and streams"
 keywords = ["binance", "futures", "spot", "perpetuals", "market-data"]
 categories = ["api-bindings", "web-programming::http-client"]
 
@@ -44,14 +44,17 @@ spot = [
 ]
 # The USDⓈ-M market streams, `usdm::ws`, on the socket kit.
 usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
-# Exposes the captured frames, `usdm::ws::fixtures`, for downstream tests, with
-# `usdm-ws`; it turns no module on. Not for consumers.
+# The spot market streams, `spot::ws`, on the same kit.
+spot-ws = ["spot", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+# Exposes the captured frames, `usdm::ws::fixtures` with `usdm-ws` and
+# `spot::ws::fixtures` with `spot-ws`, for downstream tests; it turns no module
+# on. Not for consumers.
 test-server = []
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
 polyoxide-venue = { workspace = true }
-# The socket kit (`usdm-ws`): connect, the bare tier, the socket error and the
+# The socket kit (`usdm-ws`, `spot-ws`): connect, the bare tier, the socket error and the
 # supervisor. It owns the transport, tokio-tungstenite and rustls.
 polyoxide-ws = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
@@ -67,9 +70,9 @@ url = { workspace = true, optional = true }
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
-# The shared scripted WebSocket server the `usdm-ws` suites run on, with
-# Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo strips it on
-# publish.
+# The shared scripted WebSocket server the `usdm-ws` and `spot-ws` suites run
+# on, with Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo
+# strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 futures-util = "0.3"
 mockito = { workspace = true }
@@ -136,6 +139,10 @@ name = "live_spot"
 required-features = ["spot"]
 
 [[test]]
+name = "live_spot_ws"
+required-features = ["spot-ws"]
+
+[[test]]
 name = "live_usdm"
 required-features = ["usdm"]
 
@@ -158,6 +165,10 @@ required-features = ["spot"]
 [[test]]
 name = "query_setters_usdm"
 required-features = ["usdm"]
+
+[[test]]
+name = "supervision_spot"
+required-features = ["spot-ws", "test-server"]
 
 [[test]]
 name = "supervision_usdm"
@@ -184,6 +195,10 @@ name = "wire_agreement_spot"
 required-features = ["spot"]
 
 [[test]]
+name = "wire_agreement_spot_ws"
+required-features = ["spot-ws", "test-server"]
+
+[[test]]
 name = "wire_agreement_usdm"
 required-features = ["usdm"]
 
@@ -191,10 +206,10 @@ required-features = ["usdm"]
 name = "wire_agreement_usdm_ws"
 required-features = ["usdm-ws", "test-server"]
 
-# docs.rs documents both modules and the USDⓈ-M streams; `test-server` stays out
-# of the docs.
+# docs.rs documents both modules and the streams of each, `usdm-ws` and
+# `spot-ws`; `test-server` stays out of the docs.
 [package.metadata.docs.rs]
-features = ["usdm", "usdm-ws", "spot"]
+features = ["usdm", "usdm-ws", "spot", "spot-ws"]
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, one entry per live test target,
@@ -202,12 +217,12 @@ features = ["usdm", "usdm-ws", "spot"]
 # the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`) and `spot` (spot market data); re-exported by the umbrella as `polyoxide::binance`"
+readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`) and `spot` (spot market data, with its streams under `spot-ws`); re-exported by the umbrella as `polyoxide::binance`"
 venue = "binance"
 products = ["usdm", "spot"]
 classes = { usdm = "perpetual-future", spot = "spot" }
 mirrors = ["binance"]
-identifiers = ["fapi", "fstream", "X-MBX", "api/v3"]
+identifiers = ["fapi", "fstream", "X-MBX", "api/v3", "stream.binance.com"]
 
 [package.metadata.polyoxide.live.live_usdm]
 suite = "usdm"
@@ -225,6 +240,12 @@ secrets = []
 suite = "spot"
 timeout = 15
 features = ["spot"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_spot_ws]
+suite = "spot"
+timeout = 15
+features = ["spot-ws"]
 secrets = []
 
 # The foundation crates' protected test names that still name Binance (S2 may

@@ -6,7 +6,10 @@ use polyoxide_venue::{class_for_close_code, Class, Classify};
 use polyoxide_ws::{Kind, WsError};
 use thiserror::Error;
 
-use crate::usdm::ws::{stream::StreamName, StreamPath};
+use crate::{
+    shared::ws::{Shape, SocketError},
+    usdm::ws::{stream::StreamName, StreamPath},
+};
 
 polyoxide_venue::impl_ws_classification!();
 
@@ -208,6 +211,52 @@ impl Classify for UsdmWsError {
             Self::Connect(err) => ws_retry_after(err),
             Self::Stopped { cause: Some(cause) } => cause.retry_after,
             _ => self.class().retry_after(),
+        }
+    }
+}
+
+/// What the shared socket code reads of this error: the errors it makes
+/// itself, and which variant this is.
+impl SocketError for UsdmWsError {
+    type Path = StreamPath;
+    type Cause = StopCause;
+
+    fn refused(code: i64, msg: String) -> Self {
+        Self::Refused { code, msg }
+    }
+
+    fn no_answer(id: u64, timeout: Duration) -> Self {
+        Self::NoAnswer { id, timeout }
+    }
+
+    fn response(id: u64, raw: String) -> Self {
+        Self::Response { id, raw }
+    }
+
+    fn too_many_streams(path: StreamPath, limit: usize) -> Self {
+        Self::TooManyStreams { path, limit }
+    }
+
+    fn stopped(cause: Option<StopCause>) -> Self {
+        Self::Stopped { cause }
+    }
+
+    fn cause(&self) -> StopCause {
+        StopCause::of(self)
+    }
+
+    fn shape(&self) -> Shape<'_> {
+        match self {
+            Self::Connect(err) => Shape::Connect(err),
+            Self::ConnectTimeout(_) => Shape::ConnectTimeout,
+            Self::Closed { .. } => Shape::Closed,
+            Self::Refused { .. } => Shape::Refused,
+            Self::NoAnswer { .. } => Shape::NoAnswer,
+            Self::Response { .. } => Shape::Response,
+            Self::TooManyStreams { .. } => Shape::TooManyStreams,
+            Self::WrongPath { .. } => Shape::WrongPath,
+            Self::Frame { .. } => Shape::Frame,
+            Self::Stopped { .. } => Shape::Stopped,
         }
     }
 }

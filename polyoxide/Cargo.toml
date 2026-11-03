@@ -33,6 +33,7 @@ binance = ["binance-usdm", "binance-spot"]
 binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm", "polyoxide-venue/market"]
 binance-usdm-ws = ["binance-usdm", "polyoxide-binance/usdm-ws"]
 binance-spot = ["dep:polyoxide-binance", "polyoxide-binance/spot", "polyoxide-venue/market"]
+binance-spot-ws = ["binance-spot", "polyoxide-binance/spot-ws"]
 kalshi = ["kalshi-predictions"]
 kalshi-predictions = ["dep:polyoxide-kalshi", "polyoxide-kalshi/predictions", "polyoxide-venue/market"]
 kalshi-predictions-ws = ["kalshi-predictions", "polyoxide-kalshi/predictions-ws"]
@@ -51,6 +52,7 @@ full = [
     "binance-usdm",
     "binance-usdm-ws",
     "binance-spot",
+    "binance-spot-ws",
     "kalshi",
     "kalshi-predictions",
     "kalshi-predictions-ws",

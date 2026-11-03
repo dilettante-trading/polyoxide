@@ -29,16 +29,16 @@ with an HTTP module (`clob`, `gamma`, `data`, `relay` or `perps`), so its socket
 modules `rtds` and `sports` build the socket-only tree; `alloy*` and `hmac`, the
 signing stack, only with `clob` or `relay`; and `keyring` only with `keychain`.
 `polyoxide-binance` builds `polyoxide-ws`, `tokio-tungstenite` and
-`tungstenite`, the socket stack, only with `usdm-ws`, so its `@usdm` file is the
-REST client alone. `rustls` is not on that rule: core's HTTP client builds it
-for TLS. The `polyoxide` umbrella is held as Polymarket is, on its own feature
+`tungstenite`, the socket stack, only with `usdm-ws` or `spot-ws`, so its
+`@usdm` and `@spot` files are the REST clients alone. `rustls` is not on that rule: core's HTTP
+client builds it for TLS. The `polyoxide` umbrella is held as Polymarket is, on its own feature
 names: the HTTP stack only with an HTTP module of any venue
 (`polymarket-clob`, `-gamma`, `-data`, `-relay` or `-perps`, `binance-usdm`
 or `kalshi-predictions`), so its `@polymarket-rtds` and `@polymarket-sports` files are
 the socket-only tree; the signing stack only with `polymarket-clob` or
 `polymarket-relay`; and `keyring` only with `keychain`. Polymarket's `@perps`
 file must hold `reqwest`, its `@clob` and `@relay` files `alloy`, and its
-`@clob,keychain` file `keyring`, Binance's `@usdm-ws` file `polyoxide-ws`, and
+`@clob,keychain` file `keyring`, Binance's `@usdm-ws` and `@spot-ws` files `polyoxide-ws`, and
 the umbrella's `@polymarket-perps` file `reqwest`, its `@polymarket-clob` file
 `alloy` and its `@polymarket-clob,keychain` file `keyring`, so no rule can pass
 because nothing it admits is ever built.
@@ -108,8 +108,8 @@ PER_FEATURE = {
     ),
     "polyoxide-binance": (
         Rule(frozenset({"polyoxide-ws", "tokio-tungstenite", "tungstenite"}), (),
-             frozenset({"usdm-ws"}),
-             "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws"),
+             frozenset({"usdm-ws", "spot-ws"}),
+             "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws or spot-ws"),
     ),
     # Kalshi's REST module builds the HTTP stack and signs with ring, so no file of it admits
     # the Polymarket signing stack or the keychain; the socket stack is its order-book
@@ -146,6 +146,7 @@ MUST_BUILD = {
     "polyoxide-polymarket@relay.txt": "alloy",
     "polyoxide-polymarket@clob,keychain.txt": "keyring",
     "polyoxide-binance@usdm-ws.txt": "polyoxide-ws",
+    "polyoxide-binance@spot-ws.txt": "polyoxide-ws",
     "polyoxide-kalshi@predictions-ws.txt": "polyoxide-ws",
     "polyoxide@polymarket-perps.txt": "reqwest",
     "polyoxide@polymarket-clob.txt": "alloy",
@@ -280,7 +281,8 @@ def test_the_allowlists_exist() -> None:
     modules = ("gamma", "data", "perps", "perps-ws", "clob", "clob-ws", "relay",
                "clob,keychain", "rtds", "rtds,test-server", "sports", "sports,test-server")
     assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
-    assert {f"polyoxide-binance@{m}.txt" for m in ("usdm", "usdm-ws")} <= set(names), names
+    assert {f"polyoxide-binance@{m}.txt"
+            for m in ("usdm", "usdm-ws", "spot", "spot-ws")} <= set(names), names
     assert "polyoxide-kalshi@predictions.txt" in names, names
     umbrella = ("polymarket-rtds", "polymarket-sports", "polymarket-perps", "polymarket-clob",
                 "polymarket-clob,keychain", "binance-spot")
@@ -290,7 +292,7 @@ def test_the_allowlists_exist() -> None:
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
 def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
     # The rules admit the HTTP stack with an HTTP module, alloy with clob or
-    # relay, keyring with keychain, Binance's socket stack with usdm-ws,
+    # relay, keyring with keychain, Binance's socket stack with usdm-ws or spot-ws,
     # Kalshi's HTTP stack with predictions and its socket stack with
     # predictions-ws; if no file held them, a rule that never refuses
     # anything could not be told from one that holds.
@@ -443,7 +445,7 @@ BINANCE_TABLE = {
     "test-server": (),
 }
 BINANCE = "polyoxide-binance"
-SOCKETS = "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws"
+SOCKETS = "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws or spot-ws"
 SOCKET_STACK = ["polyoxide-ws", "tokio-tungstenite", "tungstenite"]
 
 
@@ -459,12 +461,14 @@ def test_binances_rest_module_may_not_build_the_socket_stack() -> None:
 
 
 def test_binances_rest_and_test_server_features_do_not_turn_on_the_streams() -> None:
-    # The real table: a `usdm` or `test-server` that came to imply `usdm-ws`
-    # would admit the socket stack, and `@usdm` would pass listing it.
+    # The real table: a `usdm`, `spot` or `test-server` that came to imply `usdm-ws`
+    # or `spot-ws` would admit the socket stack, and `@usdm` would pass listing it.
     table = feature_table(BINANCE)
-    for feature in ("usdm", "test-server"):
+    for feature in ("usdm", "spot", "test-server"):
         assert "usdm-ws" not in enabled((feature,), table), feature
+        assert "spot-ws" not in enabled((feature,), table), feature
     assert "usdm" in enabled(("usdm-ws",), table)
+    assert "spot" in enabled(("spot-ws",), table)
 
 
 # A trimmed stand-in for Kalshi's `[features]`: `predictions` is the REST module, and
@@ -603,7 +607,7 @@ def test_the_umbrellas_binance_spot_feature_is_http_only_and_part_of_binance_and
 
 def test_binances_spot_allowlist_is_the_rest_tree_and_builds_no_socket_stack() -> None:
     # `spot` is an HTTP module like `usdm`: it builds core and reqwest, and none of
-    # the socket stack, which only `usdm-ws` admits. The file must list core, or a
+    # the socket stack, which only `usdm-ws` or `spot-ws` admits. The file must list core, or a
     # rule that admitted nothing could not be told from one that holds.
     path = ALLOWLISTS / "polyoxide-binance@spot.txt"
     assert path.exists(), "run `uv run python -m tests.test_dep_allowlists --write`"

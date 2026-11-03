@@ -78,8 +78,9 @@ on the PR that introduces it rather than halfway through a release.
     `@sports,test-server`; `@perps` must hold `reqwest`, `@clob` and `@relay` `alloy`, and
     `@clob,keychain` `keyring`, so no rule can pass vacuously.
   - `polyoxide-binance`: `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with
-    `usdm-ws` (files `@usdm`, `@usdm-ws` and `@spot`; `@usdm-ws` must hold `polyoxide-ws`, and
-    `@spot` must hold `polyoxide-core` and `reqwest`). `rustls` is not on the
+    `usdm-ws` or `spot-ws` (files `@usdm`, `@usdm-ws`, `@spot` and `@spot-ws`; `@usdm-ws` and
+    `@spot-ws` must each hold `polyoxide-ws`, and `@spot` must hold `polyoxide-core` and
+    `reqwest`). `rustls` is not on the
     rule, since core's HTTP client builds it for TLS.
   - `polyoxide-kalshi`: `reqwest`, `polyoxide-core`, `governor` and `sha2` only with
     `predictions`, which every file names; `alloy*`, `hmac` and `keyring` never; `polyoxide-ws`,
@@ -114,7 +115,8 @@ on the PR that introduces it rather than halfway through a release.
   `ci/venue-gate-skip.txt` (`data`, `events` and `spot`);
 - each `<venue>.<product>:` prefix;
 - each venue's `identifiers` (Polymarket's `Poly-RateLimit`; Binance's `fapi`, `fstream`,
-  `X-MBX` and `api/v3`, its hosts, weight header and spot's path prefix);
+  `X-MBX`, `api/v3` and `stream.binance.com`, its futures hosts, weight header, spot's path prefix
+  and spot's stream host);
 
 all read from cargo metadata. A hit passes only through a `gate_exceptions` entry,
 `{ path, term, reason }`, in the metadata of a crate of the hit's venue, and an entry that matches
@@ -188,7 +190,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 27 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 28 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -201,7 +203,9 @@ stage does not hold, printing each one's key to copy there.
   (R17), seven of which adopting its builder-fee drift (#76) moved again and now cite R18;
   `live_perps`' `live_market_data_for_a_quoting_instrument`, which asserts `tickers` honours
   `instrument_id` (R20); and `perps::types`' enum test, moved again, and `spec_agreement_perps`'s
-  `every_enum_matches_the_spec`, for `InstrumentCategory`'s undocumented `pre_ipo` (R21).
+  `every_enum_matches_the_spec`, for `InstrumentCategory`'s undocumented `pre_ipo` (R21); and
+  `polyoxide-binance`'s `UsdmWs::close_frame`, whose body moved unchanged to `shared::ws`'s
+  `Bare::close_frame`, the hook delegating (R22).
 - The manifest's rows still normalise the old side; their baseline is `v0.39.0`, so the script
   warns that they map paths from another tag, which is harmless at `v0.40.0`.
 - git pairs only tracked files, so **stage a moved file before running it locally**. `--moves`

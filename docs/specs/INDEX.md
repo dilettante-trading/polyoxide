@@ -51,7 +51,7 @@ Not Polymarket hosts. Read by a polyoxide crate for consumers that trade across 
 <!-- generated:begin index-other-venues -->
 | API | Base URL | Description | Crate |
 |-----|----------|-------------|-------|
-| [Binance USDⓈ-M and spot](binance/INDEX.md) | `https://fapi.binance.com`, `https://api.binance.com`, `wss://fstream.binance.com` | Futures and spot public market data, and the futures market streams. No published spec, so not a mirror | `polyoxide-binance` (streams behind `usdm-ws`) |
+| [Binance USDⓈ-M and spot](binance/INDEX.md) | `https://fapi.binance.com`, `https://api.binance.com`, `wss://fstream.binance.com`, `wss://stream.binance.com:9443` | Futures and spot public market data, and the futures and spot market streams. No published spec, so not a mirror | `polyoxide-binance` (streams behind `usdm-ws` and `spot-ws`) |
 | [Kalshi](kalshi/OBSERVED.md) | `https://external-api.kalshi.com`, `https://external-api.demo.kalshi.co`, `wss://external-api-ws.kalshi.com/trade-api/ws/v2`, `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` | Event-contract market data and its order-book, ticker and trade streams | `polyoxide-kalshi` |
 <!-- generated:end index-other-venues -->
 

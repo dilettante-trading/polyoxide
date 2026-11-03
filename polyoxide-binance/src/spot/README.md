@@ -99,3 +99,16 @@ println!("bid {:?} ask {:?}", quote.bid, quote.ask);
 ```
 
 The `spot::venue` module's documentation lists each method's route and weight.
+
+## Streams
+
+With the `spot-ws` feature, which turns `spot` on, `spot::ws` streams spot's nine market streams
+from `stream.binance.com`: aggregate trades, trades, klines, the mini ticker of one symbol and of
+every symbol, the ticker, the book ticker, partial depth (5, 10 or 20 levels, every second or
+every 100 ms) and the average price. `SpotWs` is one connection, and `SpotWsBuilder` builds a
+`SupervisedSpotWs`, which reconnects, replays its streams and rotates before Binance's 24-hour
+cutoff. `StreamName` is the only way to name a stream, because Binance acknowledges every
+subscription, including a name that will never deliver. The client holds Binance's limits itself,
+since the venue enforces them by closing the connection: at most 1024 streams per connection and
+one request every 500 ms. Its documentation carries the examples, because this README compiles
+under `spot` alone.

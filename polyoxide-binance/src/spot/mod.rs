@@ -30,6 +30,8 @@ pub mod request;
 pub mod types;
 pub mod venue;
 pub mod weight;
+#[cfg(feature = "spot-ws")]
+pub mod ws;
 
 pub use error::SpotError;
 pub use key::key;

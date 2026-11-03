@@ -88,7 +88,7 @@ its decode, a core `Response` it keeps included. A zero is no wait anywhere (DRI
   which expands in the invoking module to private `ws_class`, `ws_is_fault` and `ws_retry_after`
   over `polyoxide_ws::WsError`'s `Kind`; the venue's `Classify` impl calls them on its `WsError`
   arm.
-- The wrappers: `PerpsWsError::Connection`, `UsdmWsError::Connect`,
+- The wrappers: `PerpsWsError::Connection`, `UsdmWsError::Connect`, `SpotWsError::Connect`,
   `PredictionsWsError::Connection`, `RtdsError::Connection`, `ClobWsError::Connection` and
   `SportsError::{Connect, Transport}`. Binance and sports map the kit's server close and connect
   timeout to their own `Closed` and `ConnectTimeout`, and Binance keeps its handshake `403` →
@@ -106,6 +106,9 @@ its decode, a core `Response` it keeps included. A zero is no wait anywhere (DRI
   refused status.
 - rustc does not warn about dead code expanded from another crate's macro, so
   `test_classify_coverage.py` is the guard: a type with a `WsError` field must sit in a file that
-  expands the macro, and that file must call all three functions in code.
+  expands the macro, and that file must call all three functions in code. The exception is the
+  (crate, type, file) triples in its `WS_VIEWS`, crate-private views that are not errors, such as
+  Binance's `shared::ws::Shape` and its test-only `ProbeError`; each entry must match a real
+  wrapper, or the test fails.
 
 The Python bindings map errors by class, one class to one exception (`py.md`).

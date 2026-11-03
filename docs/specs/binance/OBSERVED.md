@@ -113,7 +113,7 @@ Payloads:
 
 ## Spot
 
-Measured against `api.binance.com`, and `data-api.binance.vision` where a section says so, with `docs/specs/binance/probes/probe_rest.py --product spot`; the design is `docs/superpowers/specs/2026-11-02-binance-spot-design.md`. Each section names the day it was measured. A later finding goes directly above the last line of this file, under a heading of its own.
+Measured against `api.binance.com`, and `data-api.binance.vision` where a section says so, with `docs/specs/binance/probes/probe_rest.py --product spot`, and the streams on `stream.binance.com` with `docs/specs/binance/probes/probe_ws.py --product spot`; the design is `docs/superpowers/specs/2026-11-02-binance-spot-design.md`. Each section names the day it was measured. A later finding goes directly above the last line of this file, under a heading of its own.
 
 ### REST weights
 
@@ -207,5 +207,100 @@ Measured 2026-11-02: alternating calls on `api.binance.com` (`exchangeInfo?symbo
 | 8 | `data-api.binance.vision` | `/api/v3/ticker/price?symbol=SOLUSDT` | 2 | 88 | 88 | 68 |
 
 One counter: each host's reading is the other host's last reading plus its own call's weight.
+
+### Stream limits
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream` with `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot`, one connection per section; the five sections below give each measurement whole. The probe's `burst` section was not run: the `pace` section's connection was the run's first disconnect, and the design spec's section 10 allows one.
+
+| Rule | Documented | Measured |
+|---|---|---|
+| Names per request | Not documented | 1024 names (23,598 bytes) in one `SUBSCRIBE` acknowledged and held, as were 200 and 500 and their `UNSUBSCRIBE`s |
+| Streams per connection | 1024 | 1024 held; a 1025th was not sent |
+| Acknowledgement | | Every `SUBSCRIBE` is acknowledged `{"result":null,"id":…}`: an unknown symbol, an unknown stream type, an uppercase symbol. `LIST_SUBSCRIPTIONS` echoes each name as sent. An `UNSUBSCRIBE` of a name never subscribed is acknowledged |
+| Case | Symbols in stream names are lowercase | `BTCUSDT@trade` is acknowledged and delivers nothing; `btcusdt@aggTrade` delivers |
+| Incoming messages | 5 a second, pings, pongs and requests counted; more disconnects | A request every 250 ms, with one client ping and one pong, was closed 16.2 s in with 1008 "Too many requests": 65 requests sent, 64 answered, at most 6 messages in any one second. A request every 500 ms for 45 s, with two client pings and two pongs, was not closed: 90 of 90 answered, at most 4 messages in any one second |
+| Server ping | Every 20 s; no pong within a minute disconnects | Every 20.0 s, the first 7.9 s after the connection opened, so not timed from the open; the payload is a millisecond timestamp. The missed-pong cutoff was not measured: it costs a disconnect |
+| Client ping | | Answered in about 0.3 s, its payload echoed |
+| `!ticker@arr` | No longer on the streams page | Acknowledged; nothing in 20 s |
+| Partial depth | 1000 ms bare, 100 ms with `@100ms` | As documented, at 5, 10 and 20 levels |
+| Envelope | `{"stream": …, "data": …}` | `stream` then `data`, on every frame |
+| Connection lifetime | 24 hours | Not measured |
+
+So, as on USDⓈ-M, an acknowledgement proves nothing about a stream's validity, and a name that will never deliver looks like a quiet one. A request every 250 ms does not stay under the limit once pongs and pings are counted, and the probe did not record which second crossed it (`pace` now prints the messages sent in the 1.5 s before a close); a request every 500 ms does.
+
+### Stream answers
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, a message a second. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section answers` re-runs it.
+
+| Request | Answer | Frames delivered on the connection |
+|---|---|---|
+| `SUBSCRIBE ["notasymbolusdt@aggTrade"]` (an unknown symbol) | `{"result":null,"id":1}` | none |
+| `SUBSCRIBE ["btcusdt@nonsense"]` (an unknown stream type) | `{"result":null,"id":2}` | none |
+| `SUBSCRIBE ["BTCUSDT@trade"]` (an uppercase symbol) | `{"result":null,"id":3}` | none |
+| `SUBSCRIBE ["btcusdt@aggTrade"]` (a lowercase symbol) | `{"result":null,"id":4}` | 114 as `btcusdt@aggTrade` |
+| `LIST_SUBSCRIPTIONS` | `{"result":["notasymbolusdt@aggTrade","btcusdt@nonsense","BTCUSDT@trade","btcusdt@aggTrade"],"id":5}` | - |
+| `UNSUBSCRIBE ["ethusdt@aggTrade"]` (a name never subscribed) | `{"result":null,"id":6}` | none |
+
+The connection lived 16 s. Every stream that delivered: `btcusdt@aggTrade` (114).
+A client ping was answered with a pong in 0.316 s, its payload echoed.
+
+### Names per request
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, a message a second, names of the form `zz0000usdt@aggTrade`; `Held` is the length of `LIST_SUBSCRIPTIONS`' result after the request. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section request` re-runs it.
+
+| Request | Frame | Answer | Held |
+|---|---|---|---|
+| `SUBSCRIBE` of 200 names | 4646 bytes | `{"result":null,"id":100}` | 200 |
+| `UNSUBSCRIBE` of 200 names | 4648 bytes | `{"result":null,"id":102}` | 0 |
+| `SUBSCRIBE` of 500 names | 11546 bytes | `{"result":null,"id":104}` | 500 |
+| `UNSUBSCRIBE` of 500 names | 11548 bytes | `{"result":null,"id":106}` | 0 |
+| `SUBSCRIBE` of 1024 names | 23598 bytes | `{"result":null,"id":108}` | 1024 |
+
+### Pings
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection carrying `btcusdt@avgPrice` for 65 s, every server ping ponged with its payload. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section pings` re-runs it.
+
+- Server pings at 7.9 s, 27.9 s, 47.9 s after the connection opened; gaps 20.0 s, 19.9 s.
+- Their payloads: '1793619947374', '1793619967418', '1793619987363'.
+- A client ping was answered in 0.300 s.
+- 59 `avgPrice` frames arrived in 65 s.
+
+### Frames
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one `SUBSCRIBE` of the 15 names below, answered `{"result":null,"id":1}`, then 20 s of frames. `Gap` is the median time between a stream's frames. Every envelope's keys: `stream`, `data`. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section frames` re-runs it.
+
+| Name | Frames | Gap | `data` |
+|---|---|---|---|
+| `btcusdt@aggTrade` | 70 | 172 ms | object: `e`:str `E`:int `s`:str `a`:int `p`:str `q`:str `f`:int `l`:int `T`:int `m`:bool `M`:bool |
+| `btcusdt@trade` | 214 | 0 ms | object: `e`:str `E`:int `s`:str `t`:int `p`:str `q`:str `T`:int `m`:bool `M`:bool |
+| `btcusdt@kline_1m` | 10 | 1995 ms | object: `e`:str `E`:int `s`:str `k`:object |
+| `btcusdt@miniTicker` | 20 | 1000 ms | object: `e`:str `E`:int `s`:str `c`:str `o`:str `h`:str `l`:str `v`:str `q`:str |
+| `!miniTicker@arr` | 20 | 1000 ms | array of 56 rows; a row: `e`:str `E`:int `s`:str `c`:str `o`:str `h`:str `l`:str `v`:str `q`:str |
+| `btcusdt@ticker` | 20 | 1000 ms | object: `e`:str `E`:int `s`:str `p`:str `P`:str `w`:str `x`:str `c`:str `Q`:str `b`:str `B`:str `a`:str `A`:str `o`:str `h`:str `l`:str `v`:str `q`:str `O`:int `C`:int `F`:int `L`:int `n`:int |
+| `btcusdt@bookTicker` | 709 | 1 ms | object: `u`:int `s`:str `b`:str `B`:str `a`:str `A`:str |
+| `btcusdt@depth5` | 20 | 1000 ms | object: `lastUpdateId`:int `bids`:list `asks`:list (`bids` 5 levels, `asks` 5 levels) |
+| `btcusdt@depth10` | 20 | 1000 ms | object: `lastUpdateId`:int `bids`:list `asks`:list (`bids` 10 levels, `asks` 10 levels) |
+| `btcusdt@depth20` | 20 | 1000 ms | object: `lastUpdateId`:int `bids`:list `asks`:list (`bids` 20 levels, `asks` 20 levels) |
+| `btcusdt@depth5@100ms` | 200 | 100 ms | object: `lastUpdateId`:int `bids`:list `asks`:list (`bids` 5 levels, `asks` 5 levels) |
+| `btcusdt@depth10@100ms` | 200 | 100 ms | object: `lastUpdateId`:int `bids`:list `asks`:list (`bids` 10 levels, `asks` 10 levels) |
+| `btcusdt@depth20@100ms` | 200 | 100 ms | object: `lastUpdateId`:int `bids`:list `asks`:list (`bids` 20 levels, `asks` 20 levels) |
+| `btcusdt@avgPrice` | 20 | 1000 ms | object: `e`:str `E`:int `s`:str `i`:str `w`:str `T`:int |
+| `!ticker@arr` | 0 | - | nothing |
+
+### Pace at 250 ms
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, alternating `SUBSCRIBE` and `UNSUBSCRIBE` of `btcusdt@avgPrice` every 250 ms for 45 s, a client ping every 20 s from 10 s in, every server ping ponged. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section pace --pace-ms 250` re-runs it and is disconnected: never run it again.
+
+- Sent: 65 requests, 1 client ping, 1 pong; at most 6 messages in any one second.
+- Answered: 64 of 65 requests; 1 of 1 client ping.
+- The server closed it at 18.23 s with 1008 'Too many requests'.
+
+### Pace at 500 ms
+
+Measured 2026-11-02 on `stream.binance.com:9443/stream`: one connection, alternating `SUBSCRIBE` and `UNSUBSCRIBE` of `btcusdt@avgPrice` every 500 ms for 45 s, a client ping every 20 s from 10 s in, every server ping ponged. `docs/specs/binance/probes/probe_ws.py <wsprobe_dir> --product spot --section pace --pace-ms 500` re-runs it.
+
+- Sent: 90 requests, 2 client pings, 2 pongs; at most 4 messages in any one second.
+- Answered: 90 of 90 requests; 2 of 2 client pings.
+- The server did not close it.
 
 <!-- spot findings go above this line -->
