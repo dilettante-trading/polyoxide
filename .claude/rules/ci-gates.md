@@ -288,7 +288,7 @@ stage does not hold, printing each one's key to copy there.
   item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
   reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
   pairs or rewrites nothing.
-- **The 74 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 76 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -346,6 +346,8 @@ stage does not hold, printing each one's key to copy there.
   R24 is `polyoxide-binance`'s `UsdmWs::close_frame`, whose body moved unchanged to `shared::ws`'s
   `Bare::close_frame`, the hook delegating (numbered R22 on the spot branch, renumbered when the
   wasm32 seams' R22 merged with it).
+  R25 is `sports::fixtures`' `ALL` and `sports::update`'s `unmodelled_keys_are_kept`, which
+  modelling the feed's `turn`, `turnProviderId` and `sportradarGameId` moved (#84).
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.

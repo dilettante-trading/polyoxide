@@ -554,3 +554,16 @@ item = "UsdmWs::close_frame"
 kind = "method"
 row = "R24"
 sha256 = "0d4a05039a271ac9bbdacec37f21429625b7552f7ad95f291b643c0b9f544c85"
+
+[[drift]]
+file = "polyoxide-polymarket/src/sports/fixtures.rs"
+item = "ALL"
+kind = "const"
+row = "R25"
+sha256 = "7b165b8f04457b55f82387ad32b8c68397f5096723ba01f588ee1f74862394dc"
+
+[[drift]]
+file = "polyoxide-polymarket/src/sports/update.rs"
+item = "tests::unmodelled_keys_are_kept"
+row = "R25"
+sha256 = "44507505c5fbb0b2c7cd6b3ad7878acdf28bd62afe5dfec09a09de77bde7bcab"

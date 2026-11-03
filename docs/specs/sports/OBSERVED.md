@@ -12,7 +12,7 @@ from `nightly-schema.yml`. This host's drift detector is the live test
 
 | Documented | Observed |
 |---|---|
-| Payload keyed on `slug`, with `last_update` and `turn` | None of 526 frames across three captures carried any of them. Frames are keyed on `leagueAbbreviation` plus `gameId`, or `metadataGameId` on cricket |
+| Payload keyed on `slug`, with `last_update` and `turn` | None of 526 frames across three captures carried `slug` or `last_update`. Frames are keyed on `leagueAbbreviation` plus `gameId`, or `metadataGameId` on cricket. `turn` is real, on NFL frames only (see below) |
 | Text `"ping"` every 5 s, `"pong"` required within 10 s | WebSocket protocol PING frames every 15.0 s, answered by the transport. No text ping has been seen |
 | Message type `sport_result` | Frames carry no discriminator of any kind |
 
@@ -34,8 +34,28 @@ no `eventState` and no key outside the model. It first showed
 `status: not_started`, and soccer (`fif`) frames with `elapsed` but no
 `eventState`.
 
-No capture overlapped NFL, NBA, MLB or NHL play, or a soccer weekend. Those
-leagues' frames are unseen.
+No capture overlapped NFL, NBA, MLB or NHL play, or a soccer weekend.
+
+## NFL and NBA keys, seen by the nightly
+
+The weekend nightly of 2026-11-01 (the 18:30 UTC run, which started at
+22:13 UTC) read NFL and NBA frames, and its drift detector named three keys
+outside the model. Its first frame carrying each is kept verbatim as a
+fixture (`nfl_turn.json`, `nba_sportradar_game_id.json`).
+
+- **`turn`**, on NFL: the team in possession, as a lowercase abbreviation
+  (`"ne"` in a `MIA`–`NE` game). Upstream documents it ("NFL only").
+- **`turnProviderId`**, on NFL, always beside `turn`: a numeric string. It
+  tracked the team in possession in both frames seen (`"10"` with `den` on
+  2026-10-11, `"21"` with `ne` on 2026-11-01), so it reads as the data
+  provider's id for that team. Upstream does not document it, and gamma's
+  `Event.json` lists a `turnProviderId` too (`docs/specs/gamma/OBSERVED.md`).
+- **`sportradarGameId`**, on NBA, beside the numeric `gameId`: a UUID string,
+  Sportradar's id for the game. Upstream does not document it. Gamma filters on
+  `gameId`, so `MatchUpdate::key` ignores it.
+
+`MatchUpdate` models all three as optional strings. MLB, NHL and weekend
+soccer frames are still unseen.
 
 ## Behaviour a client must allow for
 

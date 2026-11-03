@@ -12,7 +12,7 @@
     "x-observed-payload": {
       "captured": "2026-07-25",
       "sampleSize": "229 frames over 5 minutes, covering soccer, tennis, cricket, and the lol/val/cs2/dota2/mlbb esports titles",
-      "finding": "No frame contained a 'slug' field, and none contained 'last_update' or 'turn'. The real payload is keyed on 'leagueAbbreviation' plus either 'gameId' (numeric) or, for cricket, 'metadataGameId' (string). Frames carry no event discriminator of any kind.",
+      "finding": "No frame contained a 'slug' field, and none contained 'last_update' or 'turn' (the 2026-11-01 nightly later saw 'turn' on NFL frames; see optionalObserved). The real payload is keyed on 'leagueAbbreviation' plus either 'gameId' (numeric) or, for cricket, 'metadataGameId' (string). Frames carry no event discriminator of any kind.",
       "requiredObserved": [
         "leagueAbbreviation",
         "score",
@@ -28,7 +28,10 @@
         "status": "string; casing is not normalised upstream ('InProgress', 'inprogress', 'running')",
         "elapsed": "string; present on 33/229 frames",
         "finishedTimestamp": "ISO 8601; only once ended is true",
-        "eventState": "object; nested per-sport detail whose shape varies (tennis adds tournamentName and tennisRound)"
+        "eventState": "object; nested per-sport detail whose shape varies (tennis adds tournamentName and tennisRound)",
+        "turn": "string; NFL only, the team in possession as a lowercase abbreviation ('ne'); first seen 2026-10-11, adopted 2026-11-01",
+        "turnProviderId": "string; NFL only, always beside turn, a numeric string ('21') that tracks the team in possession; undocumented upstream",
+        "sportradarGameId": "string; NBA only, a UUID beside gameId; undocumented upstream; seen 2026-11-01"
       },
       "distinctKeySetsObserved": 5,
       "examples": [
