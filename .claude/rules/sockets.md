@@ -44,9 +44,11 @@ Every dial goes through a `SocketTransport` and every timer, clock read and spaw
   `std::io::ErrorKind::Unsupported`. Reconnecting never fixes it, and the socket table classes it
   `InvalidRequest`.
 - A builder's `runtime(..)` and `socket_transport(..)` come from `polyoxide_ws::transport_setters!`,
-  beside `timing_setters!`, and its connect falls back to the target's defaults. The CLOB's
-  default transport is `TungsteniteTransport::per_address()` on a host target and
-  `default_socket_transport` on `wasm32`.
+  beside `timing_setters!` (it names the runtime through the kit's doc-hidden `__rt` re-export of
+  `polyoxide-rt`, so an invoking crate needs no dependency on it for that), and its connect falls
+  back to the target's defaults. The CLOB's default transport is
+  `TungsteniteTransport::per_address()` on a host target and `default_socket_transport` on
+  `wasm32`.
 - `Supervisor::new` keeps its signature and gains `.runtime(..)` and `.socket_transport(..)`.
   `Connection::new` runs on the default runtime and `Connection::with_runtime` on the one given,
   which `Connection::runtime()` returns for a protocol's own timers.

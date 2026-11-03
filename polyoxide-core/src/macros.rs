@@ -4,8 +4,8 @@
 /// field: `base_url`, `timeout_ms`, `pool_size`, `with_retry_config`,
 /// `max_concurrent`, `runtime` and `http_transport`.
 ///
-/// `runtime` names `polyoxide_rt::Runtime`, which core does not re-export, so
-/// the invoking crate declares `polyoxide-rt` itself.
+/// `runtime` names `polyoxide_rt::Runtime` through a doc-hidden re-export of
+/// core's, so the invoking crate needs no `polyoxide-rt` dependency for it.
 ///
 /// Invoke it inside the builder's `impl`, naming the field that holds the
 /// config. The builder's `build` reads the config back through
@@ -78,7 +78,7 @@ macro_rules! client_config_setters {
         /// Set the runtime the client's waits, clock reads and spawns go
         /// through. Unset, the target's default is used
         /// (`polyoxide_rt::default_runtime`).
-        pub fn runtime(mut self, runtime: ::std::sync::Arc<dyn ::polyoxide_rt::Runtime>) -> Self {
+        pub fn runtime(mut self, runtime: ::std::sync::Arc<dyn $crate::__rt::Runtime>) -> Self {
             self.$config.runtime = Some(runtime);
             self
         }

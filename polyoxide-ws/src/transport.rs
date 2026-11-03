@@ -311,7 +311,7 @@ async fn dial_addresses(
 ///
 /// Invoke it in the builder's `impl` as [`timing_setters!`](crate::timing_setters)
 /// is, listing the setters wanted, each with its own doc comment. The
-/// invoking crate declares `polyoxide-rt`. A builder's connect falls back to
+/// invoking crate needs no `polyoxide-rt` dependency for it. A builder's connect falls back to
 /// [`default_runtime`](polyoxide_rt::default_runtime) and its default
 /// transport for a field left `None`.
 ///
@@ -345,7 +345,7 @@ macro_rules! transport_setters {
         $(#[$meta])*
         pub fn runtime(
             mut self,
-            runtime: ::std::sync::Arc<dyn ::polyoxide_rt::Runtime>,
+            runtime: ::std::sync::Arc<dyn $crate::__rt::Runtime>,
         ) -> Self {
             self.runtime = ::core::option::Option::Some(runtime);
             self

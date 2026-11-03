@@ -92,6 +92,11 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
 /// changes no type.
 pub use http;
 
+/// The runtime seam, for the macros of this crate to name: a crate invoking
+/// `client_config_setters!` needs no `polyoxide-rt` dependency of its own.
+#[doc(hidden)]
+pub use polyoxide_rt as __rt;
+
 /// The HTTP client core sends with, re-exported whole.
 ///
 /// Venue crates name its client types (`Client`, `Response`, `RequestBuilder`)

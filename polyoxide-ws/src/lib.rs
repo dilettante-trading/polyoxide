@@ -87,3 +87,8 @@ pub use transport::{default_socket_transport, BoxSocket, Capabilities, SocketIo,
 /// The WebSocket library the kit is built on, re-exported so a venue names
 /// its types (`Message`, `CloseFrame`, `http`) through this crate.
 pub use tungstenite;
+
+/// The runtime seam, for `transport_setters!` to name: a crate invoking it
+/// needs no `polyoxide-rt` dependency of its own.
+#[doc(hidden)]
+pub use polyoxide_rt as __rt;
