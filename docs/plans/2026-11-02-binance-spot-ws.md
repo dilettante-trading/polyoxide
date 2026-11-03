@@ -10056,7 +10056,7 @@ polyoxide binance spot stream --symbol BTCUSDT,ETHUSDT --kind trade,kline-1h
 polyoxide binance spot stream --symbol BTCUSDT --kind depth20 --format json -n 10
 ```
 
-Kinds: `agg-trade`, `trade`, `kline-<interval>` (`1m` to `1M`), `mini-ticker`, `ticker`,
+Kinds: `agg-trade`, `trade`, `kline-<interval>` (`1s` to `1M`), `mini-ticker`, `ticker`,
 `book-ticker`, `avg-price`, `depth5`, `depth10`, `depth20` (each depth every 100 ms).
 
 ---
