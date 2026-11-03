@@ -9,6 +9,8 @@ Run with:
 
 import asyncio
 
+import pytest
+
 import polyoxide
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -344,7 +346,12 @@ class TestClobAsync:
 
 TEST_USER = "0x0000000000000000000000000000000000000001"
 
+# Upstream retired every v1 route on 2026-11-02: each answers 410
+# `{"error":"Data API v1 has been retired"}`. The v2 tests below still run.
+v1_retired = pytest.mark.skip(reason="Data API v1 retired upstream (410)")
 
+
+@v1_retired
 class TestDataSyncHealth:
     def test_ping(self):
         data = polyoxide.DataApiSync()
@@ -353,6 +360,7 @@ class TestDataSyncHealth:
         assert 0 < latency < 10
 
 
+@v1_retired
 class TestDataSyncTrades:
     def test_list(self):
         data = polyoxide.DataApiSync()
@@ -363,6 +371,7 @@ class TestDataSyncTrades:
         assert isinstance(d, dict)
 
 
+@v1_retired
 class TestDataSyncOpenInterest:
     def test_get(self):
         data = polyoxide.DataApiSync()
@@ -370,6 +379,7 @@ class TestDataSyncOpenInterest:
         assert len(oi) > 0
 
 
+@v1_retired
 class TestDataSyncLeaderboard:
     def test_get(self):
         data = polyoxide.DataApiSync()
@@ -380,6 +390,7 @@ class TestDataSyncLeaderboard:
         assert isinstance(d, dict)
 
 
+@v1_retired
 class TestDataSyncBuilders:
     def test_leaderboard(self):
         data = polyoxide.DataApiSync()
@@ -387,6 +398,7 @@ class TestDataSyncBuilders:
         assert len(rankings) > 0
 
 
+@v1_retired
 class TestDataSyncUser:
     def test_list_positions(self):
         """Positions for a dummy address should return empty list, not error."""
@@ -411,6 +423,7 @@ class TestDataSyncUser:
 # ══════════════════════════════════════════════════════════════════
 
 
+@v1_retired
 class TestDataAsync:
     def test_list_trades(self):
         async def go():
