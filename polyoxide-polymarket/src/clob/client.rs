@@ -934,8 +934,9 @@ impl ClobBuilder {
     ///
     /// The builder holds no credential: a stream builds them from the account
     /// when it opens its socket. Its `runtime` and `socket_transport` setters
-    /// choose the runtime and the dial of the stream's socket, which does not
-    /// follow the client's own runtime.
+    /// choose the runtime and the dial of the stream's socket. With no runtime
+    /// set on it, `build` gives it the client's own; a runtime set on the
+    /// socket builder wins.
     #[cfg(feature = "clob-ws")]
     pub fn user_socket(mut self, socket: crate::clob::ws::UserWsBuilder) -> Self {
         self.user_socket = socket;
@@ -987,7 +988,7 @@ impl ClobBuilder {
             let mut builder = crate::data::DataApi::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
-                .runtime(runtime);
+                .runtime(runtime.clone());
             if let Some(transport) = &self.config.http_transport {
                 builder = builder.http_transport(transport.clone());
             }
@@ -1008,7 +1009,7 @@ impl ClobBuilder {
             #[cfg(all(feature = "clob-ws", feature = "data"))]
             ids: Default::default(),
             #[cfg(feature = "clob-ws")]
-            user_socket: self.user_socket,
+            user_socket: self.user_socket.runtime_unless_set(runtime),
         })
     }
 }
@@ -1044,6 +1045,34 @@ mod tests {
             clob.data.http_client.runtime(),
             &runtime
         ));
+    }
+
+    #[cfg(feature = "clob-ws")]
+    #[test]
+    fn the_builders_runtime_reaches_the_user_socket_unless_the_socket_sets_its_own() {
+        use crate::clob::ws::UserWsBuilder;
+        use std::sync::Arc;
+
+        let client: Arc<dyn polyoxide_rt::Runtime> = Arc::new(polyoxide_rt::TokioRuntime);
+        let socket: Arc<dyn polyoxide_rt::Runtime> = Arc::new(polyoxide_rt::TokioRuntime);
+
+        // None on the socket builder: it follows the client's.
+        let clob = ClobBuilder::new().runtime(client.clone()).build().unwrap();
+        let held = clob.user_socket.set_runtime().expect("a runtime");
+        assert!(Arc::ptr_eq(held, &client), "the socket kept the default");
+
+        // One set on it wins, whatever order the two setters ran in.
+        let clob = ClobBuilder::new()
+            .user_socket(UserWsBuilder::new().runtime(socket.clone()))
+            .runtime(client.clone())
+            .build()
+            .unwrap();
+        let held = clob.user_socket.set_runtime().expect("a runtime");
+        assert!(Arc::ptr_eq(held, &socket), "the client's runtime won");
+
+        // With no runtime on the client either, the socket gets its default.
+        let clob = ClobBuilder::new().build().unwrap();
+        assert!(clob.user_socket.set_runtime().is_some());
     }
 
     /// Keeps the URL of each request it is asked to send, and fails it, so

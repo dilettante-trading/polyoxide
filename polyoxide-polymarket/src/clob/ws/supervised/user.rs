@@ -418,6 +418,18 @@ impl UserWsBuilder {
         socket_transport;
     }
 
+    /// Run on `runtime` unless `runtime(..)` already chose one.
+    pub(crate) fn runtime_unless_set(mut self, runtime: Arc<dyn Runtime>) -> Self {
+        self.runtime.get_or_insert(runtime);
+        self
+    }
+
+    /// The runtime set on this builder, if any.
+    #[cfg(test)]
+    pub(crate) fn set_runtime(&self) -> Option<&Arc<dyn Runtime>> {
+        self.runtime.as_ref()
+    }
+
     /// Open the connection, subscribe with `markets` (`None` for every market)
     /// and the credentials, and start supervising.
     ///

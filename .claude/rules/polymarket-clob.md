@@ -144,8 +144,8 @@ reuse guard that refuses a second order with the same id.
 
 ### `events()`
 
-It opens its own socket when first polled (`ClobBuilder::user_socket` sets its URL and timing)
-and yields:
+It opens its own socket when first polled (`ClobBuilder::user_socket` sets its URL and timing;
+it runs on the client's runtime unless the socket builder set its own) and yields:
 
 - a leading `Resync`; a `Resync` after every reconnect, and for a `FAILED` trade (the venue voided
   a fill the stream reported, and the trait has no event that takes one back);
