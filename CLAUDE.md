@@ -48,7 +48,7 @@ This file holds the commands, the CI gates and the rules that cut across crates.
 
 **MSRV:** 1.91 (set in the workspace `Cargo.toml`).
 
-**Dev shell:** `nix develop` (`flake.nix`) puts Rust 1.99.0 with clippy and rustfmt on `PATH`, with the MSRV toolchain as `msrv-cargo` (cargo 1.91.0, building into `target/msrv`), cargo-hack 0.6.45, cargo-semver-checks 0.51.0, cargo-nextest, uv and python3, so `nix develop --command <step>` runs a CI step on CI's tools. CI itself does not use the flake: its removals job pins Rust 1.99.0 and its msrv job 1.91, and every other job floats on `stable`, so a newer stable's lints can fail only in CI.
+**Dev shell:** the flake's dev shell (`flake.nix`) puts Rust 1.99.0 with clippy and rustfmt on `PATH`, with the MSRV toolchain as `msrv-cargo` (cargo 1.91.0, building into `target/msrv`), cargo-hack 0.6.45, cargo-semver-checks 0.51.0, cargo-nextest, uv and python3. Enter it through direnv: `direnv exec . <step>` runs a CI step on CI's tools, from the shell nix-direnv caches for the main checkout's `.envrc` (`use flake`, untracked). A loom worktree has no `.envrc` of its own and loads that one, so a branch that changes `flake.nix` runs on the main checkout's shell until it merges. Never run `nix develop --command`: each run leaves a `/tmp/nix-shell.*` directory behind, where nix-direnv deletes the one its shell creates. CI itself does not use the flake: its removals job pins Rust 1.99.0 and its msrv job 1.91, and every other job floats on `stable`, so a newer stable's lints can fail only in CI.
 
 ```bash
 cargo build --all-features --workspace                          # everything
@@ -63,7 +63,7 @@ cargo test -p polyoxide-polymarket --test live_clob -- --ignored    # live tests
 
 ### The nine CI jobs
 
-Run the jobs a change touches before pushing (inside `nix develop`); `-D warnings` makes every warning an error.
+Run the jobs a change touches before pushing (through `direnv exec .`); `-D warnings` makes every warning an error.
 
 | Job | Run locally | Fails on |
 |---|---|---|
