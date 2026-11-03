@@ -487,6 +487,15 @@ first, so it needs a spine amendment (D15).
 - Before the merge: CI's python job has been red on `main` since Data API v1 was retired
   upstream (every v1 route 410, 2026-11-02). A separate session skips the v1 Python live tests,
   and a later spec retires v1 across the crates. The 0.45.0 release needs it green.
+- Landing (owner, 2026-11-03): Binance spot (plans 1 and 2, REST and sockets) reached `main`
+  first. `main` is merged into this branch, and spot is moved onto the seams there: its clients
+  and socket builders take `runtime(..)` and `socket_transport(..)` like usdm, its code names
+  `polyoxide_core::http`, `Response` and `TransportError`, and `runtime_gate.py` scans it.
+  Spot stays native-only: D1's set does not change, since spec 1.4 never probed CORS or the socket
+  upgrade on spot's hosts, and the README's WebAssembly section says spot is native-only. The
+  merge passes the native gates in the worktree. The wasm job runs once `main` has this branch's
+  `flake.nix`, because a worktree's `direnv exec .` loads the main checkout's flake; a red wasm
+  job is then fixed forward on `main`.
 - After the merge: read the first nightly's `live-wasm-browser` job for a real Binance 451,
   since the preflight's tagging was tested only on a forced one.
 - After the run: merge the spine amendment and regenerate `docs/ARCHITECTURE.md`; the 0.45.0
