@@ -1365,9 +1365,13 @@ async fn live_fak_unmatched_is_typed_error() {
 // ── Protocol V2 (read-only, no credentials) ─────────────────────
 
 /// A Protocol V2 market is served end to end: its ids come out of
-/// `Market::outcome_ids`, and the CLOB answers `/book`, `/tick-size` and
-/// `/neg-risk` for each. This answers the open question of whether the
-/// per-token helpers serve position ids.
+/// `Market::outcome_ids`, and the CLOB answers `/book` and `/tick-size` for
+/// each, which the client depends on, so a non-2xx from either fails as `real`.
+/// `/neg-risk` is read too, but its outcome is only printed
+/// (`neg-risk for <id>: <status>`) and never fails the test: the client skips
+/// that route for a V2 id, so the leg records what the CLOB answers. Together
+/// they answer the open question of whether the per-token helpers serve
+/// position ids.
 ///
 /// It takes the first open V2 market whose order book is enabled: a V2 market
 /// listed before its book is would 404 on `/book`, which says nothing about
@@ -1378,6 +1382,8 @@ async fn live_fak_unmatched_is_typed_error() {
 #[tokio::test]
 #[ignore]
 async fn live_v2_market_is_served() {
+    use polyoxide_core::ApiError;
+    use polyoxide_polymarket::clob::ClobError;
     use polyoxide_polymarket::gamma::types::ProtocolVersion;
 
     let gamma = Gamma::builder().build().or_fail("gamma client");
@@ -1423,10 +1429,13 @@ async fn live_v2_market_is_served() {
             .send()
             .await
             .or_fail("the V2 outcome's tick size");
-        clob.markets()
-            .neg_risk(id)
-            .send()
-            .await
-            .or_fail("the V2 outcome's neg-risk flag");
+        // Recorded, never judged: the client skips `/neg-risk` for a V2 id.
+        match clob.markets().neg_risk(id).send().await {
+            Ok(flag) => eprintln!("neg-risk for {id}: OK, neg_risk={}", flag.neg_risk),
+            Err(ClobError::Api(ApiError::Response(response))) => {
+                eprintln!("neg-risk for {id}: {}", response.status.as_u16())
+            }
+            Err(other) => eprintln!("neg-risk for {id}: no status ({other})"),
+        }
     }
 }
