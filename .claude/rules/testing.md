@@ -66,5 +66,6 @@ function called per request, so signing stays in each script; a non-JSON error b
 not raised), `require_ok`, `write_json`, `write_raw`, `stamp`, `provenance_table`,
 `write_provenance` and the async `ws_session`, which imports `websockets` lazily. Run a capture
 script as a file (`python3 scripts/capture_x.py` or `uv run scripts/capture_x.py`), never
-`python3 -I`, which keeps `scripts/` off `sys.path`. `scripts/capture_binance_usdm.py` and
-`scripts/capture_binance_spot.py` are PEP 723 `uv run` scripts.
+`python3 -I`, which keeps `scripts/` off `sys.path`. `scripts/capture_binance_usdm.py`,
+`scripts/capture_binance_spot.py` and `scripts/capture_polymarket_protocol_v2.py` are PEP 723
+`uv run` scripts.
