@@ -10,7 +10,8 @@
 //!
 //! Everything here is pure and pinned to `tests/fixtures/relay/session_keys/relay_vectors.json`.
 
-use alloy::primitives::{Address, Bytes, B256, U256};
+use crate::relay::types::V2PositionId;
+use alloy::primitives::{Address, Bytes, FixedBytes, B256, U256};
 use alloy::sol;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
 
@@ -60,6 +61,10 @@ pub(crate) mod protocol {
         function approve(address spender, uint256 amount);
         function setApprovalForAll(address operator, bool approved);
         function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
+
+        function split(bytes31 conditionId, uint256 amount);
+        function merge(bytes31 conditionId, uint256 amount);
+        function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount);
     }
 }
 
@@ -235,6 +240,39 @@ pub fn redeem_positions_calldata(
     .abi_encode()
 }
 
+/// Calldata for the Protocol V2 Router's `split(bytes31,uint256)`.
+///
+/// `amount` is in base units (6 decimals); any `U256` encodes, zero included.
+pub fn router_split_calldata(condition_id: FixedBytes<31>, amount: U256) -> Vec<u8> {
+    protocol::splitCall {
+        conditionId: condition_id,
+        amount,
+    }
+    .abi_encode()
+}
+
+/// Calldata for the Protocol V2 Router's `merge(bytes31,uint256)`.
+///
+/// `amount` is in base units (6 decimals); any `U256` encodes, zero included.
+pub fn router_merge_calldata(condition_id: FixedBytes<31>, amount: U256) -> Vec<u8> {
+    protocol::mergeCall {
+        conditionId: condition_id,
+        amount,
+    }
+    .abi_encode()
+}
+
+/// Calldata for the Protocol V2 Router's `redeem(bytes31,uint256,uint256)`: the
+/// position's condition, its outcome index, then `amount` in base units.
+pub fn router_redeem_calldata(position: &V2PositionId, amount: U256) -> Vec<u8> {
+    protocol::redeemCall {
+        conditionId: position.condition_id(),
+        outcomeIndex: U256::from(position.outcome_index()),
+        amount,
+    }
+    .abi_encode()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,7 +281,7 @@ mod tests {
     use alloy::signers::Signer as _;
 
     use crate::relay::error::RelayError;
-    use crate::relay::types::{parse_v2_condition_id, V2PositionId};
+    use crate::relay::types::parse_v2_condition_id;
 
     const VECTORS: &str =
         include_str!("../../tests/fixtures/relay/session_keys/relay_vectors.json");
@@ -605,5 +643,112 @@ mod tests {
         assert!(rows.len() >= 8, "{} rows", rows.len());
         assert!(narrowed >= 4, "{narrowed} narrowed rows");
         assert!(refused >= 4, "{refused} refused rows");
+    }
+
+    // ── Protocol V2: Router calldata ────────────────────────────
+
+    fn hex_of(bytes: &[u8]) -> String {
+        format!("0x{}", hex::encode(bytes))
+    }
+
+    #[test]
+    fn router_split_and_merge_calldata_match_py_sdk() {
+        let v = router_vectors();
+        for (name, build) in [
+            (
+                "split",
+                router_split_calldata as fn(FixedBytes<31>, U256) -> Vec<u8>,
+            ),
+            ("merge", router_merge_calldata),
+        ] {
+            let rows = v[name].as_array().unwrap();
+            // Amounts 0, 1000000 and 2^256 - 1, for one condition.
+            assert_eq!(rows.len(), 3, "{name}");
+            for row in rows {
+                let condition: FixedBytes<31> =
+                    row["condition_id"].as_str().unwrap().parse().unwrap();
+                let amount: U256 = row["amount"].as_str().unwrap().parse().unwrap();
+                assert_eq!(
+                    hex_of(&build(condition, amount)),
+                    row["calldata"].as_str().unwrap(),
+                    "{name} {amount}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn router_split_and_merge_calldata_differ_only_in_the_selector() {
+        let v = router_vectors();
+        let condition: FixedBytes<31> = v["split"][0]["condition_id"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let split = router_split_calldata(condition, U256::from(7));
+        let merge = router_merge_calldata(condition, U256::from(7));
+        assert_ne!(split[..4], merge[..4]);
+        assert_eq!(split[4..], merge[4..]);
+        assert_eq!(split.len(), 4 + 64);
+    }
+
+    #[test]
+    fn router_redeem_calldata_matches_py_sdk_for_both_outcomes() {
+        let v = router_vectors();
+        let rows = v["redeem"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            let position = V2PositionId::parse(row["position_id"].as_str().unwrap()).unwrap();
+            // The position's own decode agrees with py-sdk's recorded one.
+            assert_eq!(
+                hex_of(position.condition_id().as_slice()),
+                row["condition_id"].as_str().unwrap()
+            );
+            assert_eq!(
+                u64::from(position.outcome_index()),
+                row["outcome_index"].as_u64().unwrap()
+            );
+            let amount: U256 = row["amount"].as_str().unwrap().parse().unwrap();
+            assert_eq!(
+                hex_of(&router_redeem_calldata(&position, amount)),
+                row["calldata"].as_str().unwrap(),
+                "outcome {}",
+                position.outcome_index()
+            );
+        }
+        // The two rows are the two outcomes of one condition.
+        assert_ne!(rows[0]["calldata"], rows[1]["calldata"]);
+    }
+
+    #[test]
+    fn the_router_redeem_batch_digest_matches_py_sdk() {
+        let v = router_vectors();
+        let batch = &v["deposit_wallet_batch"];
+        let redeem = &v["redeem"][0];
+        let position = V2PositionId::parse(redeem["position_id"].as_str().unwrap()).unwrap();
+        let amount: U256 = redeem["amount"].as_str().unwrap().parse().unwrap();
+        let fixture_call = &batch["calls"][0];
+        let call = DepositWalletCall {
+            target: fixture_call["target"].as_str().unwrap().parse().unwrap(),
+            value: fixture_call["value"].as_str().unwrap().parse().unwrap(),
+            data: router_redeem_calldata(&position, amount).into(),
+        };
+        // The call is the Router's, with the calldata py-sdk built.
+        assert_eq!(
+            call.target,
+            v["router"].as_str().unwrap().parse::<Address>().unwrap()
+        );
+        assert_eq!(hex_of(&call.data), fixture_call["data"].as_str().unwrap());
+        let digest = batch_digest(
+            v["chain_id"].as_u64().unwrap(),
+            batch["wallet"].as_str().unwrap().parse().unwrap(),
+            &[call],
+            batch["nonce"].as_str().unwrap().parse().unwrap(),
+            batch["deadline"].as_str().unwrap().parse().unwrap(),
+        );
+        assert_eq!(
+            digest,
+            batch["digest"].as_str().unwrap().parse::<B256>().unwrap()
+        );
     }
 }
