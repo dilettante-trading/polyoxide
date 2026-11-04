@@ -940,3 +940,35 @@ async fn a_trait_error_carries_the_native_errors_class_fault_and_wait() {
         assert!(err.source.downcast_ref::<ClobError>().is_some(), "{status}");
     }
 }
+
+#[tokio::test]
+async fn a_v2_market_with_no_position_ids_fails_the_group_as_a_decode_failure() {
+    let mut server = Server::new_async().await;
+    let markets = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}&closed=any", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let body = event_body(|markets| {
+        let market = markets[1].as_object_mut().unwrap();
+        market.insert("version".into(), "v2".into());
+        market.remove("positionIds");
+    });
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let err = venue.event_group(&key()).await.unwrap_err();
+    markets.assert_async().await;
+    event.assert_async().await;
+    assert_eq!(err.class, Class::Decode, "{err}");
+}
