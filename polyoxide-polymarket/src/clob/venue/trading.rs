@@ -47,8 +47,9 @@ use crate::shared::keys;
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[non_exhaustive]
 pub struct ClobOrderOptions {
-    /// Whether the market is in a negative-risk event, which selects the
-    /// exchange contract the order is signed for.
+    /// Whether the market is in a negative-risk event, which selects between
+    /// the CTF exchanges the order is signed for. Ignored for a Protocol V2
+    /// position id, which always settles on ExchangeV3.
     pub neg_risk: Option<bool>,
     /// The market's tick size now in force.
     pub tick_size: Option<TickSize>,
