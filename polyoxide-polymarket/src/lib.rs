@@ -100,6 +100,7 @@ const _: fn() = || {
 const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<gamma::GammaError>();
+    is::<gamma::OutcomeIdsError>();
 };
 
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]

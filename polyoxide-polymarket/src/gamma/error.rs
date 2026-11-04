@@ -36,6 +36,52 @@ impl Classify for GammaError {
     }
 }
 
+/// Why [`Market::outcome_ids`](super::types::Market::outcome_ids) found no
+/// ids a caller can trade.
+///
+/// Every variant is a response that arrived but carries no usable ids, so each
+/// classifies as [`Class::Decode`]. It is not a [`GammaError`] variant:
+/// `GammaError` decodes only through its one `From<ApiError>`.
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum OutcomeIdsError {
+    /// The market has no `version`, so the field to read cannot be chosen.
+    #[error("the market has no `version`, so its outcome ids cannot be chosen")]
+    MissingVersion,
+    /// The market's `version` is neither `v1` nor `v2`. Carries the value.
+    #[error("the market's protocol version `{0}` is not supported")]
+    UnsupportedVersion(String),
+    /// The field the version names is absent: `clobTokenIds` for `v1`,
+    /// `positionIds` for `v2`.
+    #[error("the market carries no outcome ids for its protocol version")]
+    MissingIds,
+    /// A `v1` market's `clobTokenIds` is not a JSON array of strings.
+    #[error("the market's `clobTokenIds` is not a JSON array of strings")]
+    MalformedIds,
+    /// The market's `outcomes` is absent or not a JSON array of strings.
+    #[error("the market's `outcomes` is absent or not a JSON array of strings")]
+    MalformedOutcomes,
+    /// The market has a different number of outcomes and ids.
+    #[error("the market has {outcomes} outcomes and {ids} outcome ids")]
+    CountMismatch {
+        /// How many labels `outcomes` holds.
+        outcomes: usize,
+        /// How many ids the version's field holds.
+        ids: usize,
+    },
+    /// An id is empty or not all ASCII digits. Carries the id.
+    #[error("the outcome id `{0}` is not a decimal integer")]
+    InvalidId(String),
+}
+
+/// Every variant is a response that arrived but carries no ids the client can
+/// trade.
+impl Classify for OutcomeIdsError {
+    fn class(&self) -> Class {
+        Class::Decode
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
