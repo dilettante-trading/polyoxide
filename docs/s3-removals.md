@@ -332,6 +332,7 @@ The public type aliases, imported the same way:
 
 - `polyoxide_polymarket::clob::DynSigner` `clob`
 - `polyoxide_polymarket::clob::account::DynSigner` `clob`
-- `polyoxide_polymarket::data::v2::PageStream` `data`
+- `polyoxide_polymarket::data::v2::PageStream` `data` **Removed** retire-data-v1 story 5: v2 is the data module's root, so the alias is `polyoxide_polymarket::data::PageStream`, unchanged.
+- `polyoxide_polymarket::data::PageStream` `data`
 - `polyoxide_polymarket::perps::ws::SupervisedPerpsWs` `perps-ws`
 - `polyoxide_polymarket::relay::DynSigner` `relay`
