@@ -174,6 +174,38 @@ let response = client
 # }
 ```
 
+### Protocol V2 Positions (the Router)
+
+A Protocol V2 market splits, merges and redeems through the Router, not the Conditional
+Tokens contract. `V2PositionId::parse` decodes an outcome's token id (its condition and its
+outcome index, 0 or 1), and `parse_v2_condition_id` narrows a condition id (`0x` plus 62 hex
+digits, or 64 ending `00` or `01`) to the 31 bytes the Router takes. `submit_v2_split`,
+`submit_v2_merge` and `submit_v2_redeem` send one call through `execute`, so they work for a
+Safe, a Proxy and a Deposit Wallet; `v2_split_call`, `v2_merge_call` and `v2_redeem_call`
+return the `DepositWalletCall` for an external signer. Amounts are base units (6 decimals), and
+only Polygon mainnet (137) is known.
+
+```rust
+# use polyoxide_polymarket::relay::{
+#     parse_v2_condition_id, BuilderAccount, BuilderConfig, RelayClient, V2PositionId,
+# };
+# use alloy::primitives::U256;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+# let client = RelayClient::from_account(account)?;
+# let condition_hex = "0x...";
+# let token_id = "1234...";
+let condition = parse_v2_condition_id(condition_hex)?;
+let split = client.submit_v2_split(condition, U256::from(1_000_000)).await?;
+
+let position = V2PositionId::parse(token_id)?;
+let redeem = client.submit_v2_redeem(&position, U256::from(1_000_000)).await?;
+# let _ = (split, redeem);
+# Ok(())
+# }
+```
+
 ### Execute Arbitrary Transactions
 
 ```rust
@@ -299,6 +331,7 @@ let proxy_address = client.get_expected_proxy_wallet()?;
 
 - **Transaction Submission**: Sign and submit gasless transactions via Safe or Proxy wallets
 - **Gasless Redemptions**: Redeem CTF positions without holding MATIC; a Deposit Wallet redeems pUSD through the collateral adapter py-sdk targets (`submit_deposit_wallet_redemption`, which takes the market's neg-risk flag)
+- **Protocol V2 Router**: Split, merge and redeem a Protocol V2 position (`submit_v2_split`, `submit_v2_merge`, `submit_v2_redeem`, or the `v2_*_call` builders for an external signer), for a Safe, a Proxy or a Deposit Wallet on Polygon mainnet
 - **Gas Estimation**: Simulate redemptions against Polygon RPC for accurate gas limits
 - **Nonce Management**: Fetch current nonce from the relayer
 - **Deployment Check**: Verify whether a Safe wallet is deployed on-chain
