@@ -187,6 +187,20 @@ as `proposed` or `disputed` were looked up again. 247 rows carried
 `proposal_expiration` nor `liveness` appeared, and the two keys still came
 together or not at all.
 
+## Protocol V2 conditions on `/v2/resolutions` (2026-11-04)
+
+No code changed for Polymarket Protocol V2 (#51). The mirror's text already covers V2
+conditions: `/v2/resolutions` "return[s] condition-grain rows in deterministic order, preferring
+native V2 lifecycle, then UMA lifecycle, then terminal CTF state", and `Resolution` models
+`payouts` (per-outcome micro-USDC per share, present on resolved condition-keyed rows) and
+`market_type` (`BINARY`, `INCREMENTAL_NEGRISK` or `ATOMIC_NEGRISK`).
+
+Not yet seen live: no V2 market was being served when this was written (none among the 40,000 open
+markets sampled on 2026-10-07; `live_v2_market_is_served` reports `environmental` until one
+exists), so no V2 condition's row has been read and the fields above are the mirror's claim, not an
+observation. A caller reads payouts only from rows whose `status` is `resolved`. On the Gamma side a
+V2 market's `resolution_status` replaces `uma_resolution_status` (`docs/specs/gamma/OBSERVED.md`).
+
 ## `/v2/tokens` (added after 2026-09-14)
 
 The nightly drift check first saw this route on 2026-10-08 (issue #52). Probed on
