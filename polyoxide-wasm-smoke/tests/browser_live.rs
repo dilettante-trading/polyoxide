@@ -114,7 +114,8 @@ const GAMMA: Host = Host {
 };
 const DATA: Host = Host {
     base: "https://data-api.polymarket.com",
-    path: "/",
+    // v1, and the bare root with it, answers 410 with no CORS headers since 2026-11-02.
+    path: "/v2/status",
 };
 const PERPS: Host = Host {
     base: "https://api.perpetuals.polymarket.com",
@@ -166,7 +167,10 @@ async fn get_gamma() {
 
 #[wasm_bindgen_test]
 async fn get_data() {
-    checked("data GET /", || async { get(&DATA).await.map(drop) }).await;
+    checked("data GET /v2/status", || async {
+        get(&DATA).await.map(drop)
+    })
+    .await;
 }
 
 /// The one host in scope that names a header in `Access-Control-Expose-Headers`: `x-pmp-pod` is
