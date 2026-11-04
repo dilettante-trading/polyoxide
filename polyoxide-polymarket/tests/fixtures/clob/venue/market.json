@@ -28,10 +28,10 @@
     "rates": [
       {
         "asset_address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-        "rewards_daily_rate": 29
+        "rewards_daily_rate": 400
       }
     ],
-    "min_size": 50,
+    "min_size": 200,
     "max_spread": 5.5
   },
   "is_50_50_outcome": false,
@@ -39,13 +39,13 @@
     {
       "token_id": "54533043819946592547517511176940999955633860128497669742211153063842200957669",
       "outcome": "Yes",
-      "price": 0.1545,
+      "price": 0.1485,
       "winner": false
     },
     {
       "token_id": "87854174148074652060467921081181402357467303721471806610111179101805869578687",
       "outcome": "No",
-      "price": 0.8455,
+      "price": 0.8515,
       "winner": false
     }
   ],
@@ -56,7 +56,9 @@
     "Primaries",
     "US Election",
     "World Elections",
-    "Earn 3.25%"
+    "Earn 3.25%",
+    "Parent For Derivative",
+    "2028 Election"
   ],
   "version": "v1"
 }

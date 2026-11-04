@@ -17,7 +17,6 @@
 //! - [`wire_enum!`] and [`open_enum!`] declare an enum whose variants each have
 //!   one wire spelling; a closed one refuses an unknown spelling with
 //!   [`UnknownVariant`], and an open one keeps it in `Other`.
-//!   [`specta_as_string!`] gives open enums their `specta` shape.
 //! - With the `decimal` feature, `positional` reads and writes rows sent as
 //!   bare arrays of decimal strings.
 //! - With the `keys` feature, `MarketKey` names one instrument as

@@ -90,8 +90,10 @@ runs under, so every order that key has resting is cancelled some 10 to 15 secon
 - `candles` read `/prices-history`, one price per interval as `close`, the `CandleInterval` sent as
   `fidelity` minutes, from `start` rounded up to the second and no further than 14 days on, since a
   longer window is a `400` (`docs/specs/clob/OBSERVED.md`).
-- `trades` read the Data API's taker-only `/trades` for the token's market and keep the token's
-  rows, oldest first, with no trade id (the Data API gives none).
+- `trades` read the Data API's taker-only `/v2/trades` (one page of 100, shared by the market's
+  outcomes) for the token's market and keep the token's rows, oldest first, with no trade id (the
+  Data API gives none). v2 leaves out trades under its 0.01-share floor, and its first page may
+  be up to five minutes old (the CDN cache, `docs/specs/data-v2/OBSERVED.md`).
 - `event_group` reads the event id from Gamma's `/markets?clob_token_ids=` (a private decode,
   since Gamma's `Market` does not model its `events`), or `?position_ids=` when the key's id
   passes the id rule (`shared::protocol::is_v2_position_id`), with `closed=any`, since Gamma leaves
@@ -141,8 +143,11 @@ crate list shows it.
 - `cancel` is `Ok` only for an id among `canceled`. `cancel_all(Some(key))` resolves the token's
   condition through `/markets-by-token` and sends both it and the token, which the route requires.
 - `open_orders` pages `/data/orders` to the `LTE=` sentinel and refuses a repeated cursor.
-  `positions` is Data v1 `/positions` for the maker address with `sizeThreshold=0`, in pages of
-  500 up to Data's offset of 10,000, past which it is a `VenueRefusal`. `balances` is one pUSD
+  `positions` is Data v2 `/v2/positions` for the maker address, `status=OPEN` (which includes
+  redeemable rows), walked by cursor in pages of 500. v2 serves a holding of 0.1 share or less
+  only as `CLOSED`, whatever `filter_amount` says, so such dust is not listed
+  (`docs/specs/data-v2/OBSERVED.md`; v1 listed it). `PositionExt` carries v2's `entry_cost` and
+  `unrealized_pnl`; an end date of `1970-01-01` or empty, and an outcome index of 999, are `None`. `balances` is one pUSD
   balance with six decimals and each allowance in `BalanceExt`, an unlimited approval being
   `Decimal::MAX`.
 

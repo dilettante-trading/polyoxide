@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Coroutine
-from typing import Any
+from typing import Any, Generic, TypeVar
 
-from . import v2 as v2
-from .v2 import DataV2 as _DataV2, DataV2Sync as _DataV2Sync
+T = TypeVar("T")
 
 # =============================================================================
 # Errors
@@ -794,330 +793,623 @@ class ServerTimeResponse:
 # Data type classes
 # =============================================================================
 
+class Page(Generic[T]):
+    """One page of a paged route. Follow `pagination.next_cursor` until it is None."""
+    @property
+    def data(self) -> list[T]: ...
+    @property
+    def pagination(self) -> Pagination: ...
+    def __len__(self) -> int: ...
+    def __repr__(self) -> str: ...
+
+class PageIterator(Generic[T]):
+    """Async iterator over every page of a route, from `DataApi.iter_*`."""
+    def __aiter__(self) -> PageIterator[T]: ...
+    def __anext__(self) -> Coroutine[Any, Any, Page[T]]: ...
+
+class PageIteratorSync(Generic[T]):
+    """Iterator over every page of a route, from `DataApiSync.iter_*`."""
+    def __iter__(self) -> PageIteratorSync[T]: ...
+    def __next__(self) -> Page[T]: ...
+
+class Approvals:
+    """Non-paginated approval snapshot for one Polygon proxy wallet."""
+    @property
+    def address(self) -> str: ...
+    @property
+    def chain_id(self) -> int: ...
+    @property
+    def checked_at(self) -> str: ...
+    @property
+    def contracts(self) -> list[dict[str, Any]]: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
 class Position:
-    """An open position held by a user."""
+    """One position (`/v2/positions`)."""
     @property
-    def proxy_wallet(self) -> Any: ...
+    def archived(self) -> bool: ...
     @property
-    def asset(self) -> Any: ...
+    def avg_price(self) -> float: ...
     @property
-    def condition_id(self) -> Any: ...
+    def condition_id(self) -> str: ...
     @property
-    def size(self) -> Any: ...
+    def current_price(self) -> float: ...
     @property
-    def avg_price(self) -> Any: ...
+    def current_size(self) -> float: ...
     @property
-    def initial_value(self) -> Any: ...
+    def current_value(self) -> float: ...
     @property
-    def gross_initial_value(self) -> Any: ...
+    def end_date(self) -> str: ...
     @property
-    def entry_fees_usdc(self) -> Any: ...
+    def entry_cost_usdc(self) -> float: ...
     @property
-    def current_value(self) -> Any: ...
+    def entry_fees_usdc(self) -> float: ...
     @property
-    def cash_pnl(self) -> Any: ...
+    def event_id(self) -> str: ...
     @property
-    def percent_pnl(self) -> Any: ...
+    def event_slug(self) -> str: ...
     @property
-    def total_bought(self) -> Any: ...
+    def first_entry_at(self) -> int: ...
     @property
-    def realized_pnl(self) -> Any: ...
+    def icon(self) -> str: ...
     @property
-    def percent_realized_pnl(self) -> Any: ...
+    def last_event_at(self) -> int: ...
     @property
-    def cur_price(self) -> Any: ...
+    def mergeable(self) -> bool: ...
     @property
-    def redeemable(self) -> Any: ...
+    def name(self) -> str: ...
     @property
-    def mergeable(self) -> Any: ...
+    def negative_risk(self) -> bool: ...
     @property
-    def title(self) -> Any: ...
+    def opposite_outcome(self) -> str: ...
     @property
-    def slug(self) -> Any: ...
+    def opposite_token_id(self) -> str: ...
     @property
-    def icon(self) -> Any: ...
+    def outcome(self) -> str: ...
     @property
-    def event_slug(self) -> Any: ...
+    def outcome_index(self) -> int: ...
     @property
-    def outcome(self) -> Any: ...
+    def percent_pnl(self) -> float: ...
     @property
-    def outcome_index(self) -> Any: ...
+    def percent_realized_pnl(self) -> float: ...
     @property
-    def opposite_outcome(self) -> Any: ...
+    def profile_image(self) -> str: ...
     @property
-    def opposite_asset(self) -> Any: ...
+    def proxy_wallet(self) -> str: ...
     @property
-    def end_date(self) -> Any: ...
+    def realized_pnl(self) -> float: ...
     @property
-    def negative_risk(self) -> Any: ...
+    def redeemable(self) -> bool: ...
+    @property
+    def slug(self) -> str: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def title(self) -> str: ...
+    @property
+    def token_id(self) -> str: ...
+    @property
+    def total_cost_usdc(self) -> float: ...
+    @property
+    def total_pnl(self) -> float: ...
+    @property
+    def total_size(self) -> float: ...
+    @property
+    def unrealized_pnl(self) -> float: ...
+    @property
+    def verified(self) -> bool: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class ClosedPosition:
-    """A closed position for a user."""
+class ComboPosition:
+    """One combo position (`/v2/positions/combos`)."""
     @property
-    def proxy_wallet(self) -> Any: ...
+    def combo_condition_id(self) -> str: ...
     @property
-    def asset(self) -> Any: ...
+    def combo_position_id(self) -> str: ...
     @property
-    def condition_id(self) -> Any: ...
+    def current_size(self) -> float: ...
     @property
-    def avg_price(self) -> Any: ...
+    def entry_avg_price_usdc(self) -> float: ...
     @property
-    def total_bought(self) -> Any: ...
+    def entry_cost_usdc(self) -> float: ...
     @property
-    def realized_pnl(self) -> Any: ...
+    def entry_fees_usdc(self) -> float: ...
     @property
-    def cur_price(self) -> Any: ...
+    def first_entry_at(self) -> str: ...
     @property
-    def timestamp(self) -> Any: ...
+    def first_entry_at_micros(self) -> int | None: ...
     @property
-    def title(self) -> Any: ...
+    def gross_entry_cost_usdc(self) -> float: ...
     @property
-    def slug(self) -> Any: ...
+    def legs(self) -> list[dict[str, Any]]: ...
     @property
-    def icon(self) -> Any: ...
+    def legs_pending(self) -> int: ...
     @property
-    def event_slug(self) -> Any: ...
+    def legs_resolved(self) -> int: ...
     @property
-    def outcome(self) -> Any: ...
+    def legs_total(self) -> int: ...
     @property
-    def outcome_index(self) -> Any: ...
+    def outcome_index(self) -> int: ...
     @property
-    def opposite_outcome(self) -> Any: ...
+    def outcome_label(self) -> str: ...
     @property
-    def opposite_asset(self) -> Any: ...
+    def proxy_wallet(self) -> str: ...
     @property
-    def end_date(self) -> Any: ...
+    def realized_payout_usdc(self) -> float: ...
+    @property
+    def redeemable(self) -> bool: ...
+    @property
+    def resolved_at(self) -> str | None: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def updated_at(self) -> str: ...
+    @property
+    def updated_at_micros(self) -> int: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class Trade:
-    """A trade executed on a market."""
+class UserPnlSeries:
+    """Complete v2 user-PnL response data."""
     @property
-    def proxy_wallet(self) -> Any: ...
+    def fidelity(self) -> str: ...
     @property
-    def side(self) -> Any: ...
+    def interval(self) -> str: ...
     @property
-    def asset(self) -> Any: ...
+    def points(self) -> list[dict[str, Any]]: ...
     @property
-    def condition_id(self) -> Any: ...
+    def proxy_wallet(self) -> str: ...
     @property
-    def size(self) -> Any: ...
+    def source_fidelity(self) -> str: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class UserStats:
+    """The profile card for one wallet, plus its newest persisted all-time PnL observation."""
     @property
-    def price(self) -> Any: ...
+    def all_time_pnl(self) -> dict[str, Any] | None: ...
     @property
-    def timestamp(self) -> Any: ...
+    def biggest_win(self) -> float: ...
     @property
-    def title(self) -> Any: ...
+    def join_date(self) -> int | None: ...
     @property
-    def slug(self) -> Any: ...
+    def proxy_wallet(self) -> str: ...
     @property
-    def icon(self) -> Any: ...
+    def trades(self) -> int: ...
     @property
-    def event_slug(self) -> Any: ...
+    def views(self) -> int: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class UserVolume:
+    """`/v2/user-volume`."""
     @property
-    def outcome(self) -> Any: ...
+    def trade_count(self) -> int: ...
     @property
-    def outcome_index(self) -> Any: ...
+    def volume(self) -> float: ...
     @property
-    def name(self) -> Any: ...
+    def volume_usdc(self) -> float: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class PortfolioValue:
+    """`/v2/value`."""
     @property
-    def pseudonym(self) -> Any: ...
+    def proxy_wallet(self) -> str: ...
     @property
-    def transaction_hash(self) -> Any: ...
+    def value(self) -> float: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
 class Activity:
-    """An activity event for a user."""
+    """One activity-feed event (`/v2/activity`)."""
     @property
-    def proxy_wallet(self) -> Any: ...
+    def activity_type(self) -> str: ...
     @property
-    def timestamp(self) -> Any: ...
+    def bio(self) -> str: ...
     @property
-    def condition_id(self) -> Any: ...
+    def condition_id(self) -> str: ...
     @property
-    def activity_type(self) -> Any: ...
+    def event_slug(self) -> str: ...
     @property
-    def size(self) -> Any: ...
+    def icon(self) -> str: ...
     @property
-    def usdc_size(self) -> Any: ...
+    def is_combo(self) -> bool | None: ...
     @property
-    def transaction_hash(self) -> Any: ...
+    def name(self) -> str: ...
     @property
-    def price(self) -> Any: ...
+    def outcome(self) -> str: ...
     @property
-    def asset(self) -> Any: ...
+    def outcome_index(self) -> int: ...
     @property
-    def side(self) -> Any: ...
+    def price(self) -> float: ...
     @property
-    def outcome_index(self) -> Any: ...
+    def profile_image(self) -> str: ...
     @property
-    def title(self) -> Any: ...
+    def profile_image_optimized(self) -> str: ...
     @property
-    def slug(self) -> Any: ...
+    def proxy_wallet(self) -> str: ...
     @property
-    def icon(self) -> Any: ...
+    def pseudonym(self) -> str: ...
     @property
-    def outcome(self) -> Any: ...
+    def side(self) -> str: ...
+    @property
+    def size(self) -> float: ...
+    @property
+    def slug(self) -> str: ...
+    @property
+    def timestamp(self) -> int: ...
+    @property
+    def title(self) -> str: ...
+    @property
+    def token_id(self) -> str: ...
+    @property
+    def transaction_hash(self) -> str: ...
+    @property
+    def usdc_size(self) -> float: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class UserValue:
-    """A user's position value."""
+class ComboActivity:
+    """One combo lifecycle/redemption event (`/v2/activity/combos`)."""
     @property
-    def user(self) -> Any: ...
+    def amount_usdc(self) -> float | None: ...
     @property
-    def value(self) -> Any: ...
+    def block_number(self) -> int: ...
+    @property
+    def combo_activity_type(self) -> str: ...
+    @property
+    def combo_condition_id(self) -> str: ...
+    @property
+    def combo_position_id(self) -> str: ...
+    @property
+    def id(self) -> str: ...
+    @property
+    def legs(self) -> list[dict[str, Any]]: ...
+    @property
+    def payout_usdc(self) -> float | None: ...
+    @property
+    def proxy_wallet(self) -> str: ...
+    @property
+    def timestamp(self) -> int: ...
+    @property
+    def transaction_hash(self) -> str: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class OpenInterest:
-    """Open interest for a market."""
+class Trade:
+    """A trade (`/v2/trades`)."""
     @property
-    def market(self) -> Any: ...
+    def bio(self) -> str: ...
     @property
-    def value(self) -> Any: ...
+    def condition_id(self) -> str: ...
+    @property
+    def event_slug(self) -> str: ...
+    @property
+    def icon(self) -> str: ...
+    @property
+    def name(self) -> str: ...
+    @property
+    def outcome(self) -> str: ...
+    @property
+    def outcome_index(self) -> int: ...
+    @property
+    def price(self) -> float: ...
+    @property
+    def profile_image(self) -> str: ...
+    @property
+    def profile_image_optimized(self) -> str: ...
+    @property
+    def proxy_wallet(self) -> str: ...
+    @property
+    def pseudonym(self) -> str: ...
+    @property
+    def side(self) -> str: ...
+    @property
+    def size(self) -> float: ...
+    @property
+    def slug(self) -> str: ...
+    @property
+    def timestamp(self) -> int: ...
+    @property
+    def title(self) -> str: ...
+    @property
+    def token_id(self) -> str: ...
+    @property
+    def transaction_hash(self) -> str: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class UserTraded:
-    """Whether a user has traded."""
+class MetaHolder:
+    """One outcome token's holder group in `/v2/holders`."""
     @property
-    def user(self) -> Any: ...
+    def holders(self) -> list[dict[str, Any]]: ...
     @property
-    def traded(self) -> Any: ...
-    def to_dict(self) -> dict[str, Any]: ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-
-class MarketHolders:
-    """Holders of a market token."""
-    @property
-    def token(self) -> Any: ...
-    @property
-    def holders(self) -> Any: ...
-    def to_dict(self) -> dict[str, Any]: ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-
-class Holder:
-    """A holder of a market token."""
-    @property
-    def proxy_wallet(self) -> Any: ...
-    @property
-    def bio(self) -> Any: ...
-    @property
-    def asset(self) -> Any: ...
-    @property
-    def pseudonym(self) -> Any: ...
-    @property
-    def amount(self) -> Any: ...
-    @property
-    def display_username_public(self) -> Any: ...
-    @property
-    def outcome_index(self) -> Any: ...
-    @property
-    def name(self) -> Any: ...
-    @property
-    def profile_image(self) -> Any: ...
-    @property
-    def verified(self) -> Any: ...
-    def to_dict(self) -> dict[str, Any]: ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-
-class TraderRanking:
-    """A trader's ranking on the leaderboard."""
-    @property
-    def rank(self) -> Any: ...
-    @property
-    def proxy_wallet(self) -> Any: ...
-    @property
-    def user_name(self) -> Any: ...
-    @property
-    def vol(self) -> Any: ...
-    @property
-    def pnl(self) -> Any: ...
-    @property
-    def profile_image(self) -> Any: ...
-    @property
-    def x_username(self) -> Any: ...
-    @property
-    def verified_badge(self) -> Any: ...
-    def to_dict(self) -> dict[str, Any]: ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-
-class BuilderRanking:
-    """A builder's ranking on the leaderboard."""
-    @property
-    def rank(self) -> Any: ...
-    @property
-    def builder(self) -> Any: ...
-    @property
-    def volume(self) -> Any: ...
-    @property
-    def active_users(self) -> Any: ...
-    @property
-    def verified(self) -> Any: ...
-    @property
-    def builder_logo(self) -> Any: ...
-    def to_dict(self) -> dict[str, Any]: ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
-
-class BuilderVolume:
-    """A builder's volume data point."""
-    @property
-    def dt(self) -> Any: ...
-    @property
-    def builder(self) -> Any: ...
-    @property
-    def builder_logo(self) -> Any: ...
-    @property
-    def verified(self) -> Any: ...
-    @property
-    def volume(self) -> Any: ...
-    @property
-    def active_users(self) -> Any: ...
-    @property
-    def rank(self) -> Any: ...
+    def token_id(self) -> str: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
 class LiveVolume:
-    """Live trading volume data."""
+    """`/v2/live-volume`."""
     @property
-    def total(self) -> Any: ...
+    def conditions(self) -> list[dict[str, Any]]: ...
     @property
-    def markets(self) -> Any: ...
+    def taker_volume_total(self) -> float: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class MarketVolume:
-    """Trading volume for a specific market."""
+class OpenInterest:
+    """One `/v2/oi` row."""
     @property
-    def market(self) -> Any: ...
+    def condition_id(self) -> str: ...
     @property
-    def value(self) -> Any: ...
+    def value(self) -> float: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class HealthResponse:
-    """Health check response from the Data API."""
+class PricePoint:
+    """One served point."""
     @property
-    def data(self) -> Any: ...
+    def price(self) -> float: ...
+    @property
+    def resolution_seconds(self) -> int: ...
+    @property
+    def timestamp(self) -> int: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class Resolution:
+    """One non-paginated `/v2/resolutions` row."""
+    @property
+    def condition_id(self) -> str | None: ...
+    @property
+    def expected_settlement_time(self) -> str | None: ...
+    @property
+    def extended_review(self) -> bool: ...
+    @property
+    def last_update_timestamp(self) -> str: ...
+    @property
+    def log_index(self) -> str: ...
+    @property
+    def market_type(self) -> str | None: ...
+    @property
+    def new_version_q(self) -> bool: ...
+    @property
+    def payouts(self) -> list[int] | None: ...
+    @property
+    def price(self) -> str | None: ...
+    @property
+    def proposed_price(self) -> str | None: ...
+    @property
+    def question_id(self) -> str | None: ...
+    @property
+    def reporter(self) -> str | None: ...
+    @property
+    def reproposed_price(self) -> str | None: ...
+    @property
+    def resolution_source(self) -> str | None: ...
+    @property
+    def resolved_at(self) -> str | None: ...
+    @property
+    def resolved_block(self) -> int | None: ...
+    @property
+    def settlement_time_basis(self) -> str | None: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def transaction_hash(self) -> str: ...
+    @property
+    def was_arbitrated(self) -> bool | None: ...
+    @property
+    def was_disputed(self) -> bool: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class TokenRef:
+    """One `/v2/tokens` row: the reference facts for one ERC-1155 token id."""
+    @property
+    def clob_index(self) -> int | None: ...
+    @property
+    def closed(self) -> bool | None: ...
+    @property
+    def condition_id(self) -> str: ...
+    @property
+    def event_id(self) -> int | None: ...
+    @property
+    def event_slug(self) -> str | None: ...
+    @property
+    def final_price(self) -> float | None: ...
+    @property
+    def market_slug(self) -> str | None: ...
+    @property
+    def module(self) -> str: ...
+    @property
+    def neg_risk(self) -> bool | None: ...
+    @property
+    def neg_risk_market_id(self) -> str | None: ...
+    @property
+    def opposite_token_id(self) -> str | None: ...
+    @property
+    def outcome(self) -> str | None: ...
+    @property
+    def outcome_index(self) -> int: ...
+    @property
+    def question_index(self) -> int | None: ...
+    @property
+    def resolved(self) -> bool: ...
+    @property
+    def structural_condition_id(self) -> str | None: ...
+    @property
+    def title(self) -> str | None: ...
+    @property
+    def token_id(self) -> str: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class BiggestWinner:
+    """One `/v2/biggest-winners` row."""
+    @property
+    def condition_id(self) -> str: ...
+    @property
+    def event_id(self) -> int: ...
+    @property
+    def event_slug(self) -> str: ...
+    @property
+    def event_title(self) -> str: ...
+    @property
+    def final_value(self) -> float: ...
+    @property
+    def initial_value(self) -> float: ...
+    @property
+    def kind(self) -> str: ...
+    @property
+    def pnl(self) -> float: ...
+    @property
+    def position_id(self) -> str: ...
+    @property
+    def profile_image(self) -> str: ...
+    @property
+    def resolved_at(self) -> int: ...
+    @property
+    def user_id(self) -> str: ...
+    @property
+    def user_name(self) -> str: ...
+    @property
+    def win_rank(self) -> int: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class BuilderStanding:
+    """One `/v2/builders/leaderboard` row."""
+    @property
+    def active_users(self) -> int: ...
+    @property
+    def builder_code(self) -> str: ...
+    @property
+    def builder_name(self) -> str: ...
+    @property
+    def profile_image(self) -> str: ...
+    @property
+    def rank(self) -> int: ...
+    @property
+    def verified(self) -> bool: ...
+    @property
+    def volume(self) -> float: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class BuilderVolumePoint:
+    """One `/v2/builders/volume` row."""
+    @property
+    def active_users(self) -> int: ...
+    @property
+    def builder_code(self) -> str: ...
+    @property
+    def builder_name(self) -> str: ...
+    @property
+    def date(self) -> str: ...
+    @property
+    def profile_image(self) -> str: ...
+    @property
+    def rank(self) -> int: ...
+    @property
+    def verified(self) -> bool: ...
+    @property
+    def volume(self) -> float: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class LeaderboardEntry:
+    """One `/v2/leaderboard` row."""
+    @property
+    def pnl(self) -> float: ...
+    @property
+    def profile_image(self) -> str: ...
+    @property
+    def rank(self) -> int: ...
+    @property
+    def user_id(self) -> str: ...
+    @property
+    def user_name(self) -> str: ...
+    @property
+    def verified(self) -> bool: ...
+    @property
+    def volume(self) -> float: ...
+    @property
+    def x_username(self) -> str: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class LeaderboardUserEntry:
+    """`/v2/leaderboard?user=`."""
+    @property
+    def pnl(self) -> float: ...
+    @property
+    def profile_image(self) -> str: ...
+    @property
+    def rank_pnl(self) -> int | None: ...
+    @property
+    def rank_volume(self) -> int | None: ...
+    @property
+    def user_id(self) -> str: ...
+    @property
+    def user_name(self) -> str: ...
+    @property
+    def verified(self) -> bool: ...
+    @property
+    def volume(self) -> float: ...
+    @property
+    def x_username(self) -> str: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class ServiceStatus:
+    """`/v2/status` payload."""
+    @property
+    def age_seconds(self) -> int: ...
+    @property
+    def computed_at(self) -> str: ...
+    @property
+    def ingestion(self) -> dict[str, Any]: ...
+    @property
+    def serving(self) -> dict[str, Any]: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
+class Pagination:
+    """Paging state returned with every page."""
+    @property
+    def has_more(self) -> bool: ...
+    @property
+    def limit(self) -> int: ...
+    @property
+    def next_cursor(self) -> str | None: ...
+    @property
+    def offset(self) -> int: ...
     def to_dict(self) -> dict[str, Any]: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
@@ -1735,314 +2027,6 @@ class ClobHealthSync:
         ...
 
 # =============================================================================
-# Data namespace classes
-# =============================================================================
-
-class DataApiTrades:
-    """Async namespace for Data API trade endpoints."""
-    def list(
-        self,
-        *,
-        user: str | None = None,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        side: str | None = None,
-        taker_only: bool | None = None,
-        filter_type: str | None = None,
-        filter_amount: float | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> Coroutine[Any, Any, list[Trade]]:
-        """List trades with optional filters."""
-        ...
-
-class DataApiTradesSync:
-    """Sync namespace for Data API trade endpoints."""
-    def list(
-        self,
-        *,
-        user: str | None = None,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        side: str | None = None,
-        taker_only: bool | None = None,
-        filter_type: str | None = None,
-        filter_amount: float | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> list[Trade]:
-        """List trades with optional filters."""
-        ...
-
-class DataApiHolders:
-    """Async namespace for Data API holder endpoints."""
-    def list(
-        self,
-        markets: list[str],
-        *,
-        limit: int | None = None,
-        min_balance: int | None = None,
-    ) -> Coroutine[Any, Any, list[MarketHolders]]:
-        """List holders for given markets."""
-        ...
-
-class DataApiHoldersSync:
-    """Sync namespace for Data API holder endpoints."""
-    def list(
-        self,
-        markets: list[str],
-        *,
-        limit: int | None = None,
-        min_balance: int | None = None,
-    ) -> list[MarketHolders]:
-        """List holders for given markets."""
-        ...
-
-class DataApiOpenInterest:
-    """Async namespace for Data API open interest endpoints."""
-    def get(
-        self, *, market: list[str] | None = None
-    ) -> Coroutine[Any, Any, list[OpenInterest]]:
-        """Get open interest, optionally filtered by market."""
-        ...
-
-class DataApiOpenInterestSync:
-    """Sync namespace for Data API open interest endpoints."""
-    def get(self, *, market: list[str] | None = None) -> list[OpenInterest]:
-        """Get open interest, optionally filtered by market."""
-        ...
-
-class DataApiLiveVolume:
-    """Async namespace for Data API live volume endpoints."""
-    def get(self, event_id: int) -> Coroutine[Any, Any, list[LiveVolume]]:
-        """Get live volume for an event."""
-        ...
-
-class DataApiLiveVolumeSync:
-    """Sync namespace for Data API live volume endpoints."""
-    def get(self, event_id: int) -> list[LiveVolume]:
-        """Get live volume for an event."""
-        ...
-
-class DataApiLeaderboard:
-    """Async namespace for Data API leaderboard endpoints."""
-    def get(
-        self,
-        *,
-        category: str | None = None,
-        time_period: str | None = None,
-        order_by: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        user: str | None = None,
-        user_name: str | None = None,
-    ) -> Coroutine[Any, Any, list[TraderRanking]]:
-        """Get the trader leaderboard."""
-        ...
-
-class DataApiLeaderboardSync:
-    """Sync namespace for Data API leaderboard endpoints."""
-    def get(
-        self,
-        *,
-        category: str | None = None,
-        time_period: str | None = None,
-        order_by: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        user: str | None = None,
-        user_name: str | None = None,
-    ) -> list[TraderRanking]:
-        """Get the trader leaderboard."""
-        ...
-
-class DataApiBuilders:
-    """Async namespace for Data API builder endpoints."""
-    def leaderboard(
-        self,
-        *,
-        time_period: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> Coroutine[Any, Any, list[BuilderRanking]]:
-        """Get the builder leaderboard."""
-        ...
-    def volume(
-        self, *, time_period: str | None = None
-    ) -> Coroutine[Any, Any, list[BuilderVolume]]:
-        """Get builder volume data."""
-        ...
-
-class DataApiBuildersSync:
-    """Sync namespace for Data API builder endpoints."""
-    def leaderboard(
-        self,
-        *,
-        time_period: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> list[BuilderRanking]:
-        """Get the builder leaderboard."""
-        ...
-    def volume(
-        self, *, time_period: str | None = None
-    ) -> list[BuilderVolume]:
-        """Get builder volume data."""
-        ...
-
-class DataApiHealth:
-    """Async namespace for Data API health endpoints."""
-    def ping(self) -> Coroutine[Any, Any, float]:
-        """Ping the Data API and return latency in seconds."""
-        ...
-
-class DataApiHealthSync:
-    """Sync namespace for Data API health endpoints."""
-    def ping(self) -> float:
-        """Ping the Data API and return latency in seconds."""
-        ...
-
-class DataApiUser:
-    """Async namespace for user-scoped Data API endpoints."""
-    def list_positions(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        size_threshold: float | None = None,
-        redeemable: bool | None = None,
-        mergeable: bool | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_direction: str | None = None,
-        title: str | None = None,
-    ) -> Coroutine[Any, Any, list[Position]]:
-        """List open positions for the user."""
-        ...
-    def positions_value(
-        self, *, market: list[str] | None = None
-    ) -> Coroutine[Any, Any, list[UserValue]]:
-        """Get position values for the user."""
-        ...
-    def closed_positions(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        title: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_direction: str | None = None,
-    ) -> Coroutine[Any, Any, list[ClosedPosition]]:
-        """List closed positions for the user."""
-        ...
-    def trades(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        side: str | None = None,
-        taker_only: bool | None = None,
-        filter_type: str | None = None,
-        filter_amount: float | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> Coroutine[Any, Any, list[Trade]]:
-        """List trades for the user."""
-        ...
-    def activity(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        activity_type: list[str] | None = None,
-        side: str | None = None,
-        start: int | None = None,
-        end: int | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_direction: str | None = None,
-    ) -> Coroutine[Any, Any, list[Activity]]:
-        """List activity events for the user."""
-        ...
-    def traded(self) -> Coroutine[Any, Any, UserTraded]:
-        """Check if the user has traded."""
-        ...
-
-class DataApiUserSync:
-    """Sync namespace for user-scoped Data API endpoints."""
-    def list_positions(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        size_threshold: float | None = None,
-        redeemable: bool | None = None,
-        mergeable: bool | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_direction: str | None = None,
-        title: str | None = None,
-    ) -> list[Position]:
-        """List open positions for the user."""
-        ...
-    def positions_value(
-        self, *, market: list[str] | None = None
-    ) -> list[UserValue]:
-        """Get position values for the user."""
-        ...
-    def closed_positions(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        title: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_direction: str | None = None,
-    ) -> list[ClosedPosition]:
-        """List closed positions for the user."""
-        ...
-    def trades(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        side: str | None = None,
-        taker_only: bool | None = None,
-        filter_type: str | None = None,
-        filter_amount: float | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> list[Trade]:
-        """List trades for the user."""
-        ...
-    def activity(
-        self,
-        *,
-        market: list[str] | None = None,
-        event_id: list[str] | None = None,
-        activity_type: list[str] | None = None,
-        side: str | None = None,
-        start: int | None = None,
-        end: int | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_direction: str | None = None,
-    ) -> list[Activity]:
-        """List activity events for the user."""
-        ...
-    def traded(self) -> UserTraded:
-        """Check if the user has traded."""
-        ...
-
-# =============================================================================
 # Gamma client classes
 # =============================================================================
 
@@ -2149,7 +2133,7 @@ class ClobClientSync:
 # =============================================================================
 
 class DataApi:
-    """Async client for the Polymarket data API."""
+    """Async client for the Polymarket Data API; each method is a route."""
     def __init__(
         self,
         *,
@@ -2157,36 +2141,369 @@ class DataApi:
         timeout_ms: int | None = None,
         pool_size: int | None = None,
     ) -> None: ...
-    def user(self, address: str) -> DataApiUser:
-        """Access user-scoped endpoints for a given address."""
+    def approvals(
+        self,
+        user: str,
+    ) -> Coroutine[Any, Any, Approvals]:
+        """A wallet's Polygon token and operator approvals."""
         ...
-    def trades(self) -> DataApiTrades:
-        """Access trade endpoints."""
+    def positions(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        status: str | None = None,
+        event_ids: list[str] | None = None,
+        title: str | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        include_archived: bool | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[Position]]:
+        """Positions for a wallet (`user`), one market (`conditions` of one id), or a wallet in some markets (both)."""
         ...
-    def holders(self) -> DataApiHolders:
-        """Access holder endpoints."""
+    def iter_positions(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        status: str | None = None,
+        event_ids: list[str] | None = None,
+        title: str | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        include_archived: bool | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[Position]:
+        """Walk every page of `positions`, re-sending these filters on each one."""
         ...
-    def open_interest(self) -> DataApiOpenInterest:
-        """Access open interest endpoints."""
+    def combo_positions(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        statuses: list[str] | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        updated_after: int | None = None,
+        updated_before: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[ComboPosition]]:
+        """A wallet's combo positions."""
         ...
-    def live_volume(self) -> DataApiLiveVolume:
-        """Access live volume endpoints."""
+    def iter_combo_positions(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        statuses: list[str] | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        updated_after: int | None = None,
+        updated_before: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[ComboPosition]:
+        """Walk every page of `combo_positions`, re-sending these filters on each one."""
         ...
-    def leaderboard(self) -> DataApiLeaderboard:
-        """Access leaderboard endpoints."""
+    def user_pnl(
+        self,
+        user: str,
+        *,
+        interval: str | None = None,
+        fidelity: str | None = None,
+    ) -> Coroutine[Any, Any, UserPnlSeries]:
+        """A wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served."""
         ...
-    def builders(self) -> DataApiBuilders:
-        """Access builder endpoints."""
+    def user_stats(
+        self,
+        user: str,
+    ) -> Coroutine[Any, Any, UserStats | None]:
+        """A wallet's profile card, or None for a wallet the API does not know."""
         ...
-    def health(self) -> DataApiHealth:
-        """Access health endpoints."""
+    def user_volume(
+        self,
+        user: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> Coroutine[Any, Any, UserVolume]:
+        """A wallet's traded volume over a whole-day window."""
         ...
-    def v2(self) -> _DataV2:
-        """The Data API v2 routes, sharing this client's connection pool and rate limiter."""
+    def value(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+    ) -> Coroutine[Any, Any, PortfolioValue]:
+        """A wallet's portfolio value in USDC."""
+        ...
+    def activity(
+        self,
+        user: str,
+        *,
+        types: list[str] | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        exclude_deposits_withdrawals: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[Activity]]:
+        """A wallet's activity feed."""
+        ...
+    def iter_activity(
+        self,
+        user: str,
+        *,
+        types: list[str] | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        exclude_deposits_withdrawals: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[Activity]:
+        """Walk every page of `activity`, re-sending these filters on each one."""
+        ...
+    def combo_activity(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[ComboActivity]]:
+        """A wallet's combo lifecycle events."""
+        ...
+    def iter_combo_activity(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[ComboActivity]:
+        """Walk every page of `combo_activity`, re-sending these filters on each one."""
+        ...
+    def trades(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        taker_only: bool | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[Trade]]:
+        """The trade feed, newest first."""
+        ...
+    def iter_trades(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        taker_only: bool | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[Trade]:
+        """Walk every page of `trades`, re-sending these filters on each one."""
+        ...
+    def holders(
+        self,
+        conditions: list[str],
+        *,
+        min_balance: float | None = None,
+        include_pnl: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[MetaHolder]]:
+        """Top holders per outcome token, for these markets (at most 20)."""
+        ...
+    def iter_holders(
+        self,
+        conditions: list[str],
+        *,
+        min_balance: float | None = None,
+        include_pnl: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[MetaHolder]:
+        """Walk every page of `holders`, re-sending these filters on each one."""
+        ...
+    def live_volume(
+        self,
+        event_ids: list[str],
+    ) -> Coroutine[Any, Any, LiveVolume]:
+        """Taker volume per market under these Gamma events."""
+        ...
+    def open_interest(
+        self,
+        *,
+        conditions: list[str] | None = None,
+    ) -> Coroutine[Any, Any, list[OpenInterest]]:
+        """Open interest per market; one GLOBAL row without `conditions`."""
+        ...
+    def prices_history(
+        self,
+        token_id: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        interval: str | None = None,
+        bucket_seconds: int | None = None,
+        as_of: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[PricePoint]]:
+        """An outcome token's price series."""
+        ...
+    def iter_prices_history(
+        self,
+        token_id: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        interval: str | None = None,
+        bucket_seconds: int | None = None,
+        as_of: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[PricePoint]:
+        """Walk every page of `prices_history`, re-sending these filters on each one."""
+        ...
+    def resolutions(
+        self,
+        *,
+        question_id: str | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+    ) -> Coroutine[Any, Any, list[Resolution]]:
+        """Resolution state, by exactly one of `question_id`, `conditions` or `event_ids`."""
+        ...
+    def tokens(
+        self,
+        *,
+        token_ids: list[str] | None = None,
+        conditions: list[str] | None = None,
+    ) -> Coroutine[Any, Any, list[TokenRef]]:
+        """Token ids, or the tokens of conditions, resolved to their condition, module, outcome, market and event; by exactly one of `token_ids` or `conditions`."""
+        ...
+    def biggest_winners(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[BiggestWinner]]:
+        """The largest single winning positions in a window."""
+        ...
+    def iter_biggest_winners(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[BiggestWinner]:
+        """Walk every page of `biggest_winners`, re-sending these filters on each one."""
+        ...
+    def builders_leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[BuilderStanding]]:
+        """Builders ranked by volume for a window."""
+        ...
+    def iter_builders_leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[BuilderStanding]:
+        """Walk every page of `builders_leaderboard`, re-sending these filters on each one."""
+        ...
+    def builder_volume(
+        self,
+        *,
+        interval: str | None = None,
+        limit: int | None = None,
+    ) -> Coroutine[Any, Any, list[BuilderVolumePoint]]:
+        """Builder volume per time bucket."""
+        ...
+    def leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        board: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Coroutine[Any, Any, Page[LeaderboardEntry]]:
+        """The trader board. `board` picks PNL or VOLUME; volume is in shares, not USDC."""
+        ...
+    def iter_leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        board: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIterator[LeaderboardEntry]:
+        """Walk every page of `leaderboard`, re-sending these filters on each one."""
+        ...
+    def leaderboard_user(
+        self,
+        user: str,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+    ) -> Coroutine[Any, Any, LeaderboardUserEntry | None]:
+        """One wallet's standing on both boards, or None for a wallet the API does not know."""
+        ...
+    def status(
+        self,
+    ) -> Coroutine[Any, Any, ServiceStatus]:
+        """How fresh the served data is. This is not a liveness check."""
         ...
 
 class DataApiSync:
-    """Sync client for the Polymarket data API."""
+    """Sync client for the Polymarket Data API; each method is a route."""
     def __init__(
         self,
         *,
@@ -2194,30 +2511,363 @@ class DataApiSync:
         timeout_ms: int | None = None,
         pool_size: int | None = None,
     ) -> None: ...
-    def user(self, address: str) -> DataApiUserSync:
-        """Access user-scoped endpoints for a given address."""
+    def approvals(
+        self,
+        user: str,
+    ) -> Approvals:
+        """A wallet's Polygon token and operator approvals."""
         ...
-    def trades(self) -> DataApiTradesSync:
-        """Access trade endpoints."""
+    def positions(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        status: str | None = None,
+        event_ids: list[str] | None = None,
+        title: str | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        include_archived: bool | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[Position]:
+        """Positions for a wallet (`user`), one market (`conditions` of one id), or a wallet in some markets (both)."""
         ...
-    def holders(self) -> DataApiHoldersSync:
-        """Access holder endpoints."""
+    def iter_positions(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        status: str | None = None,
+        event_ids: list[str] | None = None,
+        title: str | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        include_archived: bool | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[Position]:
+        """Walk every page of `positions`, re-sending these filters on each one."""
         ...
-    def open_interest(self) -> DataApiOpenInterestSync:
-        """Access open interest endpoints."""
+    def combo_positions(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        statuses: list[str] | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        updated_after: int | None = None,
+        updated_before: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[ComboPosition]:
+        """A wallet's combo positions."""
         ...
-    def live_volume(self) -> DataApiLiveVolumeSync:
-        """Access live volume endpoints."""
+    def iter_combo_positions(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        statuses: list[str] | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        updated_after: int | None = None,
+        updated_before: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[ComboPosition]:
+        """Walk every page of `combo_positions`, re-sending these filters on each one."""
         ...
-    def leaderboard(self) -> DataApiLeaderboardSync:
-        """Access leaderboard endpoints."""
+    def user_pnl(
+        self,
+        user: str,
+        *,
+        interval: str | None = None,
+        fidelity: str | None = None,
+    ) -> UserPnlSeries:
+        """A wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served."""
         ...
-    def builders(self) -> DataApiBuildersSync:
-        """Access builder endpoints."""
+    def user_stats(
+        self,
+        user: str,
+    ) -> UserStats | None:
+        """A wallet's profile card, or None for a wallet the API does not know."""
         ...
-    def health(self) -> DataApiHealthSync:
-        """Access health endpoints."""
+    def user_volume(
+        self,
+        user: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> UserVolume:
+        """A wallet's traded volume over a whole-day window."""
         ...
-    def v2(self) -> _DataV2Sync:
-        """The Data API v2 routes, sharing this client's connection pool and rate limiter."""
+    def value(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+    ) -> PortfolioValue:
+        """A wallet's portfolio value in USDC."""
+        ...
+    def activity(
+        self,
+        user: str,
+        *,
+        types: list[str] | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        exclude_deposits_withdrawals: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[Activity]:
+        """A wallet's activity feed."""
+        ...
+    def iter_activity(
+        self,
+        user: str,
+        *,
+        types: list[str] | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        sort_by: str | None = None,
+        sort_direction: str | None = None,
+        exclude_deposits_withdrawals: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[Activity]:
+        """Walk every page of `activity`, re-sending these filters on each one."""
+        ...
+    def combo_activity(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[ComboActivity]:
+        """A wallet's combo lifecycle events."""
+        ...
+    def iter_combo_activity(
+        self,
+        user: str,
+        *,
+        conditions: list[str] | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[ComboActivity]:
+        """Walk every page of `combo_activity`, re-sending these filters on each one."""
+        ...
+    def trades(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        taker_only: bool | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[Trade]:
+        """The trade feed, newest first."""
+        ...
+    def iter_trades(
+        self,
+        *,
+        user: str | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+        side: str | None = None,
+        taker_only: bool | None = None,
+        filter_type: str | None = None,
+        filter_amount: float | None = None,
+        start: int | None = None,
+        end: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[Trade]:
+        """Walk every page of `trades`, re-sending these filters on each one."""
+        ...
+    def holders(
+        self,
+        conditions: list[str],
+        *,
+        min_balance: float | None = None,
+        include_pnl: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[MetaHolder]:
+        """Top holders per outcome token, for these markets (at most 20)."""
+        ...
+    def iter_holders(
+        self,
+        conditions: list[str],
+        *,
+        min_balance: float | None = None,
+        include_pnl: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[MetaHolder]:
+        """Walk every page of `holders`, re-sending these filters on each one."""
+        ...
+    def live_volume(
+        self,
+        event_ids: list[str],
+    ) -> LiveVolume:
+        """Taker volume per market under these Gamma events."""
+        ...
+    def open_interest(
+        self,
+        *,
+        conditions: list[str] | None = None,
+    ) -> list[OpenInterest]:
+        """Open interest per market; one GLOBAL row without `conditions`."""
+        ...
+    def prices_history(
+        self,
+        token_id: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        interval: str | None = None,
+        bucket_seconds: int | None = None,
+        as_of: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[PricePoint]:
+        """An outcome token's price series."""
+        ...
+    def iter_prices_history(
+        self,
+        token_id: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        interval: str | None = None,
+        bucket_seconds: int | None = None,
+        as_of: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[PricePoint]:
+        """Walk every page of `prices_history`, re-sending these filters on each one."""
+        ...
+    def resolutions(
+        self,
+        *,
+        question_id: str | None = None,
+        conditions: list[str] | None = None,
+        event_ids: list[str] | None = None,
+    ) -> list[Resolution]:
+        """Resolution state, by exactly one of `question_id`, `conditions` or `event_ids`."""
+        ...
+    def tokens(
+        self,
+        *,
+        token_ids: list[str] | None = None,
+        conditions: list[str] | None = None,
+    ) -> list[TokenRef]:
+        """Token ids, or the tokens of conditions, resolved to their condition, module, outcome, market and event; by exactly one of `token_ids` or `conditions`."""
+        ...
+    def biggest_winners(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[BiggestWinner]:
+        """The largest single winning positions in a window."""
+        ...
+    def iter_biggest_winners(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[BiggestWinner]:
+        """Walk every page of `biggest_winners`, re-sending these filters on each one."""
+        ...
+    def builders_leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[BuilderStanding]:
+        """Builders ranked by volume for a window."""
+        ...
+    def iter_builders_leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[BuilderStanding]:
+        """Walk every page of `builders_leaderboard`, re-sending these filters on each one."""
+        ...
+    def builder_volume(
+        self,
+        *,
+        interval: str | None = None,
+        limit: int | None = None,
+    ) -> list[BuilderVolumePoint]:
+        """Builder volume per time bucket."""
+        ...
+    def leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        board: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Page[LeaderboardEntry]:
+        """The trader board. `board` picks PNL or VOLUME; volume is in shares, not USDC."""
+        ...
+    def iter_leaderboard(
+        self,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+        board: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PageIteratorSync[LeaderboardEntry]:
+        """Walk every page of `leaderboard`, re-sending these filters on each one."""
+        ...
+    def leaderboard_user(
+        self,
+        user: str,
+        *,
+        time_period: str | None = None,
+        category: str | None = None,
+    ) -> LeaderboardUserEntry | None:
+        """One wallet's standing on both boards, or None for a wallet the API does not know."""
+        ...
+    def status(
+        self,
+    ) -> ServiceStatus:
+        """How fresh the served data is. This is not a liveness check."""
         ...

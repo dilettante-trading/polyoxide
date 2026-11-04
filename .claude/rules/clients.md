@@ -38,7 +38,6 @@ paths:
   target's default transport (the CLOB's, on a host target: `TungsteniteTransport::per_address()`).
   Nothing is installed process-wide.
 - A venue's own knobs stay on its builder:
-  - data: `pnl_base_url`, `rankings_base_url`;
   - perps: `with_rate_limiter`;
   - Binance: `weight_budget`;
   - Kalshi: `credentials` (the key id and private key that sign a keyed client's requests; a
@@ -68,19 +67,18 @@ paths:
 Each venue's namespace list is in its rules file. An accessor that only clones client fields into
 its namespace comes from `polyoxide_core::namespaces!`, invoked in the client's `impl` with the
 fields every namespace takes (`http_client;`, Binance's `http;`):
-`pnl: PnlApi { http_client: pnl_http_client }` maps one field from another, and attributes such
-as `approvals`' `#[deprecated]` pass through. The namespace structs stay declared by hand, since
+`name: Type { field: other_field }` maps one field from another, and attributes such as
+`#[deprecated]` pass through. The namespace structs stay declared by hand, since
 their paths are public.
 
-Eight accessors are hand-written because they do more than clone: data's `user(addr)`, its alias
-`positions` and the `traded` wrapper, and clob's account-gated `orders`, `account_api`,
-`notifications`, `rewards` and `auth`, each projecting its own part of the account and failing
-with its own message.
+Five accessors are hand-written because they do more than clone: clob's account-gated `orders`,
+`account_api`, `notifications`, `rewards` and `auth`, each projecting its own part of the account
+and failing with its own message.
 
 ## Query setters
 
 Query parameters are chained with builder methods before `.send().await?`
-(`gamma.markets().list().open(true).send().await?`, `data.leaderboard().get().send().await?`).
+(`gamma.markets().list().open(true).send().await?`, `data.leaderboard().send().await?`).
 The setters come from `polyoxide_core::query_setters!`, one entry per setter keeping its doc
 comment, name, argument type and key:
 

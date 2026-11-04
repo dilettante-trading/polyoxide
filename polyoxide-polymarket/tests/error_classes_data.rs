@@ -9,12 +9,12 @@ use polyoxide_core::RetryConfig;
 use polyoxide_polymarket::data::{DataApi, DataError};
 use polyoxide_venue::{Class, Classify};
 
-/// `GET /positions`, answered with `status` and `body`, on a client that does
-/// not retry.
+/// `GET /v2/positions`, answered with `status` and `body`, on a client that
+/// does not retry.
 async fn fail(status: usize, body: &str) -> DataError {
     let mut server = Server::new_async().await;
     let _mock = server
-        .mock("GET", "/positions")
+        .mock("GET", "/v2/positions")
         .match_query(Matcher::Any)
         .with_status(status)
         .with_body(body)
@@ -28,18 +28,15 @@ async fn fail(status: usize, body: &str) -> DataError {
         })
         .build()
         .unwrap();
-    data.user("0xabc")
-        .list_positions()
-        .send()
-        .await
-        .unwrap_err()
+    data.positions("0xabc").send().await.unwrap_err()
 }
 
 #[tokio::test]
 async fn every_status_reaches_the_caller_with_its_class() {
     let refusal = Class::VenueRefusal { code: None };
     let unavailable = Class::Unavailable { code: None };
-    // (status, class, is_fault), each with a v1 body.
+    // (status, class, is_fault), each with a body that is not v2's structured
+    // error, so the status alone decides.
     let rows = [
         (400, refusal.clone(), true),
         (401, Class::Unauthorized, true),

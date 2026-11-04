@@ -11,15 +11,15 @@
 use polyoxide_polymarket::data::DataApi;
 use polyoxide_test_support::query::headers_sent;
 
-/// One unauthenticated `GET /positions`, and the headers it carried.
+/// One unauthenticated `GET /v2/positions`, and the headers it carried.
 #[tokio::test]
 async fn a_positions_list_sends_exactly_the_default_headers() {
     let mut base = String::new();
-    let headers = headers_sent("/positions", |url| {
+    let headers = headers_sent("/v2/positions", |url| {
         base = url.clone();
         async move {
             let data = DataApi::builder().base_url(url).build().unwrap();
-            let _ = data.user("0xabc").list_positions().send().await;
+            let _ = data.positions("0xabc").send().await;
         }
     })
     .await;
@@ -33,6 +33,6 @@ async fn a_positions_list_sends_exactly_the_default_headers() {
             ("host", host)
         ]
         .map(|(name, value)| (name.to_owned(), value.to_owned())),
-        "`user().list_positions` sent a header set other than reqwest's defaults with gzip"
+        "`positions` sent a header set other than reqwest's defaults with gzip"
     );
 }

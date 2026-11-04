@@ -285,9 +285,11 @@ stage does not hold, printing each one's key to copy there.
   that is not a call's, and braces around a lone expression after `=>` or a closure's `|…|`).
 - **Fails** on a changed item unless a `[[drift]]` entry names a DRIFT row of
   `_bmad-output/specs/spec-venue-extensibility/divergences.md` and the diff's sha256; on a lost
-  item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
-  reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
-  pairs or rewrites nothing.
+  item unless a `[[retired]]` entry names it and either an old path whose covering manifest row
+  gives a reason (`row`) or a key under `## Removed` in the stage's removal listing (`removal`,
+  S3's way, since the manifest is S2's and final; an entry gives exactly one); and on any
+  `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that pairs or rewrites
+  nothing.
 - **The 77 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
@@ -351,6 +353,14 @@ stage does not hold, printing each one's key to copy there.
   R26 is core's `mock_request` `<impl polyoxide_core::Authenticator for StampAttempt>::sign`,
   which logs the body it signs through `String::from_utf8_lossy` since `RequestParts::body`
   became bytes (#87).
+  R27 is Data API v1's retirement and the flatten of `data::v2` into `data`: the CLOB's position
+  and trade mocks, the send-loop proofs, the header, error-class, query-setter and limit
+  agreement tests moved off v1 routes, and every v2 suite item whose body called `data.v2()`.
+  Three items that cited R14 or R22 (`spec_agreement_data_v2`'s `NOT_MODELLED` and `ROUTES`,
+  `data::v2::error`'s `tests::parts`) changed again with the flatten, so their one entry, whose
+  sha256 pins the whole diff, cites R27. The `[[retired]]` entries (lost v1 tests) each cite
+  their subject's `docs/s3-removals.md` key, and `[files]`, `[paths]` and `[literals]` hold the
+  flatten's file merges, path rewrites and fixture directory.
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.

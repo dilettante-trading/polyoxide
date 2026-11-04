@@ -11,7 +11,7 @@ whose guide is its module documentation:
 |---|---|---|
 | [`clob`](src/clob/README.md) | `clob`; its WebSocket channels, `clob::ws`, under `clob-ws` | The CLOB: order signing and placement, order books, prices, account, rewards and API keys |
 | [`gamma`](src/gamma/README.md) | `gamma` | Gamma: markets, events, series, tags, comments, sports, search and profiles; read-only |
-| [`data`](src/data/README.md) | `data` | The Data API, v1 and v2 (`data.v2()`), and the undocumented `user-pnl-api` and `lb-api` hosts; read-only |
+| [`data`](src/data/README.md) | `data` | The Data API (v2; Polymarket retired v1 on 2026-11-02): wallets, the trade and activity feeds, markets and boards; read-only |
 | [`relay`](src/relay/README.md) | `relay` | The Relayer: gasless transactions for Safe, Proxy and Deposit Wallets, and session signers |
 | [`perps`](src/perps/README.md) | `perps`; its WebSocket channels, `perps::ws`, under `perps-ws` | Perps: perpetual futures market data on the public `/v1/info/*` routes; read-only |
 | `rtds` | `rtds` | RTDS: Binance and Chainlink crypto price streams over one socket |

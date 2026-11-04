@@ -11,7 +11,7 @@ Each entry names its evidence. Re-check before relying on an old one.
 The spec describes `trade_pnl` as "the compatibility chart series (`p` on the
 bare user-pnl route)", which suggests `/v2/user-pnl` can replace
 `data.pnl()`. It cannot. Same wallets, `interval=1w`, `fidelity=1d`, joined on
-timestamp, 2026-09-14 (`scripts/compare_v2_overlaps.py`, plus one wallet checked by
+timestamp, 2026-09-14 (`scripts/compare_v2_overlaps.py` (removed with v1, in git history), plus one wallet checked by
 hand during design):
 
 | wallet | points joined | `trade_pnl` vs `p` |
@@ -135,6 +135,24 @@ So the cursor binds the key the walk asked for, not the order it was served in.
 `.pages()` restates the original key on every page, which is the accepted form.
 The spec also says cursors minted for these sorts before the change return `400`;
 none was available to test.
+
+## `/v2/positions` serves a holding of 0.1 share or less as `CLOSED`
+
+`filter_amount` is documented as the floor on the current holding (`TOKENS`, upstream default
+0.1), but a lower floor does not reach below the default. Probed 2026-11-04 on
+`0xcb3143ee858e14d0b3fe40ffeaea78416e646b02`, which holds 0.0317 shares of token
+`54533043819946592547517511176940999955633860128497669742211153063842200957669` in condition
+`0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75`:
+
+- `status=OPEN`, with or without `filter_type=TOKENS&filter_amount=0`, returns no row for it.
+- `status=CLOSED` returns it, with `status: "CLOSED"` and `current_size: 0.0317`.
+- `status=CLOSED` returns the wallet's whole closed history (486 rows) whether or not
+  `filter_amount=0.000001` is sent, 12 of them with dust between 0.0001 and 0.0317 shares,
+  so the floor does not narrow that arm either.
+
+v1's `/positions?sizeThreshold=0` listed such holdings. The CLOB's `Trading::positions`
+reads `OPEN` only, so it lists holdings above 0.1 share (the owner's choice, 2026-11-04):
+listing the dust would mean walking the whole closed history on every call.
 
 ## `/v2/resolutions` condition rows can omit documented fields
 
@@ -261,11 +279,15 @@ both `/v2/user-stats` and `/v2/leaderboard?user=` (2026-09-14).
 
 ## Measured rate limits
 
-Upstream publishes no v2 figures. Each route below was ramped with
+Upstream published no v2 figures until late 2026; by 2026-11-04 its rate-limit page
+(https://docs.polymarket.com/api-reference/rate-limits) lists them: 800/10s general,
+`/v2/trades` 300, `/v2/positions` with `/v2/positions/combos` 200, `/v2/activity` with
+`/v2/activity/combos` 200, `/v2/prices-history` 200 and `/v2/status` 100.
+`shared::data_limits` transcribes them, each combined row as one shared bucket, except
+where a measurement below disagrees. Each route below was ramped with
 `polyoxide-polymarket/examples/v2_soak` (raw requests, every URL distinct so the CDN
-cannot answer, abort on the first 429) and then validated at the shipped
-limiter's pace. `shared::data_limits` pins the counts in the table at the
-end of this section.
+cannot answer, abort on the first 429) and then validated at the shipped limiter's
+pace. The table at the end of this section is what `shared::data_limits` pins.
 
 ### Ramps
 
@@ -438,16 +460,33 @@ At the plan's default of 4 requests in flight, latency capped the run at 11.47 r
 against the row's 17.9, so the limiter never bound and the run did not test the row.
 The remaining validations use `--concurrency 16`, and this route is re-run with it.
 
+#### The published `/v2/trades` figure (2026-11-04)
+
+With the published 300/10s pinned, `/v2/trades` paces at 26.9 req/s. Validated with
+`--route trades --pace client --stage-secs 180`:
+
+| Run (UTC) | Concurrency | Requests | Achieved req/s | p99 ms | 429s | Cache hits | Result |
+|-----------|-------------|----------|----------------|--------|------|------------|--------|
+| 2026-11-04 | 4 | 2885 | 16.03 | 441 | 0 | 0 | PASS, but latency-bound below the row's pace |
+| 2026-11-04 | 10 | 218 | — | 372 | 0 | 1 | invalid: a URL the first run had requested came from the CDN |
+| 2026-11-04 | 10 | 1826 | ~26 until it stopped | 526 | 5 | 0 | **FAIL**: throttled at 70 s (unrecognised 429, no `Retry-After`) |
+
+So the published figure is not reachable as a rate, as v1's ramp (429s at 29.65 req/s)
+suggested, and `/v2/trades` keeps the 200/10s it was validated at above (the owner's
+choice, 2026-11-04).
+
 ### Pinned
 
-| Route | Per 10s | Ramp stopped by |
-|-------|---------|-----------------|
-| `/v2/positions` | 200 | 429 (unrecognised body) at 30 req/s |
-| `/v2/positions/combos` | 400 | clean to 40 req/s (harness ceiling) |
-| `/v2/trades` | 200 | 429 (unrecognised body) at 30 req/s |
-| `/v2/activity` | 400 | clean to 40 req/s (harness ceiling) |
-| `/v2/user-pnl` | 400 | clean to 40 req/s (harness ceiling); p99 near the saturation threshold at 30 |
-| `/v2/holders` | 400 | clean to 40 req/s (harness ceiling), measured with `include_pnl=true` |
+| Route | Per 10s | From |
+|-------|---------|------|
+| general | 800 | published |
+| `/v2/positions` and `/v2/positions/combos` | 200, one bucket | published; the ramp's 429 at 30 req/s on `/v2/positions` agrees |
+| `/v2/activity` and `/v2/activity/combos` | 200, one bucket | published (the ramp ran clean to 40 req/s on `/v2/activity` alone) |
+| `/v2/prices-history` | 200 | published |
+| `/v2/status` | 100 | published |
+| `/v2/trades` | 200 | measured: the published 300 drew 429s at its pace (above) |
+| `/v2/user-pnl` | 400 | measured, not published: clean to 40 req/s (harness ceiling); p99 near the saturation threshold at 30 |
+| `/v2/holders` | 400 | measured, not published: clean to 40 req/s (harness ceiling), with `include_pnl=true` |
 
 ## Browser transport (2026-11)
 

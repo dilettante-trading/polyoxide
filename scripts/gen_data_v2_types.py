@@ -4,7 +4,7 @@
 One-shot scaffolding for the v2 implementation: the output is committed and
 then owned by hand. It is NOT a build step and is never re-run to overwrite
 edited files. The durable guard is
-`polyoxide-polymarket/tests/spec_agreement_data_v2.rs`, which fails if a struct
+`polyoxide-polymarket/tests/spec_agreement_data.rs`, which fails if a struct
 disagrees with the spec.
 
 Usage:

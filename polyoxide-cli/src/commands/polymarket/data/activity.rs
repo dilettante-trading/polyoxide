@@ -74,7 +74,6 @@ impl ActivityFilters {
         err: &mut dyn Write,
     ) -> Result<()> {
         let mut request = data
-            .v2()
             .activity(user)
             .limit(self.limit)
             .sort_direction(self.sort_direction.into());

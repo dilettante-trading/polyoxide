@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::{Args, Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
-use polyoxide_polymarket::data::{v2::types::TimePeriod, DataApi};
+use polyoxide_polymarket::data::{types::TimePeriod, DataApi};
 
 use super::paging::{print_pretty, run_paged, PageArgs};
 
@@ -39,7 +39,6 @@ pub struct LeaderboardCommand {
 impl LeaderboardCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
         let request = data
-            .v2()
             .builders_leaderboard()
             .time_period(self.time_period.into())
             .limit(self.limit);
@@ -60,7 +59,7 @@ pub struct VolumeCommand {
 
 impl VolumeCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write) -> Result<()> {
-        let mut request = data.v2().builder_volume().interval(self.time_period.into());
+        let mut request = data.builder_volume().interval(self.time_period.into());
         if let Some(limit) = self.limit {
             request = request.limit(limit);
         }

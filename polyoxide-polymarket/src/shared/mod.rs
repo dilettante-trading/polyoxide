@@ -22,6 +22,8 @@
 //! Each item is built by the features of the modules that use it.
 
 mod limits;
+#[cfg(any(feature = "gamma", feature = "data"))]
+mod open_enum;
 mod policy;
 #[cfg(feature = "clob")]
 mod throttle;
@@ -52,6 +54,10 @@ pub use limits::{gamma_limits, gamma_limits_on};
 pub use limits::{perps_limits, perps_limits_on};
 #[cfg(feature = "relay")]
 pub use limits::{relay_limits, relay_limits_on};
+#[cfg(any(feature = "gamma", feature = "data"))]
+pub(crate) use open_enum::specta_open_enum;
+#[cfg(all(feature = "specta", any(feature = "gamma", feature = "data")))]
+pub(crate) use open_enum::OpenString;
 pub use policy::PolymarketRetryPolicy;
 #[cfg(feature = "clob")]
 pub use throttle::{

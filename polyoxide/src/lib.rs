@@ -56,14 +56,13 @@
 //!
 //!     // Use Data API to get user positions
 //!     let positions = polymarket.data
-//!         .user("0x1234567890123456789012345678901234567890")
-//!         .list_positions()
+//!         .positions("0x1234567890123456789012345678901234567890")
 //!         .limit(10)
 //!         .send()
 //!         .await?;
 //!
-//!     for position in &positions {
-//!         println!("Position: {} - size: {}", position.title, position.size);
+//!     for position in &positions.data {
+//!         println!("Position: {} - size: {}", position.title, position.current_size);
 //!     }
 //!
 //!     // Use CLOB API to place an order

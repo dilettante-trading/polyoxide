@@ -74,8 +74,10 @@ Normalising, in order, before the two texts of a pair are compared:
 
 A diff is printed, and fails, unless a `[[drift]]` entry names the item, a DRIFT row of
 divergences.md and the diff's sha256. A lost item, one with no counterpart, fails
-unless a `[[retired]]` entry names it and a manifest row giving a reason, not a new
-path, covers the entry's `row`. Every entry that matches nothing fails: a `[[drift]]`
+unless a `[[retired]]` entry names it and either a manifest row giving a reason, not
+a new path, covers the entry's `row`, or the entry's `removal` is a key under
+`## Removed` in the stage's removal listing (docs/s3-removals.md in S3), whose baseline
+must be the one compared with. Every entry that matches nothing fails: a `[[drift]]`
 or `[[retired]]` naming no such diff or lost item, a `[files]` pair naming a file
 either tree lacks or a baseline file holding no item, and a `[literals]`, `[fixtures]`,
 `[paths]` or `[gates]` entry that replaces, rewrites or drops nothing. Items new at HEAD are listed.
@@ -1492,6 +1494,7 @@ class Entry:
     kind: str
     row: str
     sha256: str = ""  # `[[drift]]` only
+    removal: str = ""  # `[[retired]]` only, in place of `row`: a key of the stage's listing
 
     @property
     def key(self) -> tuple[str, str, str]:
@@ -1561,7 +1564,8 @@ def _strings(where: str, table) -> dict[str, str]:
     return dict(table)
 
 
-def _entries(data: dict, name: str, fields: tuple[str, ...]) -> tuple[Entry, ...]:
+def _entries(data: dict, name: str, fields: tuple[str, ...],
+             one_of: tuple[str, ...] = ()) -> tuple[Entry, ...]:
     entries = data.get(name, [])
     if not isinstance(entries, list):
         raise BodyDiffError(f"{CONFIG}: `{name}` must be an array of tables, `[[{name}]]`")
@@ -1570,19 +1574,31 @@ def _entries(data: dict, name: str, fields: tuple[str, ...]) -> tuple[Entry, ...
         where = f"`[[{name}]]` entry {n}"
         if not isinstance(entry, dict):
             raise BodyDiffError(f"{CONFIG}: {where} is not a table")
-        unknown = sorted(set(entry) - set(fields) - {"kind"})
+        unknown = sorted(set(entry) - set(fields) - set(one_of) - {"kind"})
         missing = [f for f in fields if not isinstance(entry.get(f), str) or not entry[f]]
         if unknown or missing:
-            raise BodyDiffError(f"{CONFIG}: {where} must give {', '.join(fields)} as strings, "
-                                f"and `kind` optionally; it lacks {missing or 'nothing'} and "
-                                f"has unknown {unknown or 'nothing'}")
+            either = f", exactly one of {' or '.join(one_of)}," if one_of else ","
+            raise BodyDiffError(f"{CONFIG}: {where} must give {', '.join(fields)} as "
+                                f"strings{either} and `kind` optionally; it lacks "
+                                f"{missing or 'nothing'} and has unknown {unknown or 'nothing'}")
+        if one_of:
+            given = [f for f in one_of if f in entry]
+            value = entry[given[0]] if len(given) == 1 else None
+            if not isinstance(value, str) or not value:
+                raise BodyDiffError(f"{CONFIG}: {where} must give exactly one of "
+                                    f"{' or '.join(one_of)}, as a string")
+            if value != value.strip() or "`" in value:
+                raise BodyDiffError(f"{CONFIG}: {where} gives `{given[0]}` as {value!r}; give "
+                                    f"it with no surrounding space or backticks, as the "
+                                    f"listing's key or the manifest's path reads")
         kind = entry.get("kind", "fn")
         if kind not in KINDS:
             raise BodyDiffError(f"{CONFIG}: {where} has kind {kind!r}, not one of {KINDS}")
         if name == "drift" and not SHA256.match(entry["sha256"]):
             raise BodyDiffError(f"{CONFIG}: {where} has sha256 {entry['sha256']!r}, which is "
                                 f"not 64 lowercase hex digits")
-        found = Entry(entry["file"], entry["item"], kind, entry["row"], entry.get("sha256", ""))
+        found = Entry(entry["file"], entry["item"], kind, entry.get("row", ""),
+                      entry.get("sha256", ""), entry.get("removal", ""))
         if any(other.key == found.key for other in out):
             raise BodyDiffError(f"{CONFIG}: {where} names {found.where}, which an earlier "
                                 f"`[[{name}]]` entry names too")
@@ -1633,7 +1649,7 @@ def parse_config(text: str) -> Config:
                                 f"\"perps\", with no leading or trailing `/`")
     return Config(_strings("`[files]`", data.get("files", {})), literals,
                   _entries(data, "drift", ("file", "item", "row", "sha256")),
-                  _entries(data, "retired", ("file", "item", "row")),
+                  _entries(data, "retired", ("file", "item"), one_of=("row", "removal")),
                   _strings("`[paths]`", data.get("paths", {})), gates, fixtures)
 
 
@@ -1826,7 +1842,8 @@ def stanza_lines(text: str, features: Iterable[RowLike] | None = None,
 
 def compare(root: Path, baseline: str, rows: tuple[RowLike, ...], config: Config,
             valid_drift: frozenset[str], old_tree: Tree | None = None,
-            new_tree: Tree | None = None, features: tuple[RowLike, ...] = ()) -> Result:
+            new_tree: Tree | None = None, features: tuple[RowLike, ...] = (),
+            removals: frozenset[str] = frozenset(), listing: str = "") -> Result:
     old_tree = old_tree or Baseline(root, baseline)
     new_tree = new_tree or Checkout(root)
     # `[paths]` applies as the manifest's path rows do, after them, so it wins on an
@@ -1963,6 +1980,15 @@ def compare(root: Path, baseline: str, rows: tuple[RowLike, ...], config: Config
         if entry is None:
             result.lost.append(item)
             continue
+        if entry.removal:
+            if entry.removal in removals:
+                result.retired.append((item, entry))
+            else:
+                result.problems.append(f"`[[retired]]` for {entry.where} cites the removal "
+                                       f"`{entry.removal}`, which {listing or 'the listing'} "
+                                       f"does not list under `## Removed`")
+                result.lost.append(item)
+            continue
         row = _longest_row(rows, entry.row)
         if row is None:
             result.problems.append(f"`[[retired]]` for {entry.where} cites `{entry.row}`, "
@@ -2028,7 +2054,10 @@ def report(result: Result, moves: bool = False, out=None, err=None) -> int:
         print(f"Acknowledged as DRIFT {entry.row}: {found.old.where} -> {found.new.where} "
               f"(sha256 {found.sha256})", file=out)
     for item, entry in result.retired:
-        print(f"Retired with the manifest's `{entry.row}`: {item.where}", file=out)
+        if entry.removal:
+            print(f"Retired with the removal `{entry.removal}`: {item.where}", file=out)
+        else:
+            print(f"Retired with the manifest's `{entry.row}`: {item.where}", file=out)
     for found in result.diffs:
         print(f"::error::{found.old.where} differs at {found.new.file}:{found.new.line} after "
               f"normalising (sha256 {found.sha256}). Restore it, or acknowledge it with a "
@@ -2037,8 +2066,10 @@ def report(result: Result, moves: bool = False, out=None, err=None) -> int:
             print(f"  {line}", file=err)
     for item in result.lost:
         print(f"::error::{item.where} has no counterpart at HEAD. Restore it, pair its file "
-              f"with `[files]`, or retire it with a `[[retired]]` entry citing the manifest "
-              f"row whose reason covers its subject.", file=err)
+              f"with `[files]`, or retire it with a `[[retired]]` entry whose `removal` is its "
+              f"subject's key under `## Removed` in the stage's removal listing "
+              f"(docs/s3-removals.md in S3), or whose `row` a manifest reason row covers.",
+              file=err)
     for problem in result.problems:
         print(f"::error::{problem}", file=err)
     for item in result.added:
@@ -2061,13 +2092,30 @@ def report(result: Result, moves: bool = False, out=None, err=None) -> int:
 # --- the command line --------------------------------------------------------
 
 
-def _manifest(root: Path):
+def _api_removals():
+    """scripts/api_removals.py, which reads the manifest and the removal listings."""
     try:
         import api_removals
     except ImportError as error:
         raise BodyDiffError(f"could not import scripts/api_removals.py: {error}") from error
+    return api_removals
+
+
+def _manifest(root: Path):
+    api_removals = _api_removals()
     try:
         return api_removals.read_manifest(root)
+    except api_removals.RemovalsError as error:
+        raise BodyDiffError(str(error)) from error
+
+
+def _removals(root: Path) -> tuple[frozenset[str], str, str]:
+    """The `## Removed` keys of the stage's removal listing, its path and its baseline."""
+    api_removals = _api_removals()
+    try:
+        path = api_removals.stage_listing(root)
+        listing = api_removals.read_listing(root, path)
+        return listing.removed, path, listing.baseline
     except api_removals.RemovalsError as error:
         raise BodyDiffError(str(error)) from error
 
@@ -2100,8 +2148,17 @@ def main(argv: list[str] | None = None, root: Path = REPO) -> int:
                 valid = drift_rows((root / DIVERGENCES).read_text(encoding="utf-8"))
             except OSError as error:
                 raise BodyDiffError(f"could not read {DIVERGENCES}: {error}") from error
+        removals, listing = frozenset(), ""
+        if any(entry.removal for entry in config.retired):
+            removals, listing, listed_from = _removals(root)
+            # Its keys name what changed since its own baseline, so they retire
+            # nothing against another (api_removals refuses the same mismatch).
+            if listed_from != baseline:
+                raise BodyDiffError(f"{listing} lists removals from {listed_from}, not "
+                                    f"{baseline}, so its keys cannot retire a test here")
         result = compare(root, baseline, tuple(manifest.rows), config, valid,
-                         features=tuple(manifest.features))
+                         features=tuple(manifest.features), removals=removals,
+                         listing=listing)
         return report(result, args.moves)
     except BodyDiffError as error:
         print(f"::error::{error}", file=sys.stderr)

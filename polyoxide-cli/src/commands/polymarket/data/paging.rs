@@ -14,17 +14,14 @@ use clap::Args;
 use color_eyre::eyre::Result;
 use futures_util::{Stream, StreamExt};
 use polyoxide_polymarket::data::{
-    v2::{
-        api::{
-            boards::ListBuildersLeaderboard,
-            feeds::{ListActivity, ListTrades},
-            markets::ListHolders,
-            wallet::ListPositions,
-        },
-        types::{Activity, BuilderStanding, MetaHolder, Position, Trade},
-        Page, PageStream,
+    api::{
+        boards::ListBuildersLeaderboard,
+        feeds::{ListActivity, ListTrades},
+        markets::ListHolders,
+        wallet::ListPositions,
     },
-    DataError,
+    types::{Activity, BuilderStanding, MetaHolder, Position, Trade},
+    DataError, Page, PageStream,
 };
 use serde::Serialize;
 

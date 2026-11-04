@@ -27,6 +27,8 @@ PAUSE_SECONDS = 0.5
 BOOK_LEVELS = 10
 EVENT_MARKETS = 3
 TRADES_KEPT = 30
+# The trades page the venue's `trades` reads.
+TRADES_PAGE = 100
 HISTORY_SECONDS = 3 * 24 * 60 * 60
 
 
@@ -66,9 +68,9 @@ def main():
             or len(book.body.get("asks", [])) < 2
         ):
             continue
-        trades = get(f"{DATA}/trades", market=market["condition_id"], takerOnly="true")
-        rows = trades.body if trades.status == 200 and isinstance(trades.body, list) else []
-        if not any(r.get("asset") == token for r in rows) or not any(r.get("asset") != token for r in rows):
+        trades = get(f"{DATA}/v2/trades", condition=market["condition_id"], taker_only="true", limit=TRADES_PAGE)
+        rows = trades.body.get("data", []) if trades.status == 200 and isinstance(trades.body, dict) else []
+        if not any(r.get("token_id") == token for r in rows) or not any(r.get("token_id") != token for r in rows):
             continue
         gamma = get(f"{GAMMA}/markets", clob_token_ids=token)
         if gamma.status != 200 or not gamma.body or not gamma.body[0].get("events"):
@@ -103,9 +105,10 @@ def main():
         if len(kept) >= TRADES_KEPT and ours >= 3 and theirs >= 1:
             break
         kept.append(row)
-        ours += row.get("asset") == token
-        theirs += row.get("asset") != token
-    keep("trades", trades, kept, f"the first {len(kept)} rows, newest first, {ours} of the token and {theirs} of another")
+        ours += row.get("token_id") == token
+        theirs += row.get("token_id") != token
+    keep("trades", trades, {**trades.body, "data": kept},
+         f"`data` to its first {len(kept)} rows, newest first, {ours} of the token and {theirs} of another")
 
     keep("gamma_markets", gamma, gamma.body, "as fetched")
     event_id = gamma.body[0]["events"][0]["id"]

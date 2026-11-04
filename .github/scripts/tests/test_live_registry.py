@@ -559,11 +559,3 @@ def test_an_unignored_test_in_a_shared_module_is_caught(tmp_path: Path) -> None:
     target = _target_with_module(tmp_path, "common/mod.rs", "#[tokio::test]\nasync fn shared() {}\n")
     found = {file.name: unignored(file.read_text()) for file in gen_registry.module_files(target)}
     assert found == {"live_x.rs": [], "mod.rs": ["shared (line 2)"]}
-
-
-def test_the_real_shared_modules_are_scanned() -> None:
-    """data's live suite declares `mod common;`. binance's did until its wire
-    helpers moved to polyoxide-test-support."""
-    for key in [("polyoxide-polymarket", "live_data")]:
-        files = gen_registry.module_files(_path(*key))
-        assert [f.relative_to(_path(*key).parent).as_posix() for f in files[1:]] == ["common/mod.rs"]
