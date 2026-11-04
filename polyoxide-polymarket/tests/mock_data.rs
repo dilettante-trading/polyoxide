@@ -3,6 +3,7 @@ use mockito::{Matcher, Server};
 use polyoxide_polymarket::data::types::{
     ActivityType, ComboLegStatus, ComboSort, ComboStatus, PnlFidelity, RankingWindow,
 };
+use polyoxide_polymarket::data::v2::types::PositionStatus;
 use polyoxide_polymarket::data::{DataApi, DataError};
 fn test_data(server: &mockito::ServerGuard) -> DataApi {
     DataApi::builder().base_url(server.url()).build().unwrap()
@@ -1520,7 +1521,12 @@ async fn retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop() {
     let data = throttled_data(&server, 400, 2);
 
     let start = std::time::Instant::now();
-    let result = data.user("0xaddr").closed_positions().send().await;
+    let result = data
+        .v2()
+        .positions("0xaddr")
+        .status(PositionStatus::Closed)
+        .send()
+        .await;
     let elapsed = start.elapsed();
 
     assert!(
@@ -1541,14 +1547,19 @@ async fn a_429_makes_the_next_request_wait_even_though_it_never_saw_one() {
     // backoff, so the wait measured below can only come from the former.
     let data = throttled_data(&server, 600, 0);
 
-    let rate_limited = data.user("0xaddr").closed_positions().send().await;
+    let rate_limited = data
+        .v2()
+        .positions("0xaddr")
+        .status(PositionStatus::Closed)
+        .send()
+        .await;
     assert!(rate_limited.is_err());
 
     // A different endpoint, its own token bucket untouched. Before the cooldown
     // existed this went straight out on the wire, which is how four concurrent
     // callers turned one 429 into sixteen doomed requests.
     let start = std::time::Instant::now();
-    let _ = data.trades().list().send().await;
+    let _ = data.v2().trades().send().await;
     let elapsed = start.elapsed();
 
     assert!(

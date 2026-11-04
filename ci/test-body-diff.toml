@@ -578,3 +578,18 @@ item = "<impl polyoxide_core::Authenticator for StampAttempt>::sign"
 kind = "method"
 row = "R26"
 sha256 = "7e6cf8bed2770876ce0656b8138ede28861357b6829f16483d9c99693f1210bf"
+
+# R27: Data API v1 is retired upstream (2026-11-02). The send-loop proofs that
+# docs/MUTANTS.md cites drove v1's /closed-positions and /trades, and now drive
+# /v2/positions and /v2/trades with their assertions unchanged.
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "a_429_makes_the_next_request_wait_even_though_it_never_saw_one"
+row = "R27"
+sha256 = "6db16b914341fb1c90625db07316d48e075828c5bca608bb30c444770df5b653"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop"
+row = "R27"
+sha256 = "dd3a9776dff4b4e3e527eda7419df241b066eac65e7d65c38d0e59cea966a8cf"
