@@ -1812,7 +1812,7 @@ impl RelayClient {
         }
 
         let mut parts = Self::parts(Method::POST, &url);
-        parts.body = Some(serde_json::to_string(body).map_err(ApiError::from)?);
+        parts.body = Some(serde_json::to_string(body).map_err(ApiError::from)?.into());
         parts.timeout = timeout;
         let signer = RelayPostAuth {
             auth,
@@ -1861,7 +1861,7 @@ impl Authenticator for RelayPostAuth<'_> {
     async fn sign(&self, parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
         let mut headers = self
             .auth
-            .generate_relayer_v2_headers("POST", &parts.path, parts.body.as_deref())
+            .relayer_v2_headers("POST", &parts.path, parts.body.as_deref())
             .map_err(ApiError::Validation)?;
         for (name, value) in self.extra_headers {
             headers.insert(name.clone(), value.clone());
@@ -2089,6 +2089,45 @@ mod tests {
         assert!(
             result.is_err(),
             "3rd permit should block with default limit of 2"
+        );
+    }
+
+    // Why: issue #87. A relay POST is signed over the body it sends, and a body need not be
+    // text, so the Builder HMAC reads its bytes. The expected value is the `hmac` crate's over
+    // the same bytes, not this crate's signer.
+    #[tokio::test]
+    async fn a_post_signs_a_body_that_is_not_utf8_over_its_bytes() {
+        use base64::{engine::general_purpose::URL_SAFE, Engine};
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        const BODY: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x00, 0x80];
+        let auth = AuthConfig::Builder(BuilderConfig::new(
+            "key".into(),
+            "c2VjcmV0".into(),
+            Some("pass".into()),
+        ));
+        let extra_headers = polyoxide_core::http::header::HeaderMap::new();
+        let signer = RelayPostAuth {
+            auth: &auth,
+            extra_headers: &extra_headers,
+        };
+        let mut parts = RequestParts::new(Method::POST, "/submit");
+        parts.body = Some(BODY.into());
+        signer.sign(&mut parts, 0).await.unwrap();
+
+        let header = |name| parts.headers.get(name).unwrap().to_str().unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"secret").unwrap();
+        mac.update(format!("{}POST/submit", header("poly_builder_timestamp")).as_bytes());
+        mac.update(BODY);
+        assert_eq!(
+            header("poly_builder_signature"),
+            URL_SAFE.encode(mac.finalize().into_bytes())
+        );
+        assert_eq!(
+            parts.body.as_deref(),
+            Some(BODY),
+            "signing leaves the body as given"
         );
     }
 

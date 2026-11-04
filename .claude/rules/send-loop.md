@@ -64,6 +64,10 @@ the signer layer by `clob`; the HMAC `Signer` and the session-signer types by `c
   namespaces return `Request<T, ClobError>`; its L1, L1-signed and L2 authenticators are in the
   private `polyoxide-polymarket/src/clob/authenticator.rs`; its trading requests carry
   `shared::signer_cost`.
+- `RequestParts::body` is bytes (`Option<Bytes>`, #87), which the loop hands the transport as
+  given, so a body need not be text. `Request::body` stores its JSON's bytes, and every
+  authenticator that signs a body (clob's L2, relay's `RelayPostAuth`) signs those bytes through
+  `shared::Signer`'s crate-private `sign_request`, never a decoded string.
 - Clob's client installs `shared::ClobThrottle` and `PolymarketRetryPolicy`, and keeps a handle on
   the throttle's `SignerLimiter` for `tier()` and `rate_limit_status()`.
 - Gamma's `post_json` decodes its own body, so it calls `HttpClient::send` directly (DRIFT R8).

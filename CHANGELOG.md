@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+- **Binary request bodies (#87).** `RequestParts::body` is `Option<bytes::Bytes>` where it was
+  `Option<String>`, so `HttpClient::send` carries a body that is not UTF-8, such as a gzip
+  upload's, on the client's own transport, runtime, throttle and hooks, natively and in the
+  browser. It is a breaking change to a public field (`RequestParts` is not `#[non_exhaustive]`),
+  so the 0.x minor rises. To migrate, `parts.body = Some(text)` becomes `Some(text.into())`, and
+  an authenticator that read `parts.body.as_deref()` as `&str` reads `&[u8]`. The CLOB's L2 HMAC
+  and the relayer's Builder HMAC sign the body's bytes, which for a text body are the bytes they
+  signed before, so `Request::body` requests send and sign as on 0.45.
+
 - **Kalshi AsyncAPI drift (#86).** Mirror only, with no code change. Upstream deprecates the
   market-lifecycle `additional_metadata.no_sub_title`, equal to `yes_sub_title` on every market
   created since September 2024 (the REST `Market` field was deprecated in #85, and its doc now

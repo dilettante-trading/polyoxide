@@ -51,7 +51,7 @@ cargo-semver-checks 0.51.0 reports no lint for the signature changes below (it c
 parameters and does not compare types or aliases; `Protocol::connect` also postdates the
 baseline, since it first shipped in v0.41.0), so none has a key to list under "Removed"; the
 removals job prints no line for them, and they are listed here for the consumer who migrates
-from this file. Each is one of the wasm32 plan's Story 5.
+from this file. Each is one of the wasm32 plan's Story 5 but the last, which is issue #87's.
 
 - `polyoxide_ws::Socket` (a type alias, which semver-checks does not see): the alias is removed; a connection is a `polyoxide_ws::BoxSocket`, which `connect` and `connect_over` return and `Connection::new` takes.
 - `polyoxide_ws::connect`: its return is re-typed, from `Socket` to `BoxSocket`; it dials through the target's default `SocketTransport` and runtime.
@@ -61,6 +61,7 @@ from this file. Each is one of the wasm32 plan's Story 5.
 - `polyoxide_ws::Protocol::connect`: its parameters change, from `(timeout)` to `(transport, runtime, timeout)`, and its return, from `Socket` to `BoxSocket`; a protocol that dialled for itself chooses a transport that makes its dial.
 - Auto traits, which `auto_trait_impl_removed` does report as a major change and the removals gate allows: `polyoxide_ws::Connection` and every type holding one (`WebSocket`, `WebSocketWithPing`, `UsdmWs`, `Rtds`, `SupervisedRtds`, `SupervisedSportsWs`, `PerpsWs`, `SportsWs`) are no longer `Sync`, since a `BoxSocket` is `Send + Unpin` only; send one to another task, and share it through a `Mutex`.
 - Auto traits: `polyoxide_ws::Supervisor` and `Supervised` are no longer `UnwindSafe` or `RefUnwindSafe`, since they hold a `dyn Runtime`, and likewise the builders and clients that hold a runtime or transport (such as `UsdmWsBuilder`, `PerpsBuilder`, `RtdsBuilder`, `WeightBudget`); wrap one in `AssertUnwindSafe` where a `catch_unwind` needs it.
+- `polyoxide_core::RequestParts::body` (#87): the field is re-typed, from `Option<String>` to `Option<bytes::Bytes>`, so a body need not be text. Set it with `Some(text.into())`: a `String`, a `Vec<u8>` and a `&'static [u8]` each convert. `parts.body.as_deref()` is now an `Option<&[u8]>`; an authenticator that signs the body reads its bytes. `Request::body` and every venue request send, and sign, the bytes they did before.
 
 ## Doc-hidden paths consumers import
 

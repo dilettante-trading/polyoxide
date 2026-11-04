@@ -35,6 +35,20 @@ impl Signer {
     pub fn create_message(timestamp: u64, method: &str, path: &str, body: Option<&str>) -> String {
         CoreSigner::create_message(timestamp, method, path, body)
     }
+
+    /// Sign a request with HMAC-SHA256, using URL-safe base64 encoding: the body
+    /// is read as the bytes it is sent as, so it need not be text.
+    pub(crate) fn sign_request(
+        &self,
+        timestamp: u64,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<String, ClobError> {
+        self.inner
+            .sign_request(timestamp, method, path, body, Base64Format::UrlSafe)
+            .map_err(ClobError::Crypto)
+    }
 }
 
 #[cfg(test)]

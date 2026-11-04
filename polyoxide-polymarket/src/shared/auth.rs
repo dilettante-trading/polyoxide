@@ -79,10 +79,31 @@ impl Signer {
     /// * `message` - The message to sign
     /// * `format` - The base64 encoding format for the output signature
     pub fn sign(&self, message: &str, format: Base64Format) -> Result<String, String> {
+        self.sign_bytes(message.as_bytes(), format)
+    }
+
+    /// Sign a request: `timestamp + method + path + body`, the body read as the
+    /// bytes it is sent as, so a body that is not UTF-8 signs too. For a text
+    /// body this is `sign(&create_message(..))`.
+    pub(crate) fn sign_request(
+        &self,
+        timestamp: u64,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        format: Base64Format,
+    ) -> Result<String, String> {
+        let mut message = format!("{timestamp}{method}{path}").into_bytes();
+        message.extend_from_slice(body.unwrap_or_default());
+        self.sign_bytes(&message, format)
+    }
+
+    /// HMAC-SHA256 over `message`, encoded in `format`.
+    fn sign_bytes(&self, message: &[u8], format: Base64Format) -> Result<String, String> {
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.secret)
             .map_err(|e| format!("Failed to create HMAC: {}", e))?;
 
-        mac.update(message.as_bytes());
+        mac.update(message);
         let result = mac.finalize();
 
         let signature = match format {
@@ -176,6 +197,67 @@ mod tests {
         let msg_with_body =
             Signer::create_message(1234567890, "POST", "/api/test", Some(r#"{"key":"value"}"#));
         assert_eq!(msg_with_body, r#"1234567890POST/api/test{"key":"value"}"#);
+    }
+
+    /// A gzip member's first bytes, which are not UTF-8 (issue #87).
+    const BINARY_BODY: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x00, 0x80];
+
+    // The vectors are Python's, not this crate's:
+    // `hmac.new(b"secret", b"1234567890POST/upload" + BINARY_BODY, hashlib.sha256).digest()`,
+    // then `base64.urlsafe_b64encode` and `base64.b64encode`.
+    #[test]
+    fn sign_request_signs_a_body_that_is_not_utf8_over_its_bytes() {
+        let signer = Signer::new("c2VjcmV0");
+        let sign = |format| {
+            signer
+                .sign_request(1234567890, "POST", "/upload", Some(BINARY_BODY), format)
+                .unwrap()
+        };
+        assert_eq!(
+            sign(Base64Format::UrlSafe),
+            "5sgudeEzgOyrOwl5xZavhZxSDKzDroXsjw_nZCbiQC4="
+        );
+        assert_eq!(
+            sign(Base64Format::Standard),
+            "5sgudeEzgOyrOwl5xZavhZxSDKzDroXsjw/nZCbiQC4="
+        );
+    }
+
+    // `hmac.new(b"secret", b'1234567890POST/order{"size":1}', hashlib.sha256)`, url-safe.
+    #[test]
+    fn sign_request_over_a_text_body_is_the_text_signature() {
+        let signer = Signer::new("c2VjcmV0");
+        let body = r#"{"size":1}"#;
+        for format in [Base64Format::UrlSafe, Base64Format::Standard] {
+            for body in [None, Some(body)] {
+                let message = Signer::create_message(1234567890, "POST", "/order", body);
+                assert_eq!(
+                    signer
+                        .sign_request(
+                            1234567890,
+                            "POST",
+                            "/order",
+                            body.map(str::as_bytes),
+                            format
+                        )
+                        .unwrap(),
+                    signer.sign(&message, format).unwrap(),
+                    "{format:?}, {body:?}"
+                );
+            }
+        }
+        assert_eq!(
+            signer
+                .sign_request(
+                    1234567890,
+                    "POST",
+                    "/order",
+                    Some(body.as_bytes()),
+                    Base64Format::UrlSafe
+                )
+                .unwrap(),
+            "K67J2JqKjD1RUDODfz42YEX-L6xDqgIdt6Ig2ScA13c="
+        );
     }
 
     #[test]

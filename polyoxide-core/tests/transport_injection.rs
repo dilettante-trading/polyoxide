@@ -217,7 +217,7 @@ async fn a_request_carries_its_own_body_headers_and_timeout() {
     parts
         .headers
         .insert("x-signed", HeaderValue::from_static("yes"));
-    parts.body = Some(r#"{"size":1}"#.to_owned());
+    parts.body = Some(Bytes::from_static(br#"{"size":1}"#));
     parts.timeout = Some(Duration::from_secs(300));
     let response = http.send(parts, &[], None).await.unwrap();
 
