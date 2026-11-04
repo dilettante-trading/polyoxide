@@ -1,6 +1,7 @@
 //! The `{data}` and `{data, pagination}` envelopes every v2 response uses, and
 //! the cursor walk over paged routes.
 
+use std::collections::HashSet;
 use std::pin::Pin;
 
 use futures_util::stream::{self, Stream};
@@ -103,21 +104,32 @@ impl<T: DeserializeOwned + Send + 'static> Paged<T> {
         with_cursor(self.request, self.cursor).send().await
     }
 
+    /// Walks to the last page. A page that returns a cursor the walk has
+    /// already sent, straight back or after others, or that says more follow
+    /// but names no cursor, ends the walk with [`DataError::Pagination`] in its
+    /// place, so a server that loops or truncates cannot hang or silently
+    /// shorten it.
     pub(crate) fn pages(self) -> PageStream<T> {
-        let start = Some((self.request, self.cursor));
+        let start = Some((self.request, self.cursor, HashSet::new()));
         Box::pin(stream::try_unfold(start, |walk| async move {
-            let Some((request, cursor)) = walk else {
+            let Some((request, cursor, mut sent)) = walk else {
                 return Ok(None);
             };
             let page = with_cursor(request.clone(), cursor.clone()).send().await?;
+            sent.extend(cursor);
             let next = match page.pagination.next_cursor.clone() {
+                None if page.pagination.has_more => {
+                    return Err(DataError::Pagination(
+                        "server said more pages follow but sent no cursor".to_owned(),
+                    ));
+                }
                 None => None,
-                Some(next) if cursor.as_deref() == Some(next.as_str()) => {
+                Some(next) if sent.contains(&next) => {
                     return Err(DataError::Pagination(format!(
                         "server returned the cursor it was sent: {next}"
                     )));
                 }
-                Some(next) => Some((request, Some(next))),
+                Some(next) => Some((request, Some(next), sent)),
             };
             Ok(Some((page, next)))
         }))

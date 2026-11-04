@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 use super::{decimal, decode};
 use crate::clob::OpenOrder;
-use crate::data::v2::types::{FilterType, Position as DataPosition, PositionStatus};
+use crate::data::v2::types::{Position as DataPosition, PositionStatus};
 use crate::shared::keys::TokenId;
 use futures_util::StreamExt;
 use std::any::TypeId;
@@ -110,7 +110,8 @@ pub struct PositionExt {
     pub condition_id: Option<String>,
     /// The outcome's label, such as `Yes`.
     pub outcome: Option<String>,
-    /// The outcome's index in its market.
+    /// The outcome's index in its market; `None` when the Data API could not
+    /// label the outcome.
     pub outcome_index: Option<u32>,
     /// The outcome's current price.
     pub current_price: Option<Decimal>,
@@ -732,15 +733,14 @@ impl Trading for Clob {
         let maker = self
             .resolve_maker_address(None, self.signature_type, account)
             .await?;
-        // `OPEN` also returns redeemable rows. No dust filter: v2's default
-        // floor of 0.1 shares hides small positions.
+        // `OPEN` also returns redeemable rows. A holding of 0.1 share or less
+        // is served only as `CLOSED`, whatever `filter_amount` asks, so it is
+        // not listed (`docs/specs/data-v2/OBSERVED.md`).
         let mut pages = self
             .data
             .v2()
             .positions(maker.to_string())
             .status(PositionStatus::Open)
-            .filter_type(FilterType::Tokens)
-            .filter_amount(0.0)
             .limit(POSITIONS_PAGE)
             .pages();
         let mut positions = Vec::new();

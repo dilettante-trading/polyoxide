@@ -230,6 +230,75 @@ async fn pages_stop_with_an_error_when_the_server_repeats_a_cursor() {
 }
 
 #[tokio::test]
+async fn pages_stop_with_an_error_when_the_server_cycles_back_to_an_earlier_cursor() {
+    let mut server = Server::new_async().await;
+    // No cursor → a, a → b, b → a: every step is a new cursor but the walk loops.
+    server
+        .mock("GET", "/v2/trades")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body_from_request(|request| {
+            let next = match cursor_of(request.path_and_query()).as_deref() {
+                Some("a") => "b",
+                _ => "a",
+            };
+            trades_page(1, Some(next)).into_bytes()
+        })
+        .create_async()
+        .await;
+
+    // `take(5)` bounds the walk, so a missing guard fails here instead of looping.
+    let results: Vec<_> = client(&server)
+        .v2()
+        .trades()
+        .pages()
+        .take(5)
+        .collect()
+        .await;
+
+    assert_eq!(
+        results.len(),
+        3,
+        "pages from no cursor, a and b, then the error"
+    );
+    assert!(results[..2].iter().all(Result::is_ok));
+    assert!(
+        matches!(results[2], Err(DataError::Pagination(_))),
+        "{:?}",
+        results[2]
+    );
+}
+
+#[tokio::test]
+async fn pages_stop_with_an_error_when_more_pages_are_promised_without_a_cursor() {
+    let mut server = Server::new_async().await;
+    server
+        .mock("GET", "/v2/trades")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body(trades_page(1, None).replace(r#""has_more":false"#, r#""has_more":true"#))
+        .create_async()
+        .await;
+
+    let results: Vec<_> = client(&server)
+        .v2()
+        .trades()
+        .pages()
+        .take(3)
+        .collect()
+        .await;
+
+    // As with a repeated cursor, the page that breaks the contract is not
+    // yielded: the walk ends on the error.
+    assert_eq!(results.len(), 1, "the error, then the end");
+    assert!(
+        matches!(results[0], Err(DataError::Pagination(_))),
+        "{:?}",
+        results[0]
+    );
+}
+
+#[tokio::test]
 async fn pages_end_after_yielding_an_error_mid_walk() {
     let mut server = Server::new_async().await;
     server

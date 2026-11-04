@@ -1042,22 +1042,20 @@ fn position_row(token: String) -> Value {
         "status": "OPEN",
         "title": "A market",
         "token_id": token,
-        "total_cost_usdc": 5.0,
-        "total_pnl": 1.25,
-        "total_size": 12.5,
+        "total_cost_usdc": 9.0,
+        "total_pnl": 3.5,
+        "total_size": 20.0,
         "unrealized_pnl": 1.25,
         "verified": false
     })
 }
 
 /// The query of one `/v2/positions` page: the maker, every open (and so
-/// redeemable) row, no dust filter, 500 rows, and the cursor after the first.
+/// redeemable) row, 500 rows, and the cursor after the first.
 fn positions_query(user: &str, cursor: Option<&str>) -> Matcher {
     let mut matchers = vec![
         Matcher::UrlEncoded("user".into(), user.into()),
         Matcher::UrlEncoded("status".into(), "OPEN".into()),
-        Matcher::UrlEncoded("filter_type".into(), "TOKENS".into()),
-        Matcher::UrlEncoded("filter_amount".into(), "0".into()),
         Matcher::UrlEncoded("limit".into(), "500".into()),
     ];
     if let Some(cursor) = cursor {
@@ -1067,10 +1065,22 @@ fn positions_query(user: &str, cursor: Option<&str>) -> Matcher {
 }
 
 /// One `/v2/positions` page of `count` rows from row `first`, pointing at
-/// `next` when given.
+/// `next` when given. Row 500 ends on a date, row 501 sends an empty end date
+/// and the unlabeled outcome index, and every other row v2's "no end date".
 fn position_page(first: usize, count: usize, next: Option<&str>) -> String {
     let rows: Vec<Value> = (first..first + count)
-        .map(|n| position_row((1_000 + n).to_string()))
+        .map(|n| {
+            let mut row = position_row((1_000 + n).to_string());
+            match n {
+                500 => row["end_date"] = json!("2026-12-31"),
+                501 => {
+                    row["end_date"] = json!("");
+                    row["outcome_index"] = json!(999);
+                }
+                _ => {}
+            }
+            row
+        })
         .collect();
     json!({
         "data": rows,
@@ -1126,6 +1136,45 @@ async fn positions_walk_every_cursor_page_with_no_dust_filter_for_the_maker_addr
     assert_eq!(ext.outcome_index, Some(0));
     assert_eq!(ext.end_date, None, "v2 writes 1970-01-01 for no end date");
     assert_eq!(ext.negative_risk, Some(false));
+    let dated = positions[500].extensions.get::<PositionExt>().unwrap();
+    assert_eq!(dated.end_date.as_deref(), Some("2026-12-31"));
+    assert_eq!(dated.outcome_index, Some(0));
+    let unlabeled = positions[501].extensions.get::<PositionExt>().unwrap();
+    assert_eq!(unlabeled.end_date, None, "an empty end date is none");
+    assert_eq!(
+        unlabeled.outcome_index, None,
+        "999 is the unlabeled outcome"
+    );
+    first.assert_async().await;
+    second.assert_async().await;
+}
+
+#[tokio::test]
+async fn positions_fail_when_a_later_page_fails() {
+    let mut server = Server::new_async().await;
+    let clob = client(&server);
+    let user = clob.account().unwrap().address().to_string();
+    let first = server
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(&user, None))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(position_page(0, 2, Some("c1")))
+        .expect(1)
+        .create_async()
+        .await;
+    let second = server
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(&user, Some("c1")))
+        .with_status(503)
+        .with_body("unavailable")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = clob.positions().await.unwrap_err();
+
+    assert!(matches!(err.class, Class::Unavailable { .. }), "{err}");
     first.assert_async().await;
     second.assert_async().await;
 }

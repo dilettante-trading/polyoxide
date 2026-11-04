@@ -350,6 +350,7 @@ async fn trades_are_the_data_apis_public_trades_of_the_token_oldest_first() {
         let ext = trade.extensions.get::<TradeExt>().unwrap();
         assert_eq!(ext.transaction_hash.as_ref(), Some(&row.transaction_hash));
         assert_eq!(ext.outcome.as_deref(), Some(row.outcome.as_str()));
+        assert_eq!(ext.proxy_wallet.as_deref(), Some(row.proxy_wallet.as_str()));
     }
     assert!(
         trades.windows(2).all(|w| w[0].time <= w[1].time),

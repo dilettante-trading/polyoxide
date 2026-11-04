@@ -136,6 +136,24 @@ So the cursor binds the key the walk asked for, not the order it was served in.
 The spec also says cursors minted for these sorts before the change return `400`;
 none was available to test.
 
+## `/v2/positions` serves a holding of 0.1 share or less as `CLOSED`
+
+`filter_amount` is documented as the floor on the current holding (`TOKENS`, upstream default
+0.1), but a lower floor does not reach below the default. Probed 2026-11-04 on
+`0xcb3143ee858e14d0b3fe40ffeaea78416e646b02`, which holds 0.0317 shares of token
+`54533043819946592547517511176940999955633860128497669742211153063842200957669` in condition
+`0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75`:
+
+- `status=OPEN`, with or without `filter_type=TOKENS&filter_amount=0`, returns no row for it.
+- `status=CLOSED` returns it, with `status: "CLOSED"` and `current_size: 0.0317`.
+- `status=CLOSED` returns the wallet's whole closed history (486 rows) whether or not
+  `filter_amount=0.000001` is sent, 12 of them with dust between 0.0001 and 0.0317 shares,
+  so the floor does not narrow that arm either.
+
+v1's `/positions?sizeThreshold=0` listed such holdings. The CLOB's `Trading::positions`
+reads `OPEN` only, so it lists holdings above 0.1 share (the owner's choice, 2026-11-04):
+listing the dust would mean walking the whole closed history on every call.
+
 ## `/v2/resolutions` condition rows can omit documented fields
 
 `GET /v2/resolutions?condition=0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527`

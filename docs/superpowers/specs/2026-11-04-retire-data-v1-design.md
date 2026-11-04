@@ -87,8 +87,11 @@ from v2's `TradeSide`.
 **D5. `Trading::positions` reads v2.**
 
 - It reads `data.positions(maker).status(PositionStatus::Open).limit(500)` and walks
-  `.pages()` to the end. v2's `OPEN` also returns `REDEEMABLE` rows, so the result covers what
-  v1's `/positions` returned with `size_threshold(0)`.
+  `.pages()` to the end. v2's `OPEN` also returns `REDEEMABLE` rows. It serves a holding of
+  0.1 share or less only as `CLOSED`, whatever `filter_amount` says (probed 2026-11-04,
+  `docs/specs/data-v2/OBSERVED.md`), so such dust, which v1's `size_threshold(0)` listed, is
+  not listed. The owner accepted that floor on 2026-11-04 rather than walk the whole closed
+  history on every call.
 - The cursor walk has no offset ceiling, so the refusal "the wallet holds more positions than
   /positions can list" goes, with `POSITIONS_PAGE` and `POSITIONS_LAST_OFFSET`.
 - The position's size is `current_size` and its average price `avg_price`.
@@ -97,7 +100,9 @@ from v2's `TradeSide`.
   `negative_risk`, `title` and `end_date` keep their names. Two fields take v2's names,
   because their source and meaning change: `initial_value` → `entry_cost` (from
   `entry_cost_usdc`, the fee-exclusive entry basis) and `cash_pnl` → `unrealized_pnl` (from
-  `unrealized_pnl`). Each rename has its `s3-removals.md` entry.
+  `unrealized_pnl`). `end_date`'s `1970-01-01` (v2's "none") and an empty one, and
+  `outcome_index`'s 999, are `None`. `PositionExt` is newer than the S3 baseline, so the
+  renames take no `s3-removals.md` entry; `docs/s3-migration.md` records them.
 
 **D6. v2's records are constructible (prader-rs #179).**
 

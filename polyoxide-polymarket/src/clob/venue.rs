@@ -364,7 +364,7 @@ mod trades {
                     trade.taker_side = match row.side {
                         TradeSide::Buy => Some(Side::Buy),
                         TradeSide::Sell => Some(Side::Sell),
-                        _ => None,
+                        TradeSide::Other(_) => None,
                     };
                     trade.extensions = Extensions::of(TradeExt {
                         transaction_hash: Some(row.transaction_hash.clone()),
