@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+- **Kalshi AsyncAPI drift (#86).** Mirror only, with no code change. Upstream deprecates the
+  market-lifecycle `additional_metadata.no_sub_title`, equal to `yes_sub_title` on every market
+  created since September 2024 (the REST `Market` field was deprecated in #85, and its doc now
+  says so), and rewords two RFQ descriptions: `quote_accepted`'s `quote_id` can differ from the
+  quote the RFQ creator named. The client implements neither channel.
+
 ## [0.45.0] - 2026-11-03
 
 Binance spot market data over HTTP and WebSocket, wasm32 support through an injected runtime and

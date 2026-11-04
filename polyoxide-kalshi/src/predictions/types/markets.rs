@@ -125,7 +125,8 @@ pub struct Market {
     pub subtitle: Option<String>,
     /// A short title for the YES side.
     pub yes_sub_title: String,
-    /// A short title for the NO side.
+    /// Deprecated: a short title for the NO side, equal to `yes_sub_title` on
+    /// every market created since September 2024.
     pub no_sub_title: String,
     /// When the market was created.
     pub created_time: String,
