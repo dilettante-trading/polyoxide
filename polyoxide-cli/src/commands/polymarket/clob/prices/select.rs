@@ -95,15 +95,19 @@ pub async fn discover_targets(gamma: &Gamma, filters: &DiscoverFilters) -> Resul
                 "warning: skipping market {} (unsupported protocol version {version})",
                 market.id
             ),
-            // `v1` and a market with no `version` (`ProtocolVersion` is
-            // `#[non_exhaustive]`, so the arm is a wildcard).
-            _ => match market.clob_token_ids.as_deref() {
+            Some(ProtocolVersion::V1) | None => match market.clob_token_ids.as_deref() {
                 Some(raw) => match parse_clob_token_ids(raw) {
                     Ok(parsed) => ids.extend(parsed),
                     Err(e) => eprintln!("warning: skipping market {}: {e}", market.id),
                 },
                 None => eprintln!("warning: skipping market {} (no clob_token_ids)", market.id),
             },
+            // `ProtocolVersion` is `#[non_exhaustive]`: a variant added later is
+            // skipped with a warning, never read as `v1`.
+            Some(other) => eprintln!(
+                "warning: skipping market {} (unsupported protocol version {other:?})",
+                market.id
+            ),
         }
     }
     Ok(ids)
