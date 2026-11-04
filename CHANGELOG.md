@@ -1,5 +1,101 @@
 ## [Unreleased]
 
+## [0.47.0] - 2026-11-04
+
+Data API v1 removed, since Polymarket retired it on 2026-11-02, with v2 made the `data` module
+itself, and Protocol V2 trading (#51). Removing v1 and flattening v2 are breaking, so the 0.x
+minor rises; the migration is in [`docs/s3-migration.md`](docs/s3-migration.md) ("Data API v1
+retired") and each removed path is keyed in [`docs/s3-removals.md`](docs/s3-removals.md). No build
+gains a crate.
+
+- **Data API v1 retired.** Every v1 route on `data-api.polymarket.com`, the bare `/`, and the
+  `user-pnl-api` and `lb-api` hosts answer `410`, so v1 is removed and every v2 route is a
+  `DataApi` method: `data::v2::X` is `data::X`, `data.v2().x()` is `data.x()`, `DataV2` is gone,
+  and `DataError::V2` is `DataError::Venue`. The records under `data::types`, `Page` and
+  `Pagination` drop `#[non_exhaustive]`, so a consumer builds its own rows by struct literal. The
+  CLOB's `Trades` and `Trading::positions` read `/v2/trades` and `/v2/positions`; v2 lists a
+  holding of 0.1 share or less only as closed, so such dust is no longer a position. The client
+  paces by the published v2 table, with `/v2/trades` kept at the measured 200. In TypeScript,
+  data's and gamma's open enums export as named unions of their spellings and `OpenString`, and
+  `polyoxide_venue::specta_as_string!` is removed. Python's `DataApi()` keeps its constructor with
+  every route a method (`DataApi().trades()`); `v2()` and the v1 methods are gone. The CLI keeps
+  every `data` command, and `data health` prints `/v2/status`.
+
+- **Protocol V2 trading (#51).** Additive: V1 (CTF) markets behave as before. Whether an order is
+  V2 is a function of its asset id, by py-sdk 0.12.0's rule. A V2 order is signed for
+  ExchangeV3 (`Chain::exchange_v3`) at domain version 3, skips `/neg-risk`, reports `neg_risk`
+  false and reads its balance as `CONDITIONAL-V2`. `Market::outcome_ids` chooses a gamma market's
+  trading ids by its version (`OutcomeIdsError` for its refusals), event groups list V2 outcomes
+  by position id, and the CLI's `clob prices` discovery reads them. The relayer gains the
+  Router's split, merge and redeem (`router_*_calldata`, `v2_*_call`, `submit_v2_*`, with
+  `V2PositionId` and `parse_v2_condition_id`). The signing is pinned to golden vectors captured
+  from py-sdk 0.12.0. No V2 market is listed yet, so live V2 fills stay deferred.
+
+### 🚀 Features
+
+- *(polymarket)* The Protocol V2 id rule in shared::protocol (protocol v2, Story 2)
+- *(clob)* Chain::exchange_v3 (protocol v2, Story 2)
+- *(clob)* Sign Protocol V2 orders for ExchangeV3 at domain version 3 (protocol v2, Story 2)
+- *(clob)* Skip /neg-risk and send CONDITIONAL-V2 for a Protocol V2 id (protocol v2, Story 2)
+- *(polymarket)* OutcomeIdsError, the outcome-id selector's refusals (protocol v2, Story 3)
+- *(polymarket)* Market::outcome_ids chooses a market's trading ids by its version (protocol v2, Story 3)
+- *(polymarket)* Event groups list V2 outcomes by position id (protocol v2, Story 3)
+- *(polymarket)* V2PositionId and parse_v2_condition_id for the Router (protocol v2, Story 4)
+- *(polymarket)* Router split, merge and redeem calldata builders (protocol v2, Story 4)
+- *(polymarket)* RelayClient Router split, merge and redeem calls and submits (protocol v2, Story 4)
+- *(ci)* A retired test may cite its removal in the stage's listing
+- *(data)* [**breaking**] Remove Data API v1
+- *(data)* [**breaking**] V2 is the data module's root, and its records are constructible
+- *(polymarket)* [**breaking**] Open enums export to TypeScript as named open unions
+
+### 🐛 Bug Fixes
+
+- *(cli)* Clob prices discovery reads a V2 market's position ids (protocol v2, Story 3)
+- *(polymarket)* Relay Router constant, doc clauses and an exact refusal assertion (protocol v2, final fix round)
+- *(cli)* Skip a market of an unlisted protocol version instead of reading it as v1 (protocol v2, final fix round)
+- *(polymarket)* A Protocol V2 order reports neg_risk false, whatever the options say (protocol v2, final fix round)
+- *(clob)* [**breaking**] Trades and Trading::positions read Data API v2
+- *(clob,data)* The review of the v2 readers
+- *(data)* The review of the v1 removal and the flatten
+
+### 📚 Documentation
+
+- *(spec)* Protocol V2 trading design ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+- *(plan)* Protocol V2 trading skeleton; spec settles the id rule and limits ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+- *(spec)* Protocol V2 trading: the CLI's prices discovery reads V2 position ids ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+- *(plan)* Protocol V2 trading, the five stories drafted ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+- *(rules)* Name the Protocol V2 capture script among the PEP 723 scripts ([#51](https://github.com/dilettante-trading/polyoxide/issues/51)) (protocol v2, Story 1)
+- *(clob)* The per-id order domain, ExchangeV3 and CONDITIONAL-V2 (protocol v2, Story 2)
+- *(polymarket)* The outcome-id selector and V2 event groups (protocol v2, Story 3)
+- *(polymarket)* The relay rules and README describe the Protocol V2 Router helpers (protocol v2, Story 4)
+- The Protocol V2 resolution note and the deferred fill checklist (protocol v2, Story 5)
+- The Protocol V2 mutation battery, rows (n) to (x) (protocol v2, Story 5)
+- *(spec)* Protocol V2 live probe requires an order book ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+- Relay rules and session-keys README, the V2 parse caveat and external-signer flow (protocol v2, final fix round)
+- *(polymarket)* Stale Protocol V2 doc clauses, shared module list and rules paths (protocol v2, final fix round)
+- *(mutants)* Rows (n) to (u) follow the moved lines, test lists sorted, row (p) names its entry point (protocol v2, final fix round)
+- Name the V1-classified id row by content, fix row (u)'s arm lines, note the re-proof (protocol v2, final fix round)
+- *(spec)* Protocol V2 live probe records /neg-risk instead of failing ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+- *(spec)* Retire Data API v1 and flatten v2 into the data module
+- *(plan)* Retire Data API v1, six commits
+- *(spec)* D17, the open enums export to TypeScript as named open unions
+- The specs, rules and guides describe one Data API
+- *(s3)* The PageStream alias moved with the flatten
+- *(mutants)* Rows (n)-(u) re-proved after the merge of main ([#51](https://github.com/dilettante-trading/polyoxide/issues/51))
+
+### 🧪 Testing
+
+- *(polymarket)* Capture script for Protocol V2 golden vectors from py-sdk 0.12.0 ([#51](https://github.com/dilettante-trading/polyoxide/issues/51)) (protocol v2, Story 1)
+- *(polymarket)* Protocol V2 golden vectors captured from py-sdk 0.12.0 ([#51](https://github.com/dilettante-trading/polyoxide/issues/51)) (protocol v2, Story 1)
+- *(clob)* Trading::place names a Protocol V2 order by its ExchangeV3 hash (protocol v2, Story 2)
+- *(polymarket)* Live_v2_market_is_served, a read-only Protocol V2 probe (protocol v2, Story 5)
+- *(scripts)* The capture script checks py-sdk's refusal messages, not only their type (protocol v2, final fix round)
+- *(polymarket)* One protocol_v2_digest module shared by mock_clob and trading_clob (protocol v2, final fix round)
+- *(polymarket)* A v2 market with no positionIds fails event_group as Decode (protocol v2, final fix round)
+- *(polymarket)* The V2 live probe takes a market with an order book (protocol v2, final fix round)
+- *(polymarket)* The V2 live probe records /neg-risk's answer instead of failing on it (protocol v2, final fix round)
+- *(data)* The send-loop proofs drive v2 routes
+
 ## [0.46.0] - 2026-11-04
 
 Binary request bodies through the send loop (#87), the Kalshi AsyncAPI mirror (#86), and the
