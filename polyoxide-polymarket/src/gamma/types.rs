@@ -4,6 +4,8 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::error::OutcomeIdsError;
+
 polyoxide_venue::open_enum! {
     /// The protocol a market trades on, from [`Market::version`].
     ///
@@ -224,9 +226,8 @@ pub struct Market {
     /// other value, or a missing one, as unsupported. Unknown values arrive as
     /// [`ProtocolVersion::Other`].
     ///
-    /// The `clob` module signs orders for `v1` markets only. A `v2` market
-    /// needs a different exchange and signing domain, which it does not
-    /// implement yet. See `docs/specs/gamma/OBSERVED.md`.
+    /// [`outcome_ids`](Self::outcome_ids) makes this choice for a caller. See
+    /// `docs/specs/gamma/OBSERVED.md`.
     pub version: Option<ProtocolVersion>,
     /// A `v1` market's outcome ids: a JSON-encoded array of decimal strings,
     /// in the same order as [`outcomes`](Self::outcomes).
@@ -315,6 +316,79 @@ pub struct Market {
     pub schedule_deployment_timestamp: Option<String>,
     pub rfq_enabled: Option<bool>,
     pub event_start_time: Option<String>,
+}
+
+/// One outcome of a market and the id it trades under on the CLOB.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutcomeId {
+    /// The outcome's label, from `outcomes`.
+    pub outcome: String,
+    /// The id the CLOB trades it under: a clob token id for `v1`, a position id for `v2`.
+    pub id: String,
+}
+
+impl Market {
+    /// The market's outcomes with the ids they trade under, chosen by
+    /// [`version`](Self::version), never by which id field is present.
+    ///
+    /// A `v1` market's ids are its [`clob_token_ids`](Self::clob_token_ids), a
+    /// JSON array of strings, and a `v2` market's its
+    /// [`position_ids`](Self::position_ids). The other field is never read,
+    /// whatever it holds. The labels are [`outcomes`](Self::outcomes), a JSON
+    /// array of strings, paired with the ids in order.
+    ///
+    /// # Errors
+    ///
+    /// In this order: [`OutcomeIdsError::MissingVersion`] when `version` is
+    /// absent and [`OutcomeIdsError::UnsupportedVersion`] when it is neither
+    /// `v1` nor `v2`; [`OutcomeIdsError::MissingIds`] when the version's field
+    /// is absent and [`OutcomeIdsError::MalformedIds`] when a `v1` market's
+    /// `clobTokenIds` is not a JSON array of strings;
+    /// [`OutcomeIdsError::MalformedOutcomes`] when `outcomes` is absent or not
+    /// one; [`OutcomeIdsError::CountMismatch`] when the counts differ; and
+    /// [`OutcomeIdsError::InvalidId`] for an id that is empty or not all ASCII
+    /// digits.
+    pub fn outcome_ids(&self) -> Result<Vec<OutcomeId>, OutcomeIdsError> {
+        let ids: Vec<String> = match &self.version {
+            None => return Err(OutcomeIdsError::MissingVersion),
+            Some(ProtocolVersion::Other(version)) => {
+                return Err(OutcomeIdsError::UnsupportedVersion(version.clone()));
+            }
+            Some(ProtocolVersion::V1) => {
+                let json = self
+                    .clob_token_ids
+                    .as_deref()
+                    .ok_or(OutcomeIdsError::MissingIds)?;
+                serde_json::from_str(json).map_err(|_| OutcomeIdsError::MalformedIds)?
+            }
+            Some(ProtocolVersion::V2) => self
+                .position_ids
+                .clone()
+                .ok_or(OutcomeIdsError::MissingIds)?,
+        };
+        let outcomes: Vec<String> = self
+            .outcomes
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .ok_or(OutcomeIdsError::MalformedOutcomes)?;
+        if outcomes.len() != ids.len() {
+            return Err(OutcomeIdsError::CountMismatch {
+                outcomes: outcomes.len(),
+                ids: ids.len(),
+            });
+        }
+        if let Some(bad) = ids
+            .iter()
+            .find(|id| id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()))
+        {
+            return Err(OutcomeIdsError::InvalidId(bad.clone()));
+        }
+        Ok(outcomes
+            .into_iter()
+            .zip(ids)
+            .map(|(outcome, id)| OutcomeId { outcome, id })
+            .collect())
+    }
 }
 
 /// Market token (outcome)
