@@ -1,6 +1,7 @@
 ---
 paths:
   - "polyoxide-polymarket/src/relay/**"
+  - "polyoxide-polymarket/src/shared/protocol.rs"
   - "polyoxide-polymarket/tests/*relay*.rs"
   - "polyoxide-polymarket/tests/fixtures/relay/**"
   - "polyoxide-polymarket/examples/redeem.rs"
@@ -24,8 +25,12 @@ paths:
 - Deposit Wallets and session signers (`WalletType::DepositWallet`, `deposit_wallet`,
   `session_signers`, `resolve_wallet`, `with_auth`): `session-keys.md`.
 - **Protocol V2 positions (the Router).** `V2PositionId::parse` and `parse_v2_condition_id`
-  (`relay::types`, re-exported from `relay`) sit on the crate-private `shared::protocol`, which
-  `clob` or `relay` builds, and refuse with `RelayError::validation` and py-sdk's messages. A
+  (`relay::types`, re-exported from `relay`) refuse with `RelayError::validation` and py-sdk's
+  messages; `parse` sits on the crate-private `shared::protocol`, which `clob` or `relay` builds,
+  and `parse_v2_condition_id` is self-contained. `parse` applies py-sdk's layout decode only, with
+  no reserved-bit mask, so it accepts some ids the CLOB classifies as V1 (`id_vectors.json` row 19,
+  about 1 in 11,000 CTF token ids), exactly as py-sdk does: take ids from a `v2` market's
+  `Market::outcome_ids`. A
   position id is a uint256 (decimal, `0x`, `0b` or `0o`, whitespace trimmed) whose first byte is a
   module (1, 2 or 3; checked first) and whose last byte is the outcome, 0 or 1; the 31 bytes
   between are the condition. A condition id is `0x` plus 62 hex digits, or 64 ending `00` or `01`

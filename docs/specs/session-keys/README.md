@@ -152,10 +152,11 @@ the target is the neg-risk collateral adapter
 (`0xadA2005600Dec949baf300f4C6120000bDB6eAab`). It never calls the Conditional Tokens
 contract directly. A protocol-V2 market goes through the V2 router's `redeem`, which
 polyoxide builds with `RelayClient::v2_redeem_call` and sends with `submit_v2_redeem` (for an
-external signer, pass the call to `deposit_wallet_batch_typed_data`). pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`) is the Deposit Wallet
-collateral; polyoxide's Safe and Proxy paths still redeem against USDC on the Conditional
-Tokens contract, which is what they did before Deposit Wallets existed and has not been
-re-checked against py-sdk. The Manage Positions page's API tab gives the same adapters,
+external signer, pass the call to `deposit_wallet_batch_typed_data`, then
+`submit_deposit_wallet_batch_from`). pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`) is the
+Deposit Wallet collateral; polyoxide's Safe and Proxy paths still redeem against USDC on the
+Conditional Tokens contract, which is what they did before Deposit Wallets existed and has not
+been re-checked against py-sdk. The Manage Positions page's API tab gives the same adapters,
 collateral and index sets.
 
 ## Deposit Wallet address derivation
