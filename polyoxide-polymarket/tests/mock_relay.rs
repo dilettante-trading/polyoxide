@@ -2458,3 +2458,364 @@ async fn a_refused_relay_call_is_an_invalid_request() {
     assert_eq!(err.class(), Class::InvalidRequest);
     assert!(!err.is_retriable());
 }
+
+// ── Protocol V2 Router ─────────────────────────────────────────
+
+const ROUTER_VECTORS: &str = include_str!("fixtures/relay/protocol_v2/router_vectors.json");
+
+fn router_vectors() -> serde_json::Value {
+    serde_json::from_str(ROUTER_VECTORS).unwrap()
+}
+
+fn fixture_u256(value: &serde_json::Value) -> alloy::primitives::U256 {
+    value.as_str().unwrap().parse().unwrap()
+}
+
+fn fixture_condition(value: &serde_json::Value) -> alloy::primitives::FixedBytes<31> {
+    value.as_str().unwrap().parse().unwrap()
+}
+
+/// The fixture's first redeem row (outcome 0): the position, the amount and the calldata.
+fn fixture_redeem() -> (
+    polyoxide_polymarket::relay::V2PositionId,
+    alloy::primitives::U256,
+    String,
+) {
+    let v = router_vectors();
+    let row = &v["redeem"][0];
+    (
+        polyoxide_polymarket::relay::V2PositionId::parse(row["position_id"].as_str().unwrap())
+            .unwrap(),
+        fixture_u256(&row["amount"]),
+        row["calldata"].as_str().unwrap().to_string(),
+    )
+}
+
+fn fixture_router() -> alloy::primitives::Address {
+    router_vectors()["router"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+fn proxy_client(server: &mockito::ServerGuard) -> RelayClient {
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    RelayClient::builder()
+        .expect("builder")
+        .url(&server.url())
+        .expect("valid mock URL")
+        .with_account(account)
+        .wallet_type(polyoxide_polymarket::relay::WalletType::Proxy)
+        .build()
+        .expect("build client")
+}
+
+#[test]
+fn v2_calls_target_the_router_with_py_sdks_calldata() {
+    let v = router_vectors();
+    let client = RelayClient::builder()
+        .expect("builder")
+        .build()
+        .expect("build client");
+    for row in v["split"].as_array().unwrap() {
+        let call = client
+            .v2_split_call(
+                fixture_condition(&row["condition_id"]),
+                fixture_u256(&row["amount"]),
+            )
+            .unwrap();
+        assert_eq!(call.target, fixture_router());
+        assert_eq!(call.value, alloy::primitives::U256::ZERO);
+        assert_eq!(
+            format!("0x{}", alloy::primitives::hex::encode(&call.data)),
+            row["calldata"].as_str().unwrap()
+        );
+    }
+    for row in v["merge"].as_array().unwrap() {
+        let call = client
+            .v2_merge_call(
+                fixture_condition(&row["condition_id"]),
+                fixture_u256(&row["amount"]),
+            )
+            .unwrap();
+        assert_eq!(call.target, fixture_router());
+        assert_eq!(call.value, alloy::primitives::U256::ZERO);
+        assert_eq!(
+            format!("0x{}", alloy::primitives::hex::encode(&call.data)),
+            row["calldata"].as_str().unwrap()
+        );
+    }
+    for row in v["redeem"].as_array().unwrap() {
+        let position =
+            polyoxide_polymarket::relay::V2PositionId::parse(row["position_id"].as_str().unwrap())
+                .unwrap();
+        let call = client
+            .v2_redeem_call(&position, fixture_u256(&row["amount"]))
+            .unwrap();
+        assert_eq!(call.target, fixture_router());
+        assert_eq!(call.value, alloy::primitives::U256::ZERO);
+        assert_eq!(
+            format!("0x{}", alloy::primitives::hex::encode(&call.data)),
+            row["calldata"].as_str().unwrap()
+        );
+    }
+    // The Router call is the one the fixture's Deposit Wallet batch carries.
+    let (position, amount, _) = fixture_redeem();
+    let call = client.v2_redeem_call(&position, amount).unwrap();
+    let batch_call = &v["deposit_wallet_batch"]["calls"][0];
+    assert_eq!(
+        call.target,
+        batch_call["target"]
+            .as_str()
+            .unwrap()
+            .parse::<alloy::primitives::Address>()
+            .unwrap()
+    );
+    assert_eq!(
+        format!("0x{}", alloy::primitives::hex::encode(&call.data)),
+        batch_call["data"].as_str().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn submit_v2_redeem_posts_the_router_call_for_a_safe() {
+    let (position, amount, calldata) = fixture_redeem();
+    let router = fixture_router();
+    let mut server = Server::new_async().await;
+    let deployed = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":true}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let nonce = server
+        .mock("GET", "/nonce")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"nonce":"5"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    // A lone transaction is not wrapped in MultiSend: the Router is the Safe's `to`, the
+    // call is a plain CALL (operation 0) and the data is py-sdk's calldata.
+    let submit = server
+        .mock("POST", "/submit")
+        .match_body(Matcher::PartialJsonString(format!(
+            r#"{{"type":"SAFE","to":"{router}","data":"{calldata}","value":"0","nonce":"5","signatureParams":{{"operation":"0"}}}}"#
+        )))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-v2-safe","state":"STATE_NEW"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let resp = client_with_builder_auth(&server)
+        .submit_v2_redeem(&position, amount)
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-v2-safe");
+    deployed.assert_async().await;
+    nonce.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn submit_v2_redeem_posts_the_router_call_for_a_proxy() {
+    let (position, amount, calldata) = fixture_redeem();
+    let router = fixture_router();
+    let mut server = Server::new_async().await;
+    let payload = server
+        .mock("GET", "/relay-payload")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"1"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    // The proxy factory receives `proxy([ProxyTransaction])`; the Router's address (padded
+    // to a word) and py-sdk's calldata sit inside that encoding.
+    let submit = server
+        .mock("POST", "/submit")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(r#"{"type":"PROXY","nonce":"1"}"#.into()),
+            Matcher::Regex(alloy::primitives::hex::encode(router.as_slice())),
+            Matcher::Regex(calldata.trim_start_matches("0x").to_string()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-v2-proxy","state":"STATE_NEW"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let resp = proxy_client(&server)
+        .submit_v2_redeem(&position, amount)
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-v2-proxy");
+    payload.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn submit_v2_redeem_posts_the_router_call_for_a_deposit_wallet() {
+    let (position, amount, calldata) = fixture_redeem();
+    let router = fixture_router();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"4"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/submit")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(format!(
+                r#"{{"type":"WALLET","nonce":"4","depositWalletParams":{{"depositWallet":"{}","calls":[{{"target":"{router}","value":"0","data":"{calldata}"}}]}}}}"#,
+                relay_vectors()["wallet"].as_str().unwrap()
+            )),
+            Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-v2-wallet","state":"STATE_NEW"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let resp = client.submit_v2_redeem(&position, amount).await.unwrap();
+    assert_eq!(resp.transaction_id, "tx-v2-wallet");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn submit_v2_split_and_merge_send_their_router_calldata() {
+    let v = router_vectors();
+    let split = &v["split"][1];
+    let merge = &v["merge"][1];
+    let router = fixture_router();
+    for (route, row) in [("split", split), ("merge", merge)] {
+        let mut server = Server::new_async().await;
+        let _deployed = server
+            .mock("GET", "/deployed")
+            .match_query(Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"deployed":true}"#)
+            .create_async()
+            .await;
+        let _nonce = server
+            .mock("GET", "/nonce")
+            .match_query(Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"nonce":"5"}"#)
+            .create_async()
+            .await;
+        let submit = server
+            .mock("POST", "/submit")
+            .match_body(Matcher::PartialJsonString(format!(
+                r#"{{"type":"SAFE","to":"{router}","data":"{}","value":"0"}}"#,
+                row["calldata"].as_str().unwrap()
+            )))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"transactionID":"tx-v2","state":"STATE_NEW"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let client = client_with_builder_auth(&server);
+        let condition = fixture_condition(&row["condition_id"]);
+        let amount = fixture_u256(&row["amount"]);
+        let resp = match route {
+            "split" => client.submit_v2_split(condition, amount).await,
+            _ => client.submit_v2_merge(condition, amount).await,
+        }
+        .unwrap();
+        assert_eq!(resp.transaction_id, "tx-v2", "{route}");
+        submit.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn v2_router_calls_are_refused_off_polygon_before_any_request() {
+    use polyoxide_venue::{Class, Classify};
+
+    let v = router_vectors();
+    let condition = fixture_condition(&v["split"][0]["condition_id"]);
+    let amount = alloy::primitives::U256::from(1_000_000u64);
+    let (position, _, _) = fixture_redeem();
+
+    let mut server = Server::new_async().await;
+    // `expect(0)` with `match_query(Any)`: a bare path mock would not match a request that
+    // carries a query string, so it could not catch one.
+    let mut mocks = Vec::new();
+    for (method, path) in [
+        ("GET", "/deployed"),
+        ("GET", "/nonce"),
+        ("GET", "/relay-payload"),
+        ("GET", "/v1/account/transactions/params"),
+        ("POST", "/submit"),
+    ] {
+        mocks.push(
+            server
+                .mock(method, path)
+                .match_query(Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        );
+    }
+
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let client = RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .chain_id(80002)
+        .with_account(account)
+        .build()
+        .unwrap();
+
+    let wanted =
+        "Protocol V2 Router calls are only known for Polygon mainnet (137), not chain 80002";
+    let errs = [
+        client.v2_split_call(condition, amount).unwrap_err(),
+        client.v2_merge_call(condition, amount).unwrap_err(),
+        client.v2_redeem_call(&position, amount).unwrap_err(),
+        client.submit_v2_split(condition, amount).await.unwrap_err(),
+        client.submit_v2_merge(condition, amount).await.unwrap_err(),
+        client
+            .submit_v2_redeem(&position, amount)
+            .await
+            .unwrap_err(),
+    ];
+    for err in errs {
+        assert!(err.to_string().contains(wanted), "{err}");
+        assert_eq!(err.class(), Class::InvalidRequest);
+    }
+    for mock in mocks {
+        mock.assert_async().await;
+    }
+}

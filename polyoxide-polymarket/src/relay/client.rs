@@ -1,6 +1,8 @@
 use crate::relay::account::BuilderAccount;
 use crate::relay::config::{get_contract_config, AuthConfig, BuilderConfig, ContractConfig};
-use crate::relay::deposit_wallet::DepositWalletCall;
+use crate::relay::deposit_wallet::{
+    router_merge_calldata, router_redeem_calldata, router_split_calldata, DepositWalletCall,
+};
 use crate::relay::error::RelayError;
 use crate::relay::session_signers::{
     SessionSignerAuthorization, SessionSignerAuthorizationResponse, SessionSignerRevocation,
@@ -8,13 +10,13 @@ use crate::relay::session_signers::{
 };
 use crate::relay::types::{
     ExecuteParams, GaslessTransaction, NonceResponse, RelayerApiKey, RelayerTransaction,
-    SafeTransaction, SafeTx, SubmitResponse, WalletType,
+    SafeTransaction, SafeTx, SubmitResponse, V2PositionId, WalletType,
 };
 use crate::relay::wallet::WalletKind;
 use crate::shared::{self, DepositWalletRole, PolymarketRetryPolicy, SessionSignerScope};
 use alloy::hex;
 use alloy::network::TransactionBuilder;
-use alloy::primitives::{address, keccak256, Address, Bytes, B256, U256};
+use alloy::primitives::{address, keccak256, Address, Bytes, FixedBytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
@@ -34,6 +36,10 @@ const DELEGATE_CALL_OPERATION: u8 = 1;
 const COLLATERAL_ADAPTER: Address = address!("AdA100Db00Ca00073811820692005400218FcE1f");
 /// py-sdk's redemption target for a Deposit Wallet on a neg-risk market.
 const NEG_RISK_COLLATERAL_ADAPTER: Address = address!("adA2005600Dec949baf300f4C6120000bDB6eAab");
+
+/// py-sdk's `protocol_v2_router` on Polygon mainnet: the contract a Protocol V2 position's
+/// `split`, `merge` and `redeem` go to.
+const PROTOCOL_V2_ROUTER: Address = address!("12121212006e4CD160D18e3f00711DA5c3372600");
 
 /// The error both legacy redemption entry points return on a Deposit Wallet client,
 /// which has to name the market's neg-risk flag to pick the adapter.
@@ -1468,7 +1474,9 @@ impl RelayClient {
     /// sends this to the collateral adapter, or the neg-risk collateral adapter for a
     /// neg-risk market, never to the Conditional Tokens contract directly; `neg_risk`
     /// is the market's flag (`GET /neg-risk?token_id=` on the CLOB, or gamma's
-    /// `negRisk`). Protocol-V2 markets (router `redeem`) are not supported.
+    /// `negRisk`). A Protocol V2 market redeems through the Router instead: see
+    /// [`RelayClient::v2_redeem_call`], which pairs with
+    /// [`RelayClient::deposit_wallet_batch_typed_data`] for an external signer.
     ///
     /// Returns the typed data and the calls to pass to
     /// [`RelayClient::submit_redemption_with_signature`]. `nonce` comes from
@@ -1524,7 +1532,8 @@ impl RelayClient {
     /// pUSD as collateral, sent to the collateral adapter, or to the neg-risk
     /// collateral adapter when `neg_risk`, never to the Conditional Tokens contract
     /// directly. `neg_risk` is the market's flag (`GET /neg-risk?token_id=` on the CLOB,
-    /// or gamma's `negRisk`). Protocol-V2 markets (router `redeem`) are not supported.
+    /// or gamma's `negRisk`). A Protocol V2 market redeems through the Router instead: see
+    /// [`RelayClient::submit_v2_redeem`].
     /// Sends `metadata: ""`, where py-sdk's `redeem_positions` defaults to
     /// `Redeem positions for condition <id>`; the batch signature does not cover it.
     /// See [`RelayClient::redeem_typed_data`] for an external signer.
@@ -1552,6 +1561,118 @@ impl RelayClient {
             operation: CALL_OPERATION,
         };
         self.execute_deposit_wallet(vec![tx], None).await
+    }
+
+    /// A call to the Protocol V2 Router with `value: 0`, refused on any chain but
+    /// Polygon mainnet, whose Router address is the only one known.
+    fn router_call(&self, data: Vec<u8>) -> Result<DepositWalletCall, RelayError> {
+        if self.chain_id != 137 {
+            return Err(RelayError::validation(format!(
+                "Protocol V2 Router calls are only known for Polygon mainnet (137), not chain {}",
+                self.chain_id
+            )));
+        }
+        Ok(DepositWalletCall {
+            target: PROTOCOL_V2_ROUTER,
+            value: U256::ZERO,
+            data: data.into(),
+        })
+    }
+
+    /// Send one Router call through [`RelayClient::execute`], as a plain CALL, so it works
+    /// for a Safe, a Proxy and a Deposit Wallet.
+    async fn submit_router_call(
+        &self,
+        call: DepositWalletCall,
+    ) -> Result<SubmitResponse, RelayError> {
+        let tx = SafeTransaction {
+            to: call.target,
+            value: call.value,
+            data: call.data,
+            operation: CALL_OPERATION,
+        };
+        self.execute(vec![tx], None).await
+    }
+
+    /// The Protocol V2 Router's `split(bytes31,uint256)` call for `condition_id`, as py-sdk's
+    /// `router_split_call` builds it. `amount` is in base units (6 decimals); any `U256` is
+    /// accepted, zero included, and the chain enforces balances.
+    ///
+    /// Get `condition_id` from [`parse_v2_condition_id`](crate::relay::parse_v2_condition_id)
+    /// or [`V2PositionId::condition_id`]. For a Deposit Wallet with an external signer, pass the
+    /// call to [`RelayClient::deposit_wallet_batch_typed_data`] and
+    /// [`RelayClient::submit_deposit_wallet_batch_from`].
+    ///
+    /// The Router address is Polygon mainnet's; any other chain is an error.
+    pub fn v2_split_call(
+        &self,
+        condition_id: FixedBytes<31>,
+        amount: U256,
+    ) -> Result<DepositWalletCall, RelayError> {
+        self.router_call(router_split_calldata(condition_id, amount))
+    }
+
+    /// The Protocol V2 Router's `merge(bytes31,uint256)` call for `condition_id`, as py-sdk's
+    /// `router_merge_call` builds it. Amounts and chains are as for
+    /// [`RelayClient::v2_split_call`].
+    pub fn v2_merge_call(
+        &self,
+        condition_id: FixedBytes<31>,
+        amount: U256,
+    ) -> Result<DepositWalletCall, RelayError> {
+        self.router_call(router_merge_calldata(condition_id, amount))
+    }
+
+    /// The Protocol V2 Router's `redeem(bytes31,uint256,uint256)` call for one position, as
+    /// py-sdk's `router_redeem_call` builds it. Amounts and chains are as for
+    /// [`RelayClient::v2_split_call`].
+    ///
+    /// Use this, not [`RelayClient::submit_deposit_wallet_redemption`], for a Protocol V2
+    /// market.
+    pub fn v2_redeem_call(
+        &self,
+        position: &V2PositionId,
+        amount: U256,
+    ) -> Result<DepositWalletCall, RelayError> {
+        self.router_call(router_redeem_calldata(position, amount))
+    }
+
+    /// Split `amount` of collateral into both outcomes of a Protocol V2 condition, through
+    /// the Router, signed by this client's account and submitted gaslessly.
+    ///
+    /// Works for a Safe, a Proxy and a Deposit Wallet client (one CALL through
+    /// [`RelayClient::execute`]). A chain other than Polygon mainnet is refused before any
+    /// request. Sends `metadata: ""` for a Deposit Wallet.
+    pub async fn submit_v2_split(
+        &self,
+        condition_id: FixedBytes<31>,
+        amount: U256,
+    ) -> Result<SubmitResponse, RelayError> {
+        let call = self.v2_split_call(condition_id, amount)?;
+        self.submit_router_call(call).await
+    }
+
+    /// Merge `amount` of both outcomes of a Protocol V2 condition back into collateral,
+    /// through the Router. Wallets, chains and metadata are as for
+    /// [`RelayClient::submit_v2_split`].
+    pub async fn submit_v2_merge(
+        &self,
+        condition_id: FixedBytes<31>,
+        amount: U256,
+    ) -> Result<SubmitResponse, RelayError> {
+        let call = self.v2_merge_call(condition_id, amount)?;
+        self.submit_router_call(call).await
+    }
+
+    /// Redeem `amount` of one Protocol V2 position through the Router. Wallets, chains and
+    /// metadata are as for [`RelayClient::submit_v2_split`].
+    pub async fn submit_v2_redeem(
+        &self,
+        position: &V2PositionId,
+        amount: U256,
+    ) -> Result<SubmitResponse, RelayError> {
+        let call = self.v2_redeem_call(position, amount)?;
+        self.submit_router_call(call).await
     }
 
     /// Simulate a Deposit Wallet redemption call from the configured wallet, returning
@@ -1691,6 +1812,9 @@ impl RelayClient {
     /// [`WalletType::DepositWallet`] client is refused before any I/O; use
     /// [`RelayClient::submit_deposit_wallet_redemption`], which takes the market's
     /// neg-risk flag to pick the collateral adapter py-sdk sends to.
+    ///
+    /// This is the CTF path; a Protocol V2 position redeems through the Router with
+    /// [`RelayClient::submit_v2_redeem`], for any wallet type.
     pub async fn submit_gasless_redemption(
         &self,
         condition_id: [u8; 32],
@@ -1709,6 +1833,9 @@ impl RelayClient {
     /// [`WalletType::DepositWallet`] client is refused before any I/O; use
     /// [`RelayClient::submit_deposit_wallet_redemption`], which takes the market's
     /// neg-risk flag to pick the collateral adapter py-sdk sends to.
+    ///
+    /// This is the CTF path; a Protocol V2 position redeems through the Router with
+    /// [`RelayClient::submit_v2_redeem`], for any wallet type.
     pub async fn submit_gasless_redemption_with_gas_estimation(
         &self,
         condition_id: [u8; 32],
