@@ -34,6 +34,7 @@ use crate::clob::error::ClobError;
 use crate::clob::types::{Order as NativeOrder, OrderKind, OrderSide, PartialCreateOrderOptions};
 use crate::clob::{Clob, CreateOrderParams};
 use crate::shared::keys;
+use crate::shared::protocol::is_v2_position_id;
 
 /// Options only the CLOB reads, carried in an
 /// [`OrderRequest`](polyoxide_venue::OrderRequest)'s `extensions`.
@@ -75,7 +76,9 @@ pub struct OrderExt {
     pub maker_address: Option<String>,
     /// When the order expires, when it does.
     pub expiration: Option<UnixMillis>,
-    /// Whether the order was signed for the negative-risk exchange.
+    /// Whether the order was signed for the negative-risk exchange. False for a
+    /// Protocol V2 order, which is signed for ExchangeV3 whatever
+    /// [`ClobOrderOptions::neg_risk`] says.
     pub neg_risk: Option<bool>,
     /// The ids of the trades the order took part in.
     pub trade_ids: Vec<String>,
@@ -615,7 +618,9 @@ impl Trading for Clob {
                 }),
             )
             .await?;
-        let neg_risk = native.neg_risk;
+        // A Protocol V2 order is signed for ExchangeV3 whatever the options'
+        // `neg_risk` says, so it is not a negative-risk order.
+        let neg_risk = native.neg_risk && !is_v2_position_id(token.as_str());
         // The order's id is its EIP-712 hash, which the client computes before
         // signing, for every signature type: a Deposit Wallet's order is signed
         // as an ERC-7739 envelope, but the exchange names it by this hash too.

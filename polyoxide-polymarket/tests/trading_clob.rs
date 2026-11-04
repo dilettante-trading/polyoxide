@@ -2012,3 +2012,42 @@ async fn place_on_a_protocol_v2_key_names_the_order_by_its_exchange_v3_hash() {
         hardhat_0
     );
 }
+
+/// A caller's `neg_risk: Some(true)` does not make a Protocol V2 order a
+/// negative-risk one: it is signed for ExchangeV3 whatever the option says, so
+/// the order reports `neg_risk` false.
+#[allow(clippy::field_reassign_with_default)]
+#[tokio::test]
+async fn place_on_a_protocol_v2_key_reports_neg_risk_false_whatever_the_options_say() {
+    let ids: Value = serde_json::from_str(PROTOCOL_V2_IDS).unwrap();
+    let v2_id = ids["ids"]["v2_binary"].as_str().unwrap().to_string();
+
+    let mut server = Server::new_async().await;
+    let post = server
+        .mock("POST", "/order")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"success":true,"status":"live","transactionsHashes":[]}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let clob = client(&server);
+    let mut options = ClobOrderOptions::default();
+    options.tick_size = Some(TickSize::Hundredth);
+    options.neg_risk = Some(true);
+    let request = with_options(
+        OrderRequest::new(
+            keys::clob(&TokenId::new(v2_id).unwrap()),
+            Side::Buy,
+            d("0.52"),
+            d("10"),
+        ),
+        options,
+    );
+
+    let placed = clob.place(request).await.unwrap();
+
+    post.assert_async().await;
+    let ext = placed.extensions.get::<OrderExt>().unwrap();
+    assert_eq!(ext.neg_risk, Some(false));
+}
