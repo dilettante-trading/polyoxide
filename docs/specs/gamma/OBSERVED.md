@@ -174,8 +174,16 @@ Its variants are `V1` and `V2`, and any other value arrives verbatim as
 is `Other`. `Market::position_ids` is `Option<Vec<String>>`, and
 `Market::resolution_status` is `Option<ResolutionStatus>`, built the same
 way. `version` stays `Option` although every market sampled sends it,
-because neither schema lists it in `required`. Trading a V2 market
-(ExchangeV3 signing, `CONDITIONAL-V2`, the new approvals) is not implemented.
+because neither schema lists it in `required`. `Market::outcome_ids` chooses
+the trading ids by `version` (`clobTokenIds` for `v1`, `positionIds` for `v2`,
+the other field never read) and refuses a missing or unknown version, so a
+caller cannot take the `v1` market's useless `positionIds` for a book. Trading
+a V2 market is implemented (ExchangeV3 signing, `CONDITIONAL-V2` balance
+reads, `event_group`'s V2 outcomes and the Router's split, merge and redeem),
+pending live verification: no `v2` market had been served when this was
+written, and `live_v2_market_is_served` in
+`polyoxide-polymarket/tests/live_clob.rs` is the probe that reads one's book,
+tick size and neg-risk flag when it appears.
 `live_markets_carry_a_known_protocol_version` in
 `polyoxide-polymarket/tests/live_gamma.rs` fails if the newest markets stop sending
 `version` or send one `ProtocolVersion` does not name.

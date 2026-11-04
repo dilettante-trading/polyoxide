@@ -92,8 +92,13 @@ runs under, so every order that key has resting is cancelled some 10 to 15 secon
 - `trades` read the Data API's taker-only `/trades` for the token's market and keep the token's
   rows, oldest first, with no trade id (the Data API gives none).
 - `event_group` reads the event id from Gamma's `/markets?clob_token_ids=` (a private decode,
-  since Gamma's `Market` does not model its `events`) with `closed=any`, since Gamma leaves closed
-  markets out unless asked (DRIFT R13), then `/events/{id}`, keeping only `v1` markets' outcomes.
+  since Gamma's `Market` does not model its `events`), or `?position_ids=` when the key's id
+  passes the id rule (`shared::protocol::is_v2_position_id`), with `closed=any`, since Gamma leaves
+  closed markets out unless asked (DRIFT R13), then `/events/{id}`. It reads every market's
+  outcomes through `Market::outcome_ids`, so a `v2` market's outcomes are listed keyed by their
+  position ids beside the `v1` markets' token ids (event groups did not list V2 outcomes before
+  #51). A market whose `version` is missing or unknown is skipped; any other selector refusal
+  fails the group as `Decode`.
 - A number the CLOB or Data API sends as a float is read through its shortest decimal spelling.
 - `tests/venue_clob.rs` holds each method to the native clients' values on
   `tests/fixtures/clob/venue/`, captured for one live neg-risk outcome by
