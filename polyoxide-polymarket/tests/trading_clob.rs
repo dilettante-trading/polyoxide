@@ -1862,3 +1862,153 @@ async fn an_order_id_the_clob_names_differently_is_rekeyed_and_logged_as_a_warni
     assert!(warned[0].2.contains("venue=0xorder1"), "{:?}", warned[0]);
     assert!(warned[0].2.contains("computed=0x"), "{:?}", warned[0]);
 }
+
+// --- Protocol V2 ---
+
+const PROTOCOL_V2_IDS: &str = include_str!("fixtures/clob/protocol_v2/id_vectors.json");
+const PROTOCOL_V2_ORDERS: &str = include_str!("fixtures/clob/protocol_v2/order_vectors.json");
+
+/// An order's digest under a given exchange domain separator, built here from
+/// the order's fields so the test does not lean on the crate's own hashing.
+mod protocol_v2_digest {
+    use alloy::primitives::{keccak256, Address, Signature, B256, U256};
+    use alloy::sol_types::SolStruct;
+    use polyoxide_polymarket::clob::{Order as ClobOrder, OrderSide};
+    use std::str::FromStr;
+
+    alloy::sol! {
+        struct Order {
+            uint256 salt;
+            address maker;
+            address signer;
+            uint256 tokenId;
+            uint256 makerAmount;
+            uint256 takerAmount;
+            uint8 side;
+            uint8 signatureType;
+            uint256 timestamp;
+            bytes32 metadata;
+            bytes32 builder;
+        }
+    }
+
+    pub fn digest(domain_separator: B256, order: &ClobOrder) -> B256 {
+        let number = |text: &str| U256::from_str_radix(text, 10).unwrap();
+        let typed = Order {
+            salt: number(&order.salt),
+            maker: order.maker,
+            signer: order.signer,
+            tokenId: number(&order.token_id),
+            makerAmount: number(&order.maker_amount),
+            takerAmount: number(&order.taker_amount),
+            side: match order.side {
+                OrderSide::Buy => 0,
+                OrderSide::Sell => 1,
+            },
+            signatureType: order.signature_type as u8,
+            timestamp: number(&order.timestamp),
+            metadata: order.metadata,
+            builder: order.builder,
+        };
+        let mut message = Vec::with_capacity(66);
+        message.extend_from_slice(b"\x19\x01");
+        message.extend_from_slice(domain_separator.as_slice());
+        message.extend_from_slice(typed.eip712_hash_struct().as_slice());
+        keccak256(&message)
+    }
+
+    /// The address that signed `digest`, recovered from a `0x` signature.
+    pub fn signer_of(signature: &str, digest: B256) -> Address {
+        Signature::from_str(signature)
+            .unwrap()
+            .recover_address_from_prehash(&digest)
+            .unwrap()
+    }
+}
+
+/// `place` on a Protocol V2 key reports the ExchangeV3 order hash as the
+/// order's id: the venue's answer names no order, so the id is the one `place`
+/// computed before signing. The hash is rebuilt here from py-sdk's recorded
+/// ExchangeV3 domain separator and the posted order, and the posted signature
+/// must recover to the account under that same digest.
+#[allow(clippy::field_reassign_with_default)]
+#[tokio::test]
+async fn place_on_a_protocol_v2_key_names_the_order_by_its_exchange_v3_hash() {
+    let ids: Value = serde_json::from_str(PROTOCOL_V2_IDS).unwrap();
+    let orders: Value = serde_json::from_str(PROTOCOL_V2_ORDERS).unwrap();
+    let v2_id = ids["ids"]["v2_binary"].as_str().unwrap().to_string();
+    let separator = |case: &str| -> alloy::primitives::B256 {
+        orders["cases"][case]["domain_separator"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    let v3 = separator("v2_eoa");
+    let v2 = separator("v1_eoa");
+    assert_ne!(v3, v2, "the fixture's two domains differ");
+
+    let mut server = Server::new_async().await;
+    // `match_query(Matcher::Any)` makes `expect(0)` real.
+    let neg_risk = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let posted = Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+    let sink = posted.clone();
+    let post = server
+        .mock("POST", "/order")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body_from_request(move |request| {
+            sink.lock().unwrap().push(request.body().unwrap().clone());
+            br#"{"success":true,"status":"live","transactionsHashes":[]}"#.to_vec()
+        })
+        .expect(1)
+        .create_async()
+        .await;
+    let clob = client(&server);
+    let mut options = ClobOrderOptions::default();
+    options.tick_size = Some(TickSize::Hundredth);
+    let request = with_options(
+        OrderRequest::new(
+            keys::clob(&TokenId::new(v2_id.clone()).unwrap()),
+            Side::Buy,
+            d("0.52"),
+            d("10"),
+        ),
+        options,
+    );
+
+    let placed = clob.place(request).await.unwrap();
+
+    neg_risk.assert_async().await;
+    post.assert_async().await;
+    let body: Value = serde_json::from_slice(&posted.lock().unwrap()[0]).unwrap();
+    // The wire writes the salt as a number and the order holds it as text.
+    let mut wire = body["order"].clone();
+    wire["salt"] = Value::String(wire["salt"].to_string());
+    let signed: polyoxide_polymarket::clob::SignedOrder = serde_json::from_value(wire).unwrap();
+    assert_eq!(signed.order.token_id, v2_id);
+
+    let digest = protocol_v2_digest::digest(v3, &signed.order);
+    assert_eq!(
+        placed.id,
+        OrderId::new(format!("0x{}", alloy::primitives::hex::encode(digest)))
+    );
+    assert_eq!(placed.status, OrderStatus::Open);
+    let hardhat_0 = account().address();
+    assert_eq!(
+        protocol_v2_digest::signer_of(&signed.signature, digest),
+        hardhat_0
+    );
+    // Not the id, nor the signed digest, of the same order under the CTF domain.
+    let ctf_digest = protocol_v2_digest::digest(v2, &signed.order);
+    assert_ne!(ctf_digest, digest);
+    assert_ne!(
+        protocol_v2_digest::signer_of(&signed.signature, ctf_digest),
+        hardhat_0
+    );
+}
