@@ -212,7 +212,7 @@ const POLYGON_TRADING_APPROVALS: [(ApprovalKind, Address, Address); 17] = {
     let neg_risk_exchange = address!("e2222d279d744050d28e00520010520000310F59");
     let collateral_adapter = COLLATERAL_ADAPTER;
     let neg_risk_collateral_adapter = NEG_RISK_COLLATERAL_ADAPTER;
-    let protocol_v2_router = address!("12121212006e4CD160D18e3f00711DA5c3372600");
+    let protocol_v2_router = PROTOCOL_V2_ROUTER;
     let exchange_v3 = address!("e3333700cA9d93003F00f0F71f8515005F6c00Aa");
     let perps_deposit = address!("DCa4af75705dbB50f62437045afF9921947917d2");
     let auto_redeem_operator = address!("a1200000d0002264C9a1698e001292D00E1b00af");
@@ -1642,7 +1642,9 @@ impl RelayClient {
     ///
     /// Works for a Safe, a Proxy and a Deposit Wallet client (one CALL through
     /// [`RelayClient::execute`]). A chain other than Polygon mainnet is refused before any
-    /// request. Sends `metadata: ""` for a Deposit Wallet.
+    /// request. Sends `metadata: ""` for a Deposit Wallet, where py-sdk sends default text
+    /// (for example `Split {amount} positions for condition {id}`); the batch signature does
+    /// not cover it, so nothing that matters differs on the wire.
     pub async fn submit_v2_split(
         &self,
         condition_id: FixedBytes<31>,

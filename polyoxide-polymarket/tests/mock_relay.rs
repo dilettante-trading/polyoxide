@@ -2812,8 +2812,13 @@ async fn v2_router_calls_are_refused_off_polygon_before_any_request() {
             .unwrap_err(),
     ];
     for err in errs {
-        assert!(err.to_string().contains(wanted), "{err}");
         assert_eq!(err.class(), Class::InvalidRequest);
+        match err {
+            polyoxide_polymarket::relay::RelayError::Api(polyoxide_core::ApiError::Validation(
+                message,
+            )) => assert_eq!(message, wanted),
+            other => panic!("expected a validation refusal, got {other:?}"),
+        }
     }
     for mock in mocks {
         mock.assert_async().await;

@@ -8,7 +8,11 @@
 //! the relay keeps its own copy of that wrapper because `relay` builds without the
 //! `clob` module, and pins it to the same py-sdk bytes.
 //!
-//! Everything here is pure and pinned to `tests/fixtures/relay/session_keys/relay_vectors.json`.
+//! Everything here is pure and pinned to `tests/fixtures/relay/session_keys/relay_vectors.json`
+//! and, for the Protocol V2 Router calldata, `tests/fixtures/relay/protocol_v2/router_vectors.json`.
+//! The Router calldata builders (`router_split_calldata`, `router_merge_calldata` and
+//! `router_redeem_calldata`) live here but serve Safe and Proxy wallets too, not only Deposit
+//! Wallets.
 
 use crate::relay::types::V2PositionId;
 use alloy::primitives::{Address, Bytes, FixedBytes, B256, U256};
