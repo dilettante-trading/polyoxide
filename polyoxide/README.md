@@ -108,7 +108,7 @@ let markets = pm.gamma.markets()
 
 // Data: list a user's positions
 let positions = pm.data
-    .v2()
+    
     .positions("0xabc...")
     .limit(5)
     .send()
@@ -156,7 +156,7 @@ let events = gamma.events().list().limit(5).send().await?;
 use polyoxide::polymarket::data::DataApi;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let data = DataApi::builder().build()?;
-let leaders = data.v2().leaderboard().send().await?;
+let leaders = data.leaderboard().send().await?;
 # Ok(())
 # }
 ```

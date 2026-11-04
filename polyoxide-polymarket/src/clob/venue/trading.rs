@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 use super::{decimal, decode};
 use crate::clob::OpenOrder;
-use crate::data::v2::types::{Position as DataPosition, PositionStatus};
+use crate::data::types::{Position as DataPosition, PositionStatus};
 use crate::shared::keys::TokenId;
 use futures_util::StreamExt;
 use std::any::TypeId;
@@ -738,7 +738,6 @@ impl Trading for Clob {
         // not listed (`docs/specs/data-v2/OBSERVED.md`).
         let mut pages = self
             .data
-            .v2()
             .positions(maker.to_string())
             .status(PositionStatus::Open)
             .limit(POSITIONS_PAGE)

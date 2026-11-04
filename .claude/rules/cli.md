@@ -91,9 +91,9 @@ data is.
   (JSONL, flushed per page) and `--max-pages`; the cursor to resume from goes to stderr when a walk
   stops early. `--offset` is refused with a pointer to `--cursor`.
 - `data traded` prints the `/v2/user-stats` object, or `null` for an unknown wallet.
-- `DataCommand::run_with` takes the client and the output writers, and `tests/data_v2.rs` uses it
+- `DataCommand::run_with` takes the client and the output writers, and `tests/data.rs` uses it
   to run real arguments against mock servers serving the `data` module's v2 fixtures
-  (`polyoxide-polymarket/tests/fixtures/data/v2/`).
+  (`polyoxide-polymarket/tests/fixtures/data/`).
 
 ## `polymarket credentials <store|show|delete> <kind>` (feature `keychain`)
 

@@ -4,7 +4,7 @@
 //! changed name or argument type fails to compile; a changed key, value or
 //! order fails the test.
 
-use polyoxide_polymarket::data::{v2::types as v2, DataApi};
+use polyoxide_polymarket::data::{types, DataApi};
 use polyoxide_test_support::query::{assert_cases, Case};
 
 fn client(base: &str) -> DataApi {
@@ -13,14 +13,13 @@ fn client(base: &str) -> DataApi {
 
 const CASES: &[Case] = &[
     Case {
-        builder: "v2 ListBiggestWinners",
+        builder: "ListBiggestWinners",
         path: "/v2/biggest-winners",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .biggest_winners()
-                    .time_period(v2::TimePeriod::Month)
+                    .time_period(types::TimePeriod::Month)
                     .category("category-v")
                     .limit(5u32)
                     .send()
@@ -34,14 +33,13 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListBuildersLeaderboard",
+        builder: "ListBuildersLeaderboard",
         path: "/v2/builders/leaderboard",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .builders_leaderboard()
-                    .time_period(v2::TimePeriod::Month)
+                    .time_period(types::TimePeriod::Month)
                     .limit(5u32)
                     .send()
                     .await;
@@ -50,14 +48,13 @@ const CASES: &[Case] = &[
         sends: &[("time_period", "month"), ("limit", "5")],
     },
     Case {
-        builder: "v2 GetBuilderVolume",
+        builder: "GetBuilderVolume",
         path: "/v2/builders/volume",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .builder_volume()
-                    .interval(v2::TimePeriod::Month)
+                    .interval(types::TimePeriod::Month)
                     .limit(5u32)
                     .send()
                     .await;
@@ -66,16 +63,15 @@ const CASES: &[Case] = &[
         sends: &[("interval", "month"), ("limit", "5")],
     },
     Case {
-        builder: "v2 ListLeaderboard",
+        builder: "ListLeaderboard",
         path: "/v2/leaderboard",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .leaderboard()
-                    .time_period(v2::TimePeriod::Month)
+                    .time_period(types::TimePeriod::Month)
                     .category("category-v")
-                    .board(v2::LeaderboardBoard::Volume)
+                    .board(types::LeaderboardBoard::Volume)
                     .limit(5u32)
                     .send()
                     .await;
@@ -89,14 +85,13 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 GetLeaderboardUser",
+        builder: "GetLeaderboardUser",
         path: "/v2/leaderboard",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .leaderboard_user("0xuser")
-                    .time_period(v2::TimePeriod::Month)
+                    .time_period(types::TimePeriod::Month)
                     .category("category-v")
                     .send()
                     .await;
@@ -109,19 +104,18 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListTrades",
+        builder: "ListTrades",
         path: "/v2/trades",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .trades()
                     .user("user-v")
                     .conditions(["conditions-1", "conditions-2"])
                     .event_ids(["event_ids-1", "event_ids-2"])
-                    .side(v2::TradeSide::Buy)
+                    .side(types::TradeSide::Buy)
                     .taker_only(true)
-                    .filter_type(v2::FilterType::Cash)
+                    .filter_type(types::FilterType::Cash)
                     .filter_amount(1.5f64)
                     .start(-7i64)
                     .end(-7i64)
@@ -144,21 +138,20 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListActivity",
+        builder: "ListActivity",
         path: "/v2/activity",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .activity("0xuser")
-                    .types([v2::ActivityType::Trade, v2::ActivityType::Split])
+                    .types([types::ActivityType::Trade, types::ActivityType::Split])
                     .conditions(["conditions-1", "conditions-2"])
                     .event_ids(["event_ids-1", "event_ids-2"])
-                    .side(v2::TradeSide::Buy)
+                    .side(types::TradeSide::Buy)
                     .start(-7i64)
                     .end(-7i64)
-                    .sort_by(v2::ActivitySortBy::Timestamp)
-                    .sort_direction(v2::SortDirection::Desc)
+                    .sort_by(types::ActivitySortBy::Timestamp)
+                    .sort_direction(types::SortDirection::Desc)
                     .exclude_deposits_withdrawals(true)
                     .limit(5u32)
                     .send()
@@ -180,12 +173,11 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListComboActivity",
+        builder: "ListComboActivity",
         path: "/v2/activity/combos",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .combo_activity("0xuser")
                     .conditions(["conditions-1", "conditions-2"])
                     .limit(5u32)
@@ -200,12 +192,11 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListHolders",
+        builder: "ListHolders",
         path: "/v2/holders",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .holders(["0xcond"])
                     .min_balance(1.5f64)
                     .include_pnl(true)
@@ -222,12 +213,11 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 GetOpenInterest",
+        builder: "GetOpenInterest",
         path: "/v2/oi",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .open_interest()
                     .conditions(["conditions-1", "conditions-2"])
                     .send()
@@ -237,16 +227,15 @@ const CASES: &[Case] = &[
         sends: &[("condition", "conditions-1,conditions-2")],
     },
     Case {
-        builder: "v2 ListPricesHistory",
+        builder: "ListPricesHistory",
         path: "/v2/prices-history",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .prices_history("123")
                     .start(-7i64)
                     .end(-7i64)
-                    .interval(v2::PricesInterval::OneWeek)
+                    .interval(types::PricesInterval::OneWeek)
                     .bucket_seconds(5u32)
                     .as_of(-7i64)
                     .limit(5u32)
@@ -265,21 +254,20 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListPositions",
+        builder: "ListPositions",
         path: "/v2/positions",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
-                    .positions(v2::PositionAnchor::User("0xuser".into()))
-                    .status(v2::PositionStatus::Redeemable)
+                    .positions(types::PositionAnchor::User("0xuser".into()))
+                    .status(types::PositionStatus::Redeemable)
                     .event_ids(["event_ids-1", "event_ids-2"])
                     .title("title-v")
-                    .filter_type(v2::FilterType::Cash)
+                    .filter_type(types::FilterType::Cash)
                     .filter_amount(1.5f64)
                     .include_archived(true)
-                    .sort_by(v2::PositionSortBy::TotalPnl)
-                    .sort_direction(v2::SortDirection::Desc)
+                    .sort_by(types::PositionSortBy::TotalPnl)
+                    .sort_direction(types::SortDirection::Desc)
                     .start(-7i64)
                     .end(-7i64)
                     .limit(5u32)
@@ -303,20 +291,19 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 ListComboPositions",
+        builder: "ListComboPositions",
         path: "/v2/positions/combos",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .combo_positions("0xuser")
                     .conditions(["conditions-1", "conditions-2"])
                     .statuses([
-                        v2::ComboPositionStatus::Open,
-                        v2::ComboPositionStatus::ResolvedWin,
+                        types::ComboPositionStatus::Open,
+                        types::ComboPositionStatus::ResolvedWin,
                     ])
-                    .sort_by(v2::ComboPositionSortBy::EntryCost)
-                    .sort_direction(v2::SortDirection::Desc)
+                    .sort_by(types::ComboPositionSortBy::EntryCost)
+                    .sort_direction(types::SortDirection::Desc)
                     .updated_after(-7i64)
                     .updated_before(-7i64)
                     .limit(5u32)
@@ -336,15 +323,14 @@ const CASES: &[Case] = &[
         ],
     },
     Case {
-        builder: "v2 GetUserPnl",
+        builder: "GetUserPnl",
         path: "/v2/user-pnl",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .user_pnl("0xuser")
-                    .interval(v2::PnlInterval::OneMonth)
-                    .fidelity(v2::PnlFidelity::ThreeHours)
+                    .interval(types::PnlInterval::OneMonth)
+                    .fidelity(types::PnlFidelity::ThreeHours)
                     .send()
                     .await;
             })
@@ -352,12 +338,11 @@ const CASES: &[Case] = &[
         sends: &[("user", "0xuser"), ("interval", "1m"), ("fidelity", "3h")],
     },
     Case {
-        builder: "v2 GetUserVolume",
+        builder: "GetUserVolume",
         path: "/v2/user-volume",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .user_volume("0xuser")
                     .start(-7i64)
                     .end(-7i64)
@@ -368,12 +353,11 @@ const CASES: &[Case] = &[
         sends: &[("user", "0xuser"), ("start", "-7"), ("end", "-7")],
     },
     Case {
-        builder: "v2 GetValue",
+        builder: "GetValue",
         path: "/v2/value",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .value("0xuser")
                     .conditions(["conditions-1", "conditions-2"])
                     .send()
@@ -387,12 +371,11 @@ const CASES: &[Case] = &[
     },
     // a list of unknown activity types sends nothing.
     Case {
-        builder: "v2 ListTrades",
+        builder: "ListTrades",
         path: "/v2/trades",
         fire: |base| {
             Box::pin(async move {
                 let _ = client(&base)
-                    .v2()
                     .trades()
                     .conditions(Vec::<String>::new())
                     .send()
@@ -415,7 +398,6 @@ async fn a_csv_setter_omits_an_empty_value() {
     // `[""]`, v1's sent `market=` before.
     let pairs = polyoxide_test_support::query::pairs_sent("/v2/trades", |base| async move {
         let _ = client(&base)
-            .v2()
             .trades()
             .limit(5u32)
             .conditions([""])

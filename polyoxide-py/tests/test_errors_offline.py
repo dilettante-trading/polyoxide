@@ -2,7 +2,7 @@
 
 The exception follows the error's class one to one (Story 3.12), so these
 assert the exact type, through gamma and the Data API's v1 routes. A v2 error
-body still maps by its code; `test_data_v2_offline.py` holds that.
+body still maps by its code; `test_data_offline.py` holds that.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import socket
 import pytest
 
 import polyoxide
-from test_data_v2_offline import FakeDataApi
+from test_data_offline import FakeDataApi
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def gamma_market(server: FakeDataApi) -> None:
 
 
 def data_status(server: FakeDataApi) -> None:
-    polyoxide.DataApiSync(base_url=server.url).v2().status()
+    polyoxide.DataApiSync(base_url=server.url).status()
 
 
 # (status, body, the call, the exception it raises). A 429 is retried three

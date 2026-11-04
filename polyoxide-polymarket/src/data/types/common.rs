@@ -14,6 +14,12 @@ impl OutcomeIndex {
     /// The wire value meaning "the outcome could not be labeled".
     pub const UNLABELED: u32 = 999;
 
+    /// An index from its raw wire value, [`UNLABELED`](Self::UNLABELED)
+    /// included.
+    pub const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
     /// The index, or `None` when upstream could not label the outcome.
     pub fn get(self) -> Option<u32> {
         (self.0 != Self::UNLABELED).then_some(self.0)
@@ -434,6 +440,13 @@ impl std::fmt::Display for SortDirection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_outcome_index_is_built_from_any_raw_value() {
+        assert_eq!(OutcomeIndex::new(1).get(), Some(1));
+        assert_eq!(OutcomeIndex::new(OutcomeIndex::UNLABELED).get(), None);
+        assert_eq!(OutcomeIndex::new(OutcomeIndex::UNLABELED).raw(), 999);
+    }
 
     #[test]
     fn sort_direction_display_matches_serde() {

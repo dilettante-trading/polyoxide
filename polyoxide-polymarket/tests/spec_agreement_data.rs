@@ -16,7 +16,7 @@
 //! 3. **Query parameters, and decoding.** Each route, built with every argument
 //!    and setter, must send exactly the spec's parameter names, and its
 //!    `send()` must decode that route's captured response from
-//!    `tests/fixtures/data/v2/`, which covers every builder's envelope and return type
+//!    `tests/fixtures/data/`, which covers every builder's envelope and return type
 //!    offline. Mutations caught: a camelCase key; an extra `offset` setter; a
 //!    route handed another route's response.
 //! 4. **Envelopes.** Each `{data}` envelope a route answers with must wrap a
@@ -32,10 +32,7 @@ use std::{
     pin::Pin,
 };
 
-use polyoxide_polymarket::data::{
-    v2::{types::*, Page, Pagination},
-    DataApi, DataError,
-};
+use polyoxide_polymarket::data::{types::*, DataApi, DataError, Page, Pagination};
 use polyoxide_test_support::{fixtures, openapi, query};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
@@ -118,7 +115,7 @@ agreement! {
 const NOT_MODELLED: &[(&str, &str)] = &[
     (
         "ErrorCode",
-        "string enum; mapped in v2::error and covered by the mock error tests",
+        "string enum; mapped in data::error and covered by the mock error tests",
     ),
     (
         "ErrorResponse",
@@ -233,7 +230,7 @@ type Fire = fn(DataApi) -> Pin<Box<dyn Future<Output = Result<(), DataError>> + 
 /// Sends one request through `fire`, requires its response to decode, and
 /// returns the query keys it carried.
 async fn query_keys_sent(path: &str, fixture: &str, fire: Fire) -> BTreeSet<String> {
-    let body = fixtures!("data/v2").text(fixture);
+    let body = fixtures!("data").text(fixture);
     query::keys_sent(path, fixture, body, |url| {
         fire(DataApi::builder().base_url(url).build().unwrap())
     })
@@ -241,17 +238,16 @@ async fn query_keys_sent(path: &str, fixture: &str, fire: Fire) -> BTreeSet<Stri
 }
 
 /// One entry per builder: its path, the captured response it must decode (from
-/// `tests/fixtures/data/v2/`), and a call using every argument and setter it has.
+/// `tests/fixtures/data/`), and a call using every argument and setter it has.
 /// Two builders may share a path (`leaderboard` and `leaderboard_user`); their
 /// keys are unioned before comparison.
 const ROUTES: &[(&str, &str, Fire)] = &[
     ("/v2/user-stats", "user_stats", |data| {
-        Box::pin(async move { data.v2().user_stats("0xuser").send().await.map(|_| ()) })
+        Box::pin(async move { data.user_stats("0xuser").send().await.map(|_| ()) })
     }),
     ("/v2/trades", "trades", |data| {
         Box::pin(async move {
-            data.v2()
-                .trades()
+            data.trades()
                 .user("0xuser")
                 .conditions(["0xcond"])
                 .event_ids([1])
@@ -270,8 +266,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/activity", "activity", |data| {
         Box::pin(async move {
-            data.v2()
-                .activity("0xuser")
+            data.activity("0xuser")
                 .types([ActivityType::Trade, ActivityType::Tip])
                 .conditions(["0xcond"])
                 .event_ids([1])
@@ -290,8 +285,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/activity/combos", "combo_activity", |data| {
         Box::pin(async move {
-            data.v2()
-                .combo_activity("0xuser")
+            data.combo_activity("0xuser")
                 .conditions(["0xcond"])
                 .limit(10)
                 .cursor("cursor")
@@ -301,36 +295,34 @@ const ROUTES: &[(&str, &str, Fire)] = &[
         })
     }),
     ("/v2/approvals", "approvals", |data| {
-        Box::pin(async move { data.v2().approvals("0xuser").send().await.map(|_| ()) })
+        Box::pin(async move { data.approvals("0xuser").send().await.map(|_| ()) })
     }),
     ("/v2/positions", "positions", |data| {
         Box::pin(async move {
-            data.v2()
-                .positions(PositionAnchor::UserInConditions {
-                    user: "0xuser".into(),
-                    conditions: vec!["0xcond".into()],
-                })
-                .status(PositionStatus::Closed)
-                .event_ids([1])
-                .title("bitcoin")
-                .filter_type(FilterType::Tokens)
-                .filter_amount(1.0)
-                .include_archived(true)
-                .sort_by(PositionSortBy::RealizedPnl)
-                .sort_direction(SortDirection::Asc)
-                .start(1)
-                .end(2)
-                .limit(10)
-                .cursor("cursor")
-                .send()
-                .await
-                .map(|_| ())
+            data.positions(PositionAnchor::UserInConditions {
+                user: "0xuser".into(),
+                conditions: vec!["0xcond".into()],
+            })
+            .status(PositionStatus::Closed)
+            .event_ids([1])
+            .title("bitcoin")
+            .filter_type(FilterType::Tokens)
+            .filter_amount(1.0)
+            .include_archived(true)
+            .sort_by(PositionSortBy::RealizedPnl)
+            .sort_direction(SortDirection::Asc)
+            .start(1)
+            .end(2)
+            .limit(10)
+            .cursor("cursor")
+            .send()
+            .await
+            .map(|_| ())
         })
     }),
     ("/v2/positions/combos", "combo_positions", |data| {
         Box::pin(async move {
-            data.v2()
-                .combo_positions("0xuser")
+            data.combo_positions("0xuser")
                 .conditions(["0xcond"])
                 .statuses([ComboPositionStatus::Open, ComboPositionStatus::Partial])
                 .sort_by(ComboPositionSortBy::Updated)
@@ -346,8 +338,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/user-pnl", "user_pnl", |data| {
         Box::pin(async move {
-            data.v2()
-                .user_pnl("0xuser")
+            data.user_pnl("0xuser")
                 .interval(PnlInterval::OneWeek)
                 .fidelity(PnlFidelity::OneDay)
                 .send()
@@ -357,8 +348,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/user-volume", "user_volume", |data| {
         Box::pin(async move {
-            data.v2()
-                .user_volume("0xuser")
+            data.user_volume("0xuser")
                 .start(1)
                 .end(2)
                 .send()
@@ -368,8 +358,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/value", "value", |data| {
         Box::pin(async move {
-            data.v2()
-                .value("0xuser")
+            data.value("0xuser")
                 .conditions(["0xcond"])
                 .send()
                 .await
@@ -378,8 +367,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/holders", "holders_pnl", |data| {
         Box::pin(async move {
-            data.v2()
-                .holders(["0xcond"])
+            data.holders(["0xcond"])
                 .min_balance(1.0)
                 .include_pnl(true)
                 .limit(10)
@@ -390,12 +378,11 @@ const ROUTES: &[(&str, &str, Fire)] = &[
         })
     }),
     ("/v2/live-volume", "live_volume", |data| {
-        Box::pin(async move { data.v2().live_volume([1, 2]).send().await.map(|_| ()) })
+        Box::pin(async move { data.live_volume([1, 2]).send().await.map(|_| ()) })
     }),
     ("/v2/oi", "open_interest", |data| {
         Box::pin(async move {
-            data.v2()
-                .open_interest()
+            data.open_interest()
                 .conditions(["0xcond"])
                 .send()
                 .await
@@ -404,8 +391,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/prices-history", "prices_history", |data| {
         Box::pin(async move {
-            data.v2()
-                .prices_history("123")
+            data.prices_history("123")
                 .start(1)
                 .end(2)
                 .interval(PricesInterval::OneDay)
@@ -422,8 +408,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     // entries together cover the documented parameters.
     ("/v2/resolutions", "resolutions", |data| {
         Box::pin(async move {
-            data.v2()
-                .resolutions(ResolutionKey::Question("0xq".into()))
+            data.resolutions(ResolutionKey::Question("0xq".into()))
                 .send()
                 .await
                 .map(|_| ())
@@ -431,8 +416,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/resolutions", "resolutions", |data| {
         Box::pin(async move {
-            data.v2()
-                .resolutions(ResolutionKey::Conditions(vec!["0xcond".into()]))
+            data.resolutions(ResolutionKey::Conditions(vec!["0xcond".into()]))
                 .send()
                 .await
                 .map(|_| ())
@@ -440,8 +424,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/resolutions", "resolutions", |data| {
         Box::pin(async move {
-            data.v2()
-                .resolutions(ResolutionKey::Events(vec!["1".into()]))
+            data.resolutions(ResolutionKey::Events(vec!["1".into()]))
                 .send()
                 .await
                 .map(|_| ())
@@ -451,8 +434,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     // together cover the documented parameters.
     ("/v2/tokens", "tokens", |data| {
         Box::pin(async move {
-            data.v2()
-                .tokens(TokenKey::TokenIds(vec!["123".into()]))
+            data.tokens(TokenKey::TokenIds(vec!["123".into()]))
                 .send()
                 .await
                 .map(|_| ())
@@ -460,8 +442,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/tokens", "tokens", |data| {
         Box::pin(async move {
-            data.v2()
-                .tokens(TokenKey::Conditions(vec!["0xcond".into()]))
+            data.tokens(TokenKey::Conditions(vec!["0xcond".into()]))
                 .send()
                 .await
                 .map(|_| ())
@@ -469,8 +450,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/biggest-winners", "biggest_winners", |data| {
         Box::pin(async move {
-            data.v2()
-                .biggest_winners()
+            data.biggest_winners()
                 .time_period(TimePeriod::Week)
                 .category("sports")
                 .limit(10)
@@ -482,8 +462,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/builders/leaderboard", "builders_leaderboard", |data| {
         Box::pin(async move {
-            data.v2()
-                .builders_leaderboard()
+            data.builders_leaderboard()
                 .time_period(TimePeriod::Month)
                 .limit(10)
                 .cursor("cursor")
@@ -494,8 +473,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/builders/volume", "builder_volume", |data| {
         Box::pin(async move {
-            data.v2()
-                .builder_volume()
+            data.builder_volume()
                 .interval(TimePeriod::Week)
                 .limit(10)
                 .send()
@@ -507,8 +485,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     // cover its parameters.
     ("/v2/leaderboard", "leaderboard", |data| {
         Box::pin(async move {
-            data.v2()
-                .leaderboard()
+            data.leaderboard()
                 .time_period(TimePeriod::All)
                 .category("overall")
                 .board(LeaderboardBoard::Volume)
@@ -521,8 +498,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
     ("/v2/leaderboard", "leaderboard_user", |data| {
         Box::pin(async move {
-            data.v2()
-                .leaderboard_user("0xuser")
+            data.leaderboard_user("0xuser")
                 .time_period(TimePeriod::Day)
                 .category("overall")
                 .send()
@@ -531,7 +507,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
         })
     }),
     ("/v2/status", "status", |data| {
-        Box::pin(async move { data.v2().status().send().await.map(|_| ()) })
+        Box::pin(async move { data.status().send().await.map(|_| ()) })
     }),
 ];
 

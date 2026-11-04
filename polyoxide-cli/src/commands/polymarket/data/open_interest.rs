@@ -23,7 +23,7 @@ pub struct OpenInterestCommand {
 
 impl OpenInterestCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write) -> Result<()> {
-        let mut request = data.v2().open_interest();
+        let mut request = data.open_interest();
         if let Some(ids) = self.condition {
             request = request.conditions(ids);
         }

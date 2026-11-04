@@ -24,11 +24,11 @@ fn client() -> DataApi {
 
 mod v2 {
     use futures_util::StreamExt;
-    use polyoxide_polymarket::data::v2::types::{
+    use polyoxide_polymarket::data::types::{
         PnlFidelity, PnlInterval, PositionAnchor, PositionStatus, PricesInterval, ResolutionKey,
         TimePeriod, TokenKey, TokenModule,
     };
-    use polyoxide_polymarket::data::v2::ErrorCode;
+    use polyoxide_polymarket::data::ErrorCode;
     use polyoxide_polymarket::data::{DataApi, DataError};
     use polyoxide_test_support::{environmental, fail, ResultExt};
     use polyoxide_venue::Classify;
@@ -37,13 +37,7 @@ mod v2 {
 
     /// A recent trade's wallet, condition id and token id.
     async fn recent_trade(data: &DataApi) -> (String, String, String) {
-        let page = data
-            .v2()
-            .trades()
-            .limit(1)
-            .send()
-            .await
-            .or_fail("v2 trades");
+        let page = data.trades().limit(1).send().await.or_fail("v2 trades");
         let trade = page
             .data
             .into_iter()
@@ -69,7 +63,7 @@ mod v2 {
     #[ignore]
     async fn live_v2_trades_walk_follows_the_cursor() {
         let data = client();
-        let pages: Vec<_> = data.v2().trades().limit(2).pages().take(2).collect().await;
+        let pages: Vec<_> = data.trades().limit(2).pages().take(2).collect().await;
 
         // A failed page ends the walk, so page 1's error is examined before the
         // count: a transient one is retried rather than filed as a short walk.
@@ -94,7 +88,7 @@ mod v2 {
     async fn live_v2_wallet_routes() {
         let data = client();
         let (wallet, _, _) = recent_trade(&data).await;
-        let v2 = data.v2();
+        let v2 = &data;
 
         v2.activity(&wallet)
             .limit(2)
@@ -144,14 +138,12 @@ mod v2 {
         let wallet = unknown_wallet();
 
         assert!(data
-            .v2()
             .user_stats(&wallet)
             .send()
             .await
             .or_fail("user stats")
             .is_none());
         assert!(data
-            .v2()
             .leaderboard_user(&wallet)
             .send()
             .await
@@ -164,7 +156,7 @@ mod v2 {
     async fn live_v2_market_routes() {
         let data = client();
         let (_, condition, token_id) = recent_trade(&data).await;
-        let v2 = data.v2();
+        let v2 = &data;
 
         v2.holders([condition.as_str()])
             .limit(2)
@@ -228,7 +220,7 @@ mod v2 {
     #[ignore]
     async fn live_v2_tokens() {
         let data = client();
-        let v2 = data.v2();
+        let v2 = &data;
 
         let winners = v2
             .biggest_winners()
@@ -279,7 +271,7 @@ mod v2 {
     #[ignore]
     async fn live_v2_board_routes() {
         let data = client();
-        let v2 = data.v2();
+        let v2 = &data;
 
         let board = v2
             .leaderboard()
@@ -318,17 +310,11 @@ mod v2 {
     #[ignore]
     async fn live_v2_errors_are_structured() {
         let data = client();
-        let err = data
-            .v2()
-            .trades()
-            .cursor("garbage")
-            .send()
-            .await
-            .unwrap_err(); // live-unwraps: the venue must refuse a garbage cursor
+        let err = data.trades().cursor("garbage").send().await.unwrap_err(); // live-unwraps: the venue must refuse a garbage cursor
 
         // Any other error fails by its class: a 5xx or a dropped connection is
         // retried, and a 400 whose body was not read as v2 files.
-        let DataError::V2(v2) = &err else {
+        let DataError::Venue(v2) = &err else {
             fail("expected a structured v2 error", &err);
         };
         assert_eq!(v2.status, 400);

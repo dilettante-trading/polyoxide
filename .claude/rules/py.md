@@ -21,7 +21,7 @@ built and published to PyPI by a separate step of the release workflow).
   `trace_id`, `parameter` and `retry_after`, which are `None` unless the error came from a v2
   route.
 - Three tests hold the bindings up:
-  - `every_v2_getter_reads_its_own_key` in `src/types/data_v2.rs`, because `get_field` returns
+  - `every_v2_getter_reads_its_own_key` in `src/types/data.rs`, because `get_field` returns
     `None` for a missing key, which stub consistency cannot see;
   - `test_stub_consistency.py` checks `v2.pyi` members and signatures against the compiled module;
   - `test_data_v2_offline.py` calls every route with every argument against a local server.

@@ -28,7 +28,7 @@ async fn fail(status: usize, body: &str) -> DataError {
         })
         .build()
         .unwrap();
-    data.v2().positions("0xabc").send().await.unwrap_err()
+    data.positions("0xabc").send().await.unwrap_err()
 }
 
 #[tokio::test]

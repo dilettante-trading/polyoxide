@@ -1,5 +1,5 @@
 //! Agreement between the v2 types and payloads captured from the live host.
-//! Provenance is in `tests/fixtures/data/v2/PROVENANCE.md`.
+//! Provenance is in `tests/fixtures/data/PROVENANCE.md`.
 //!
 //! `v2_spec_agreement.rs` checks the types against the served schema; this
 //! checks the schema's claims against the wire. Each fixture is deserialized
@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use polyoxide_polymarket::data::v2::{types::*, Page};
+use polyoxide_polymarket::data::{types::*, Page};
 use polyoxide_test_support::{agreement, agreement::Ledger, fixtures};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
@@ -161,7 +161,7 @@ fn key_paths(value: &Value, prefix: &str, out: &mut BTreeSet<String>) {
 }
 
 fn load(fixture: &str) -> Value {
-    fixtures!("data/v2").json(fixture)
+    fixtures!("data").json(fixture)
 }
 
 /// Returns the unexcused differences for one fixture, and marks the excuses used.

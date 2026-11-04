@@ -4,20 +4,17 @@
 use polyoxide_core::{csv, QueryBuilder, Request};
 
 use crate::data::{
-    v2::types::SortDirection,
-    v2::{
-        envelope::{Envelope, Paged},
-        types::{
-            Approvals, ComboPosition, ComboPositionSortBy, ComboPositionStatus, FilterType,
-            PnlFidelity, PnlInterval, PortfolioValue, Position, PositionAnchor, PositionSortBy,
-            PositionStatus, UserPnlSeries, UserStats, UserVolume,
-        },
-        DataV2,
+    envelope::{Envelope, Paged},
+    types::SortDirection,
+    types::{
+        Approvals, ComboPosition, ComboPositionSortBy, ComboPositionStatus, FilterType,
+        PnlFidelity, PnlInterval, PortfolioValue, Position, PositionAnchor, PositionSortBy,
+        PositionStatus, UserPnlSeries, UserStats, UserVolume,
     },
-    DataError,
+    DataApi, DataError,
 };
 
-impl DataV2 {
+impl DataApi {
     /// `GET /v2/approvals`: a wallet's Polygon token and operator approvals.
     pub fn approvals(&self, user: impl Into<String>) -> GetApprovals {
         GetApprovals {

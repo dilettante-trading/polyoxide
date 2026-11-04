@@ -307,7 +307,7 @@ mod trades {
 
     use super::{decimal, decode};
     use crate::clob::Clob;
-    use crate::data::v2::types::TradeSide;
+    use crate::data::types::TradeSide;
     use crate::shared::keys;
 
     /// The rows one call reads: v1's default page, which the call relied on.
@@ -335,7 +335,6 @@ mod trades {
                 .await?;
             let page = self
                 .data
-                .v2()
                 .trades()
                 .conditions([found.condition_id])
                 .taker_only(true)

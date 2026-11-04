@@ -16,7 +16,7 @@ pub struct TradedCommand {
 
 impl TradedCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write) -> Result<()> {
-        let stats = data.v2().user_stats(&self.user).send().await?;
+        let stats = data.user_stats(&self.user).send().await?;
         // A wallet the API does not know has no stats: `data: null` prints as
         // `null`, which a script can tell apart from a known wallet's zeros.
         print_pretty(&stats, out)

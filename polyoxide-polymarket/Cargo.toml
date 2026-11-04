@@ -261,7 +261,7 @@ required-features = ["gamma"]
 # The data module's suites (Story 5.3); `tests/common/` is their shared mock
 # server helper.
 [[test]]
-name = "enum_wire_data_v2"
+name = "enum_wire_data"
 required-features = ["data"]
 
 [[test]]
@@ -281,19 +281,19 @@ name = "mock_data"
 required-features = ["data"]
 
 [[test]]
-name = "mock_data_v2"
-required-features = ["data"]
-
-[[test]]
 name = "query_setters_data"
 required-features = ["data"]
 
 [[test]]
-name = "spec_agreement_data_v2"
+name = "records_data"
 required-features = ["data"]
 
 [[test]]
-name = "wire_agreement_data_v2"
+name = "spec_agreement_data"
+required-features = ["data"]
+
+[[test]]
+name = "wire_agreement_data"
 required-features = ["data"]
 
 # The clob module's suites (Story 5.4). `live_clob` looks markets up through

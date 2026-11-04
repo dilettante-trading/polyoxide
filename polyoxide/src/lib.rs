@@ -56,7 +56,6 @@
 //!
 //!     // Use Data API to get user positions
 //!     let positions = polymarket.data
-//!         .v2()
 //!         .positions("0x1234567890123456789012345678901234567890")
 //!         .limit(10)
 //!         .send()

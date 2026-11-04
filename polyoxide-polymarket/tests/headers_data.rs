@@ -19,7 +19,7 @@ async fn a_positions_list_sends_exactly_the_default_headers() {
         base = url.clone();
         async move {
             let data = DataApi::builder().base_url(url).build().unwrap();
-            let _ = data.v2().positions("0xabc").send().await;
+            let _ = data.positions("0xabc").send().await;
         }
     })
     .await;
@@ -33,6 +33,6 @@ async fn a_positions_list_sends_exactly_the_default_headers() {
             ("host", host)
         ]
         .map(|(name, value)| (name.to_owned(), value.to_owned())),
-        "`v2().positions` sent a header set other than reqwest's defaults with gzip"
+        "`positions` sent a header set other than reqwest's defaults with gzip"
     );
 }

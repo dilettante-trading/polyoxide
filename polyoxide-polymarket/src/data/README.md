@@ -30,8 +30,8 @@ polyoxide = "0.46"
 
 ## Usage
 
-Every route is under `data.v2()`, which shares the client's connection pool,
-rate limiter and concurrency budget. v2 wraps every response in `data`, pages by
+Every route is a method of `DataApi`, and its clones share one connection pool,
+rate limiter and concurrency budget. The API wraps every response in `data`, pages by
 cursor only, uses snake_case field names, and returns structured errors. A
 missing or `null` number means the value was unavailable, never zero, so those
 fields are `Option`s.
@@ -61,12 +61,12 @@ let data = DataApi::builder()
 ```rust
 # use polyoxide_polymarket::data::DataApi;
 use futures_util::TryStreamExt;
-use polyoxide_polymarket::data::v2::types::PositionStatus;
+use polyoxide_polymarket::data::types::PositionStatus;
 
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 # let data = DataApi::builder().build()?;
 // One page. `next_cursor` is `None` on the last one.
-let page = data.v2().trades().user("0x1234...abcd").limit(100).send().await?;
+let page = data.trades().user("0x1234...abcd").limit(100).send().await?;
 for trade in &page.data {
     // `outcome_index` is `None` when upstream could not label the outcome.
     println!("{} {} @ {} (outcome {:?})", trade.side, trade.size, trade.price, trade.outcome_index.get());
@@ -74,7 +74,7 @@ for trade in &page.data {
 
 // Every page. The filters are re-sent unchanged on each request.
 let mut pages = data
-    .v2()
+    
     .positions("0x1234...abcd")
     .status(PositionStatus::Closed)
     .pages();
@@ -94,10 +94,10 @@ while let Some(page) = pages.try_next().await? {
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 # let data = DataApi::builder().build()?;
 let user = "0x1234...abcd";
-let value = data.v2().value(user).send().await?;
+let value = data.value(user).send().await?;
 println!("portfolio value: {}", value.value);
 
-let activity = data.v2().activity(user).limit(20).send().await?;
+let activity = data.activity(user).limit(20).send().await?;
 for row in &activity.data {
     println!("{} @ {}", row.outcome, row.price);
 }
@@ -111,7 +111,7 @@ for row in &activity.data {
 # use polyoxide_polymarket::data::DataApi;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 # let data = DataApi::builder().build()?;
-let holders = data.v2().holders(["0xcondition..."]).limit(10).send().await?;
+let holders = data.holders(["0xcondition..."]).limit(10).send().await?;
 for token in &holders.data {
     println!("{}: {} holders", token.token_id, token.holders.len());
 }
@@ -123,15 +123,15 @@ for token in &holders.data {
 
 ```rust
 # use polyoxide_polymarket::data::DataApi;
-use polyoxide_polymarket::data::{v2::ErrorCode, DataError};
+use polyoxide_polymarket::data::{DataError, ErrorCode};
 use polyoxide_venue::Classify;
 
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 # let data = DataApi::builder().build()?;
-match data.v2().user_stats("0x1234...abcd").send().await {
+match data.user_stats("0x1234...abcd").send().await {
     Ok(Some(stats)) => println!("{} markets traded", stats.trades),
     Ok(None) => println!("not a known user"),
-    Err(DataError::V2(err)) if err.code == ErrorCode::InvalidRequest => {
+    Err(DataError::Venue(err)) if err.code == ErrorCode::InvalidRequest => {
         println!("bad {:?}: {} (trace {})", err.parameter, err.message, err.trace_id);
     }
     Err(err) if err.is_retriable() => println!("try again after {:?}", err.retry_after()),

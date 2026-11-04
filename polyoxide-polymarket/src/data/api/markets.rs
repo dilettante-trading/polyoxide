@@ -4,18 +4,15 @@
 use polyoxide_core::{csv, QueryBuilder, Request};
 
 use crate::data::{
-    v2::{
-        envelope::{Envelope, Paged},
-        types::{
-            LiveVolume, MetaHolder, OpenInterest, PricePoint, PricesInterval, Resolution,
-            ResolutionKey, TokenKey, TokenRef,
-        },
-        DataV2,
+    envelope::{Envelope, Paged},
+    types::{
+        LiveVolume, MetaHolder, OpenInterest, PricePoint, PricesInterval, Resolution,
+        ResolutionKey, TokenKey, TokenRef,
     },
-    DataError,
+    DataApi, DataError,
 };
 
-impl DataV2 {
+impl DataApi {
     /// `GET /v2/holders`: top holders per outcome token, for these markets
     /// (condition ids, at most 20).
     pub fn holders<I, S>(&self, conditions: I) -> ListHolders

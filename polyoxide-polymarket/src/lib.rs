@@ -112,7 +112,7 @@ const _: fn() = || {
 const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<data::DataError>();
-    is::<data::v2::V2Error>();
+    is::<data::VenueError>();
 };
 
 #[cfg(feature = "relay")]

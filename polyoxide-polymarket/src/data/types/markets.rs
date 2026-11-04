@@ -10,7 +10,6 @@ use super::{OutcomeIndex, TokenModule};
 /// the boards' `volume` is both-sides, and two measures must not share a name.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ConditionVolume {
     /// On-chain condition id of the market (`0x` hex).
     pub condition_id: String,
@@ -24,7 +23,6 @@ pub struct ConditionVolume {
 /// `profile_image_optimized` is always empty.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Holder {
     /// Holding in shares. By default the NET figure (a fully hedged wallet
     /// nets to `0.0` and only appears at `min_balance=0`); with
@@ -78,7 +76,6 @@ pub struct Holder {
 /// that resolve to no markets serve `{ taker_volume_total: 0.0, conditions: [] }`.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct LiveVolume {
     /// One row per market under the requested event(s), `taker_volume`
     /// descending; empty when the events resolve to no markets.
@@ -92,7 +89,6 @@ pub struct LiveVolume {
 /// across the page, so merge groups by `token_id`, not by array position.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct MetaHolder {
     /// Top holders of that token, amount descending (net by default,
     /// per-side gross with `include_pnl=true`).
@@ -107,7 +103,6 @@ pub struct MetaHolder {
 /// global shape carries `condition_id = "GLOBAL"`.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct OpenInterest {
     /// Condition id the row answers for; `GLOBAL` on the parameterless
     /// global figure.
@@ -119,7 +114,6 @@ pub struct OpenInterest {
 /// One served point.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct PricePoint {
     /// Price in the range 0…1. Always a JSON number.
     pub price: f64,
@@ -151,7 +145,6 @@ pub struct PricePoint {
 /// Rows still awaiting settlement can also carry an estimate of when it lands.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Resolution {
     /// Condition id the row answers for; absent on question-keyed rows.
     pub condition_id: Option<String>,
@@ -222,7 +215,6 @@ pub struct Resolution {
 /// the market is not mirrored.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct TokenRef {
     /// Position of the token in the market's CLOB token list; `None` until the
     /// settlement writer has placed the token, and always `None` outside

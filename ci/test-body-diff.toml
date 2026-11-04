@@ -96,6 +96,24 @@
 # test server and the TLS install sit under `not(target_arch = "wasm32")`, which changes no
 # test's body, only what gates it, so the gate is dropped at HEAD. Test-support's modules are
 # gated the same way (story 10), since only its failure tags build in a browser.
+# Data API v1 is retired (2026-11-02) and v2 is the data module's root: its v2 test
+# files and the v2 error module merged into the module's own (DRIFT R27).
+[files]
+"polyoxide-polymarket/tests/mock_data_v2.rs" = "polyoxide-polymarket/tests/mock_data.rs"
+"polyoxide-polymarket/src/data/v2/error.rs" = "polyoxide-polymarket/src/data/error.rs"
+
+# `data::v2::*` is `data::*`, and the v2 error is the module's venue error.
+[paths]
+"polyoxide_polymarket::data::v2" = "polyoxide_polymarket::data"
+"polyoxide_polymarket::data::v2::error::V2Error" = "polyoxide_polymarket::data::error::VenueError"
+
+# The v2 fixtures moved up from `tests/fixtures/data/v2/` to `tests/fixtures/data/`.
+[literals."polyoxide-polymarket/tests"]
+"data/v2" = "data"
+
+[literals."polyoxide-cli/tests"]
+"/../polyoxide-polymarket/tests/fixtures/data/v2" = "/../polyoxide-polymarket/tests/fixtures/data"
+
 [gates]
 "polyoxide-ws/src/test_server" = 'not(target_arch = "wasm32")'
 "polyoxide-ws/src/tls.rs" = 'not(target_arch = "wasm32")'
@@ -113,19 +131,7 @@ item = "get_many_fans_out_closed_true_and_false"
 row = "R13"
 sha256 = "60fa921989528d5be88930a47204e62d7f8dfaf5b97bfa24dfe67b58465899dc"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
-item = "NOT_MODELLED"
-kind = "const"
-row = "R14"
-sha256 = "eeda600f385129c1a18baa02d1c8598054938fdfe52c60ad3e6c91547c83fa17"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
-item = "ROUTES"
-kind = "const"
-row = "R14"
-sha256 = "230b6640abc87dd04c3f6fcca11a76bcd17b54850e73686b73ec2d4d9ca06ce3"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
@@ -335,11 +341,6 @@ item = "tests::response"
 row = "R22"
 sha256 = "adb3f5f9de89c296b5fc57afaffbe545b468be8840c15e2c24a20ec50c615882"
 
-[[drift]]
-file = "polyoxide-polymarket/src/data/v2/error.rs"
-item = "tests::parts"
-row = "R22"
-sha256 = "cb4080877ff97e41920de87b0c0fea4bcbd4310f1348beea4e3c2b5903352101"
 
 [[drift]]
 file = "polyoxide-polymarket/src/gamma/error.rs"
@@ -582,39 +583,14 @@ sha256 = "7e6cf8bed2770876ce0656b8138ede28861357b6829f16483d9c99693f1210bf"
 # R27: Data API v1 is retired upstream (2026-11-02). The send-loop proofs that
 # docs/MUTANTS.md cites drove v1's /closed-positions and /trades, and now drive
 # /v2/positions and /v2/trades with their assertions unchanged.
-[[drift]]
-file = "polyoxide-polymarket/tests/mock_data.rs"
-item = "a_429_makes_the_next_request_wait_even_though_it_never_saw_one"
-row = "R27"
-sha256 = "6db16b914341fb1c90625db07316d48e075828c5bca608bb30c444770df5b653"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/mock_data.rs"
-item = "retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop"
-row = "R27"
-sha256 = "dd3a9776dff4b4e3e527eda7419df241b066eac65e7d65c38d0e59cea966a8cf"
 
 # R27: Data API v1 is retired upstream (2026-11-02). The tests below changed with it:
 # their v1 rows went, a route they drove became its v2 one, or, for the two
 # SortDirection tests, only the `#[macro_use]` gate of the file they moved to.
 
-[[drift]]
-file = "polyoxide-polymarket/tests/error_classes_data.rs"
-item = "fail"
-row = "R27"
-sha256 = "8a045d12993d8330c9af089b8d7c9bbe7ecf568e179594e4b456fdf32d79a826"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/headers_data.rs"
-item = "a_positions_list_sends_exactly_the_default_headers"
-row = "R27"
-sha256 = "a906d538edf364b4505b90290f945f66fd49de35b511d22b8e92e60de9953622"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/mock_data.rs"
-item = "the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried"
-row = "R27"
-sha256 = "f9c91dd62b4a1fb7bbd01637e3758f84dd5e9c0424ce97db4b4204e9e39df7f7"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/polymarket_limits.rs"
@@ -646,12 +622,6 @@ item = "tests::test_data_default_construction"
 row = "R27"
 sha256 = "da99c0e7b78ea3edcf4f612dbcb908184170db334e9046da536a2d3340d7f2be"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/query_setters_data.rs"
-item = "CASES"
-kind = "const"
-row = "R27"
-sha256 = "13cddf67308d3ea569dacbc55c938c169a18430804e8092c57b3a1cfae4da07b"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/query_setters_data.rs"
@@ -1773,3 +1743,222 @@ file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
 item = "<impl Default for Config>::default"
 kind = "method"
 removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+# R27: the v2 namespace's own suite target went with `DataApi::v2`: its tests
+# moved into `mock_data`, the module's one mock suite.
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "[[test]]"
+kind = "target"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::v2 (src/data/client.rs)"
+
+# R27: the flatten of `data::v2` into `data` (retire-data-v1 story 5): a body that
+# called `data.v2()`, named `DataError::V2`, read `tests/fixtures/data/v2/` or moved
+# file changed with it; earlier stories' entries for the same items moved here.
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/error.rs"
+item = "tests::a_v2_error_reports_the_servers_retryable_flag_and_trace_id"
+row = "R27"
+sha256 = "5fb3a9bf5a116f1293ba3b9efa65a5c9fe0c2b700e0ff2de60c8c4a3be2ca9ba"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/error.rs"
+item = "tests::every_variant_classifies"
+row = "R27"
+sha256 = "3223846a7a6b26ce6c713603a8fe033373bf2495e9d621ed23a04bb5934600c0"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/v2/error.rs"
+item = "tests::parts"
+row = "R27"
+sha256 = "1a6650dc71562ba699ff87cc9c1ecdacefa153bfcaadc7b145ea08925ecf2fe1"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/error_classes_data.rs"
+item = "fail"
+row = "R27"
+sha256 = "80829ef140fc323d07cae9091abd26ae06eb28dea119ac008b2740772a8300d5"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/headers_data.rs"
+item = "a_positions_list_sends_exactly_the_default_headers"
+row = "R27"
+sha256 = "22eb3757baa58b9426a08ac91b42a459141002898171380327347da2ad92bcdc"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::live_v2_board_routes"
+row = "R27"
+sha256 = "afb0b27cf53273101eaa3efdbf5df5f6a028e9807def8b81189c4826c79c0b2c"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::live_v2_errors_are_structured"
+row = "R27"
+sha256 = "3f1b7489a5721d5b81e85d94387a8a9962171e54f2c7db4cd978fd9adedf6631"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::live_v2_market_routes"
+row = "R27"
+sha256 = "d0ec9cc04f21ec556c9b8dcb35213dcaa5575210229ae8331c7044886fb24e78"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::live_v2_trades_walk_follows_the_cursor"
+row = "R27"
+sha256 = "fdd947ba025b614495acb4a99a1edaf9dd234615ded4de798461d1ba96bf6927"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::live_v2_unknown_wallet_is_none_not_an_error"
+row = "R27"
+sha256 = "ba6e99f0b8350d0a27f802970c94e00f9f16ce49a7f6cb0d6fc8011c9a78fa3b"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::live_v2_wallet_routes"
+row = "R27"
+sha256 = "515c4afdf825ea61cef9f14aa43f00a97674259ebb51860602d1a92c217cd06d"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "v2::recent_trade"
+row = "R27"
+sha256 = "4f6ce33ceb44b5d4184ed46ff871f4516630055be170c27a23558e7293e1b91c"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "a_429_makes_the_next_request_wait_even_though_it_never_saw_one"
+row = "R27"
+sha256 = "d417ec3dfc2d2283deb07e8f540ff86a5d9f2322ebc7e0fc0a2180e3170a67ea"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop"
+row = "R27"
+sha256 = "57f0237952164a541c6895d5a709563f5765e75998ab822df3c9c315d991c889"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried"
+row = "R27"
+sha256 = "83a3cd5c5eb9e83166daa877a2f6ca16359babb9920417e41ff1209f6d937f13"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "a_v2_error_body_keeps_every_field"
+row = "R27"
+sha256 = "a3c5b3ecee8412e890cda6b8315c0216f9e2fd6c4015f9ead05eca915e8a2fd6"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "a_v2_not_found_maps_its_code"
+row = "R27"
+sha256 = "92689f3a1f28d2150ae834dc36ec9a45018ded4c45cb2e786973a4b1ad9d72cf"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "a_v2_rate_limit_carries_retry_after"
+row = "R27"
+sha256 = "a93dac4409aae07eb2219e138deaa4bb800370cf1ec018623e388c66b25ce17c"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "a_v2_validation_error_names_its_parameter"
+row = "R27"
+sha256 = "6daa11946bdba9a57d39dffb6ad204ee0370936feb71fc044c1cc4a464a50032"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "an_empty_list_omits_its_parameter_instead_of_sending_it_blank"
+row = "R27"
+sha256 = "e1486edabbb8cfa1b373a2d39076410f4ee153a6d8b302bc92b877c03190f588"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "each_position_anchor_sends_only_its_own_keys"
+row = "R27"
+sha256 = "56ea47504320d7a3e0b31be03c5da5dd69d40c9654d4663d351689938d555bc3"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "each_resolution_key_sends_exactly_one_selector"
+row = "R27"
+sha256 = "0be481b4a9e346d72954e8aac808978466c405b1b20215c1ca7746326d15a8fc"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "error_for"
+row = "R27"
+sha256 = "d311f07059f9aa5a41a7922027d3cfa9a53b67d84a4ca14679d9042c7122ec68"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "pages_end_after_yielding_an_error_mid_walk"
+row = "R27"
+sha256 = "620895e192354ca4047d92c18b004ea0e10d59618622bac7ef60dbf4c673a2d9"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "pages_resend_identical_filters_with_each_cursor"
+row = "R27"
+sha256 = "d9d17702131bb4c68d85c80aa4b9432958ccdf24a0d8eae92d84de414c6bf435"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "pages_stop_with_an_error_when_the_server_repeats_a_cursor"
+row = "R27"
+sha256 = "8f5e68a0ec1d839c4bdbc9eeb83addfec75d148bb7b212ef8c7f88f02fdbff73"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "the_servers_retryable_flag_is_surfaced_and_the_status_decides"
+row = "R27"
+sha256 = "cb94cc24834c5052923a96b8066db1fb3fc1052ee4aa2f46fc917ab5bb3c79c2"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "trades_send_returns_the_page_and_its_pagination"
+row = "R27"
+sha256 = "e727e15484711add8521c6324e017b3427f595fb72c5c1edbf3300189bba2c65"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "user_stats_known_user_with_no_history_is_some_with_zeros"
+row = "R27"
+sha256 = "a8c6a93e893e8412d156daf8b01fd1b648cf6b075adddb1a136b12f280c602d9"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data_v2.rs"
+item = "user_stats_null_data_is_none"
+row = "R27"
+sha256 = "5e2a21867f5813f9f57581e76adca0aad3ac522d93e31e10b5afa3e3f6480102"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/query_setters_data.rs"
+item = "CASES"
+kind = "const"
+row = "R27"
+sha256 = "556311efdb7e1a9d0ae2b7599724b5f65e0333a933ddce45c332e21597797ee6"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
+item = "NOT_MODELLED"
+kind = "const"
+row = "R27"
+sha256 = "8f6f0ae9c0980a7ccc8b0cfbed3492bb4d52ebaebf068995281c8a28578210df"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
+item = "ROUTES"
+kind = "const"
+row = "R27"
+sha256 = "53f39185bf1453b2e5ced287f08d41376563f533f4b992bfdb954e62b009fc82"
+
+[[drift]]
+file = "polyoxide-py/src/types/data_v2.rs"
+item = "tests::captured"
+row = "R27"
+sha256 = "795336c6f247eea8f9176b2356fb1571aeb81ddb84e028fa1a1f50e34981b0ab"

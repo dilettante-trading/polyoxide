@@ -4,18 +4,15 @@
 use polyoxide_core::{QueryBuilder, Request};
 
 use crate::data::{
-    v2::{
-        envelope::{Envelope, Paged},
-        types::{
-            BiggestWinner, BuilderStanding, BuilderVolumePoint, LeaderboardBoard, LeaderboardEntry,
-            LeaderboardUserEntry, TimePeriod,
-        },
-        DataV2,
+    envelope::{Envelope, Paged},
+    types::{
+        BiggestWinner, BuilderStanding, BuilderVolumePoint, LeaderboardBoard, LeaderboardEntry,
+        LeaderboardUserEntry, TimePeriod,
     },
-    DataError,
+    DataApi, DataError,
 };
 
-impl DataV2 {
+impl DataApi {
     /// `GET /v2/biggest-winners`: the largest resolved wins in a window.
     pub fn biggest_winners(&self) -> ListBiggestWinners {
         ListBiggestWinners {

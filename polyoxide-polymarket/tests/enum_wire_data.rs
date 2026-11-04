@@ -13,7 +13,7 @@
 
 use std::{collections::BTreeSet, fmt::Debug, fmt::Display, str::FromStr};
 
-use polyoxide_polymarket::data::v2::types::*;
+use polyoxide_polymarket::data::types::*;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 
@@ -245,7 +245,7 @@ fn an_unknown_filter_type_names_the_type_and_the_value() {
 
 #[test]
 fn token_module_spells_what_the_schema_enumerates() {
-    // Mirror, the `TokenModule` schema's enum. `spec_agreement_data_v2.rs` holds this
+    // Mirror, the `TokenModule` schema's enum. `spec_agreement_data.rs` holds this
     // list to the schema itself; the variant is open, so a later module still decodes.
     assert_eq!(
         wire(TokenModule::ALL),

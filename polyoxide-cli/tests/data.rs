@@ -27,7 +27,7 @@ type Pairs = Vec<(String, String)>;
 fn fixture(name: &str) -> String {
     Fixtures::at(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../polyoxide-polymarket/tests/fixtures/data/v2"
+        "/../polyoxide-polymarket/tests/fixtures/data"
     ))
     .text(name)
 }
@@ -511,7 +511,7 @@ async fn health_prints_the_status_route() {
     assert_eq!(query, pairs(&[]));
     let printed: Value = serde_json::from_str(&run.out).unwrap();
     let served: Value = serde_json::from_str(&fixture("status")).unwrap();
-    let decoded: polyoxide_polymarket::data::v2::types::ServiceStatus =
+    let decoded: polyoxide_polymarket::data::types::ServiceStatus =
         serde_json::from_value(served["data"].clone()).unwrap();
     assert_eq!(
         printed,

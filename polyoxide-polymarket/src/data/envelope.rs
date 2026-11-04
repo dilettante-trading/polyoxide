@@ -19,7 +19,6 @@ pub(crate) struct Envelope<T> {
 /// One page of a cursor-paginated route.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Page<T> {
     /// The page's rows.
     pub data: Vec<T>,
@@ -30,7 +29,6 @@ pub struct Page<T> {
 /// Paging state returned with every page.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Pagination {
     /// Page size this page was served with.
     pub limit: u32,
@@ -55,12 +53,12 @@ macro_rules! paged_builder_methods {
         }
 
         /// Fetch one page.
-        pub async fn send(self) -> Result<$crate::data::v2::Page<$row>, $crate::data::DataError> {
+        pub async fn send(self) -> Result<$crate::data::Page<$row>, $crate::data::DataError> {
             self.inner.send().await
         }
 
         /// Walk every page, re-sending this builder's filters on each one.
-        pub fn pages(self) -> $crate::data::v2::PageStream<$row> {
+        pub fn pages(self) -> $crate::data::PageStream<$row> {
             self.inner.pages()
         }
     };

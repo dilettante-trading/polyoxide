@@ -3,17 +3,13 @@
 use polyoxide_core::Request;
 
 use crate::data::{
-    v2::types::SortDirection,
-    v2::{
-        envelope::Paged,
-        types::{
-            Activity, ActivitySortBy, ActivityType, ComboActivity, FilterType, Trade, TradeSide,
-        },
-        DataV2,
-    },
+    envelope::Paged,
+    types::SortDirection,
+    types::{Activity, ActivitySortBy, ActivityType, ComboActivity, FilterType, Trade, TradeSide},
+    DataApi,
 };
 
-impl DataV2 {
+impl DataApi {
     /// `GET /v2/trades`: the trade feed, newest first.
     ///
     /// With no filter this is every trade in the rolling current-plus-previous

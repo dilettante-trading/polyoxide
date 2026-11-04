@@ -116,7 +116,6 @@ let markets = client.gamma.markets()
 
 // Get user positions via Data API
 let positions = client.data
-    .v2()
     .positions("0x1234...")
     .send()
     .await?;

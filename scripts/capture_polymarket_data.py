@@ -7,7 +7,7 @@ winners board, and markets still settling from gamma's UMA status filter. Every
 request uses a small `limit`, and requests are spaced out.
 
 Usage:
-    python3 scripts/capture_polymarket_data.py polyoxide-polymarket/tests/fixtures/data/v2
+    python3 scripts/capture_polymarket_data.py polyoxide-polymarket/tests/fixtures/data
 
 Writes `<name>.json` per capture plus `PROVENANCE.md` listing each URL and the
 capture time. Re-run to refresh; review the diff before committing.

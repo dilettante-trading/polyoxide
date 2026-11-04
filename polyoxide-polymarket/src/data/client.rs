@@ -1,15 +1,16 @@
 use crate::shared::{self, PolymarketRetryPolicy};
 use polyoxide_core::{ClientConfig, HttpClient};
 
-use crate::data::{error::DataError, v2::DataV2};
+use crate::data::error::DataError;
 
 const DEFAULT_BASE_URL: &str = "https://data-api.polymarket.com";
 
 /// Main Data API client
 ///
-/// Every route is on `data-api.polymarket.com`, under `/v2` through
-/// [`v2`](Self::v2). Polymarket retired Data API v1 on 2026-11-02, and the
-/// `user-pnl-api` and `lb-api` hosts with it.
+/// Every route is a method of this client, on `data-api.polymarket.com` under
+/// `/v2`. Polymarket retired Data API v1 on 2026-11-02, and the `user-pnl-api`
+/// and `lb-api` hosts with it. Clones share one connection pool, rate limiter,
+/// 429 cooldown and concurrency budget.
 #[derive(Clone)]
 pub struct DataApi {
     pub(crate) http_client: HttpClient,
@@ -24,14 +25,6 @@ impl DataApi {
     /// Create a builder for configuring the client
     pub fn builder() -> DataApiBuilder {
         DataApiBuilder::new()
-    }
-
-    polyoxide_core::namespaces! { http_client;
-        /// Data API v2 routes (`/v2/*`).
-        ///
-        /// Shares this client's connection pool, rate limiter, 429 cooldown and
-        /// concurrency budget.
-        v2: DataV2,
     }
 }
 

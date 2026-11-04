@@ -2,12 +2,9 @@
 
 use polyoxide_core::Request;
 
-use crate::data::{
-    v2::{envelope::Envelope, types::ServiceStatus, DataV2},
-    DataError,
-};
+use crate::data::{envelope::Envelope, types::ServiceStatus, DataApi, DataError};
 
-impl DataV2 {
+impl DataApi {
     /// `GET /v2/status`: how fresh the served data is.
     ///
     /// With v1 retired (2026-11-02) and its `/` gone, a 200 here is also the

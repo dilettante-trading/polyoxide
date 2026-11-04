@@ -3,7 +3,7 @@
 Each route is called with every argument it accepts, and the request that
 reaches the server is compared with the query the route should send. Values
 are distinct per argument, so a kwarg wired to the wrong setter fails. The
-responses are the captured payloads in `polyoxide-polymarket/tests/fixtures/data/v2/`.
+responses are the captured payloads in `polyoxide-polymarket/tests/fixtures/data/`.
 """
 
 from __future__ import annotations
@@ -18,9 +18,8 @@ from urllib.parse import parse_qsl, urlsplit
 import pytest
 
 import polyoxide
-from polyoxide import v2
 
-FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "polyoxide-polymarket" / "tests" / "fixtures" / "data" / "v2"
+FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "polyoxide-polymarket" / "tests" / "fixtures" / "data"
 
 
 def fixture(name: str) -> dict:
@@ -402,17 +401,17 @@ ROUTES = [
 
 def test_every_route_is_covered() -> None:
     covered = {route[0] for route in ROUTES}
-    names = {name for name in dir(v2.DataV2Sync) if not name.startswith(("_", "iter_"))}
+    names = {name for name in dir(polyoxide.DataApiSync) if not name.startswith(("_", "iter_"))}
     assert covered == names
 
 
 def assert_shape(result: object, shape: str, row: str) -> None:
-    row_class = getattr(v2, row)
+    row_class = getattr(polyoxide, row)
     if shape == "page":
-        assert isinstance(result, v2.Page)
+        assert isinstance(result, polyoxide.Page)
         assert len(result) == len(result.data) > 0
         assert all(isinstance(r, row_class) for r in result.data)
-        assert isinstance(result.pagination, v2.Pagination)
+        assert isinstance(result.pagination, polyoxide.Pagination)
     elif shape == "list":
         assert isinstance(result, list) and result
         assert all(isinstance(r, row_class) for r in result)
@@ -427,7 +426,7 @@ def assert_shape(result: object, shape: str, row: str) -> None:
 )
 def test_route_sends_every_argument(server, method, args, kwargs, path, query, body, shape, row) -> None:
     server.reply(path, fixture(body))
-    result = getattr(polyoxide.DataApiSync(base_url=server.url).v2(), method)(*args, **kwargs)
+    result = getattr(polyoxide.DataApiSync(base_url=server.url), method)(*args, **kwargs)
 
     assert server.requests == [(path, query)]
     assert_shape(result, shape, row)
@@ -438,7 +437,7 @@ def test_async_route_sends_every_argument(server, method, args, kwargs, path, qu
     server.reply(path, fixture(body))
 
     async def call():
-        return await getattr(polyoxide.DataApi(base_url=server.url).v2(), method)(*args, **kwargs)
+        return await getattr(polyoxide.DataApi(base_url=server.url), method)(*args, **kwargs)
 
     result = asyncio.run(call())
     assert server.requests == [(path, query)]
@@ -448,7 +447,7 @@ def test_async_route_sends_every_argument(server, method, args, kwargs, path, qu
 def test_getters_read_the_payload(server) -> None:
     body = fixture("activity_tips")
     server.reply("/v2/activity", body)
-    page = polyoxide.DataApiSync(base_url=server.url).v2().activity("0xuser")
+    page = polyoxide.DataApiSync(base_url=server.url).activity("0xuser")
 
     first = body["data"][0]
     assert page.data[0].activity_type == first["type"]
@@ -460,7 +459,7 @@ def test_getters_read_the_payload(server) -> None:
 def test_an_unknown_wallet_is_none(server) -> None:
     server.reply("/v2/user-stats", fixture("user_stats_unknown"))
     server.reply("/v2/leaderboard", fixture("leaderboard_user_unknown"))
-    client = polyoxide.DataApiSync(base_url=server.url).v2()
+    client = polyoxide.DataApiSync(base_url=server.url)
 
     assert client.user_stats("0xunknown") is None
     assert client.leaderboard_user("0xunknown") is None
@@ -474,7 +473,7 @@ def page_of(body: str, cursor: str | None) -> dict:
 
 def test_iter_walks_every_page_with_the_same_filters(server) -> None:
     server.reply("/v2/trades", page_of("trades", "c2"), page_of("trades", "c3"), page_of("trades", None))
-    walk = polyoxide.DataApiSync(base_url=server.url).v2().iter_trades(user="0xuser", limit=2)
+    walk = polyoxide.DataApiSync(base_url=server.url).iter_trades(user="0xuser", limit=2)
 
     pages = list(walk)
 
@@ -491,12 +490,12 @@ def test_async_iter_walks_every_page(server) -> None:
     server.reply("/v2/holders", page_of("holders", "c2"), page_of("holders", None))
 
     async def walk():
-        return [page async for page in polyoxide.DataApi(base_url=server.url).v2().iter_holders(["0xc1"])]
+        return [page async for page in polyoxide.DataApi(base_url=server.url).iter_holders(["0xc1"])]
 
     pages = asyncio.run(walk())
 
     assert [p.pagination.next_cursor for p in pages] == ["c2", None]
-    assert all(isinstance(row, v2.MetaHolder) for p in pages for row in p.data)
+    assert all(isinstance(row, polyoxide.MetaHolder) for p in pages for row in p.data)
     assert [q.get("cursor") for _, q in server.requests] == [None, "c2"]
 
 
@@ -518,19 +517,19 @@ def test_async_iter_walks_every_page(server) -> None:
 )
 def test_a_bad_argument_raises_before_any_request(server, call, message) -> None:
     with pytest.raises(ValueError, match=message):
-        call(polyoxide.DataApiSync(base_url=server.url).v2())
+        call(polyoxide.DataApiSync(base_url=server.url))
     assert server.requests == []
 
 
 def test_async_bad_argument_raises_at_the_call_not_the_await(server) -> None:
     with pytest.raises(ValueError):
-        polyoxide.DataApi(base_url=server.url).v2().trades(filter_type="cash")
+        polyoxide.DataApi(base_url=server.url).trades(filter_type="cash")
     assert server.requests == []
 
 
 def test_positions_anchors_send_their_own_keys(server) -> None:
     server.reply("/v2/positions", fixture("positions"))
-    client = polyoxide.DataApiSync(base_url=server.url).v2()
+    client = polyoxide.DataApiSync(base_url=server.url)
 
     client.positions(user="0xuser")
     client.positions(conditions=["0xc1"])
@@ -545,13 +544,13 @@ def test_positions_anchors_send_their_own_keys(server) -> None:
 
 def test_response_enums_pass_unknown_values_through(server) -> None:
     server.reply("/v2/activity", fixture("activity"))
-    polyoxide.DataApiSync(base_url=server.url).v2().activity("0xuser", types=["FUTURE_TYPE"], side="FUTURE_SIDE")
+    polyoxide.DataApiSync(base_url=server.url).activity("0xuser", types=["FUTURE_TYPE"], side="FUTURE_SIDE")
     assert server.requests[0][1] == {"user": "0xuser", "type": "FUTURE_TYPE", "side": "FUTURE_SIDE"}
 
 
 def test_a_walk_that_repeats_its_cursor_stops_with_a_decode_error(server) -> None:
     server.reply("/v2/trades", page_of("trades", "same"))
-    walk = polyoxide.DataApiSync(base_url=server.url).v2().iter_trades(cursor="same")
+    walk = polyoxide.DataApiSync(base_url=server.url).iter_trades(cursor="same")
 
     with pytest.raises(polyoxide.PolyoxideError) as err:
         next(walk)
@@ -580,7 +579,7 @@ def test_a_v2_error_body_maps_by_code_and_keeps_its_fields(server, status, body,
     server.reply("/v2/user-pnl", body, status=status, headers=headers)
 
     with pytest.raises(error) as raised:
-        polyoxide.DataApiSync(base_url=server.url).v2().user_pnl("0xuser")
+        polyoxide.DataApiSync(base_url=server.url).user_pnl("0xuser")
 
     e = raised.value
     assert type(e) is error
@@ -598,7 +597,7 @@ def test_rate_limited_is_a_rate_limit_error(server) -> None:
     server.reply("/v2/status", v2_error("rate_limited"), status=429, headers={"retry-after": "0"})
 
     with pytest.raises(polyoxide.RateLimitError) as raised:
-        polyoxide.DataApiSync(base_url=server.url).v2().status()
+        polyoxide.DataApiSync(base_url=server.url).status()
 
     assert raised.value.code == "rate_limited"
     assert raised.value.retryable is True
@@ -611,7 +610,7 @@ def test_async_error_carries_the_same_fields(server) -> None:
     server.reply("/v2/trades", v2_error("invalid_request", parameter="side"), status=400)
 
     async def call():
-        await polyoxide.DataApi(base_url=server.url).v2().trades()
+        await polyoxide.DataApi(base_url=server.url).trades()
 
     with pytest.raises(polyoxide.ValidationError) as raised:
         asyncio.run(call())
@@ -622,7 +621,7 @@ def test_an_error_without_a_v2_body_has_none_fields(server) -> None:
     server.reply("/v2/status", "upstream exploded", status=500)
 
     with pytest.raises(polyoxide.PolyoxideError) as raised:
-        polyoxide.DataApiSync(base_url=server.url).v2().status()
+        polyoxide.DataApiSync(base_url=server.url).status()
 
     e = raised.value
     assert (e.status, e.code, e.retryable, e.trace_id, e.parameter, e.retry_after) == (None,) * 6

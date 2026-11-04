@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 /// One ingestion stream's distance from the furthest-along stream.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct CursorLag {
     /// How many blocks this stream trails the furthest-along stream; `0` for
     /// the leader.
@@ -26,7 +25,6 @@ pub struct CursorLag {
 /// them and including them is precisely what makes the list useless.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct IngestionFreshness {
     /// The chain id this service is configured for. Echoed so the pairing above
     /// is readable in one response.
@@ -68,7 +66,6 @@ pub struct IngestionFreshness {
 /// mode for the endpoint you call when something is already wrong.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ServiceStatus {
     /// How old the snapshot is, in seconds. Normally under the refresh
     /// interval; a value that keeps climbing means the refresher is not
@@ -89,7 +86,6 @@ pub struct ServiceStatus {
 /// shape as `ingestion.most_lagged`, for the same reason.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ServingFreshness {
     /// The worst age across `mechanisms`. `null` only when no mechanism
     /// reported at all.
@@ -105,7 +101,6 @@ pub struct ServingFreshness {
 /// One serving mechanism's freshness.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ServingMechanism {
     /// Seconds since it last advanced, by its own clock.
     #[cfg_attr(feature = "specta", specta(type = f64))]

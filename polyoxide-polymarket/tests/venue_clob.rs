@@ -12,7 +12,7 @@ use polyoxide_polymarket::clob::{
     venue::{BookExt, EventGroupExt, InstrumentExt, QuoteExt, TradeExt},
     Clob, ClobBuilder, ClobError, PricesHistoryQuery,
 };
-use polyoxide_polymarket::data::{v2::types::TradeSide, DataApi};
+use polyoxide_polymarket::data::{types::TradeSide, DataApi};
 use polyoxide_polymarket::gamma::{types::ProtocolVersion, Gamma};
 use polyoxide_polymarket::shared::keys::{self, TokenId};
 use polyoxide_test_support::fixtures;
@@ -308,7 +308,6 @@ async fn trades_are_the_data_apis_public_trades_of_the_token_oldest_first() {
         .base_url(server.url())
         .build()
         .unwrap()
-        .v2()
         .trades()
         .conditions([condition()])
         .taker_only(true)

@@ -7,7 +7,6 @@ use super::{ActivitySide, ActivityType, ComboLeg, OutcomeIndex, TradeSide};
 /// One activity-feed event (`/v2/activity`); a trade, split, merge, redeem, …
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Activity {
     /// Profile bio text.
     pub bio: String,
@@ -67,7 +66,6 @@ pub struct Activity {
 /// `timestamp` is the event's wall-clock, not the ordering key.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ComboActivity {
     /// Cash amount of the action in USDC; `null` where no cash leg applies.
     pub amount_usdc: Option<f64>,
@@ -101,7 +99,6 @@ pub struct ComboActivity {
 /// A trade (`/v2/trades`).
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Trade {
     /// Profile bio text.
     pub bio: String,

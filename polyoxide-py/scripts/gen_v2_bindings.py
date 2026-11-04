@@ -4,7 +4,7 @@
 One-shot scaffolding, like `scripts/gen_data_v2_types.py`: the output is
 committed and then owned by hand. It is NOT a build step and is never re-run to
 overwrite edited files. The durable guards are
-`every_v2_getter_reads_its_own_key` in `src/types/data_v2.rs`,
+`every_v2_getter_reads_its_own_key` in `src/types/data.rs`,
 `tests/test_stub_consistency.py` and `tests/test_data_v2_offline.py`.
 
 Usage (from the repository root):

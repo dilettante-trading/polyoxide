@@ -23,7 +23,7 @@ pub struct LiveVolumeCommand {
 
 impl LiveVolumeCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write) -> Result<()> {
-        let volume = data.v2().live_volume(self.event_id).send().await?;
+        let volume = data.live_volume(self.event_id).send().await?;
         print_pretty(&volume, out)
     }
 }

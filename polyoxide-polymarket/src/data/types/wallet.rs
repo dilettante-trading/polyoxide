@@ -8,7 +8,6 @@ use super::{OutcomeIndex, PositionStatus};
 /// One trusted approval contract in the public response.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ApprovalContract {
     /// Current ERC20 allowance: `max` for an unlimited grant, else the raw
     /// integer amount as a string; absent on ERC1155 operator approvals
@@ -31,7 +30,6 @@ pub struct ApprovalContract {
 /// Non-paginated approval snapshot for one Polygon proxy wallet.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Approvals {
     /// The checked wallet.
     pub address: String,
@@ -46,7 +44,6 @@ pub struct Approvals {
 /// One leg of a combo, with its market and event enrichment.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ComboLeg {
     /// On-chain condition id of the leg's market.
     pub leg_condition_id: String,
@@ -72,7 +69,6 @@ pub struct ComboLeg {
 /// A leg market's event.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ComboLegEvent {
     /// Gamma event id.
     pub event_id: String,
@@ -87,7 +83,6 @@ pub struct ComboLegEvent {
 /// A leg's market, with its (single) event nested.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ComboLegMarket {
     /// Gamma market category (e.g. `sports`).
     pub category: String,
@@ -139,7 +134,6 @@ pub struct ComboLegMarket {
 /// follow the response's `next_cursor` rather than rebuilding that triple.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ComboPosition {
     /// On-chain combo condition id (structural, `0x03`-prefixed).
     pub combo_condition_id: String,
@@ -201,7 +195,6 @@ pub struct ComboPosition {
 /// exactly one row; a user with no positions returns `{ proxy_wallet, value: 0 }`.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct PortfolioValue {
     /// The wallet the value was computed for.
     pub proxy_wallet: String,
@@ -222,7 +215,6 @@ pub struct PortfolioValue {
 /// `next_cursor` to page, and expect the ordering to change with `sort_by`.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Position {
     /// Whether the market is archived; tells a caller using `includeArchived`
     /// which rows the flag surfaced.
@@ -321,7 +313,6 @@ pub struct Position {
 /// must not coerce them to zero.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct UserPnlPoint {
     /// `deposits - withdrawals`.
     pub cashflow_net: Option<f64>,
@@ -389,7 +380,6 @@ pub struct UserPnlPoint {
 /// Complete v2 user-PnL response data.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct UserPnlSeries {
     /// Grid step the points were synthesized on (`1d`, `18h`, `12h`, `3h`, `1h`).
     pub fidelity: String,
@@ -413,7 +403,6 @@ pub struct UserPnlSeries {
 /// represented by the outer response `data: null` instead.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct UserStats {
     /// Newest persisted cumulative all-time PnL point, or `null` when absent.
     pub all_time_pnl: Option<UserPnlPoint>,
@@ -441,7 +430,6 @@ pub struct UserStats {
 /// `trade_count` is the number of trades in the window.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct UserVolume {
     /// Number of fills in the window.
     #[cfg_attr(feature = "specta", specta(type = f64))]

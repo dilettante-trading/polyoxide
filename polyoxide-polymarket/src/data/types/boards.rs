@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 /// empty; so branch on `kind` before building an event link.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct BiggestWinner {
     /// On-chain condition id of the market (combo rows: the combo condition).
     pub condition_id: String,
@@ -54,7 +53,6 @@ pub struct BiggestWinner {
 /// carrying one uses.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct BuilderStanding {
     /// Distinct active users attributed to the builder in the window.
     #[cfg_attr(feature = "specta", specta(type = f64))]
@@ -83,7 +81,6 @@ pub struct BuilderStanding {
 /// `volume` is in SHARES, as on the leaderboard.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct BuilderVolumePoint {
     /// Distinct active users attributed in that bucket.
     #[cfg_attr(feature = "specta", specta(type = f64))]
@@ -112,7 +109,6 @@ pub struct BuilderVolumePoint {
 /// rank; tied users share one, and the next rank skips.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct LeaderboardEntry {
     /// Window PnL in USDC. Finite windows (day/week/month) are the MARKED
     /// equity change net of flows; realized plus mark moves; `all` is the
@@ -144,7 +140,6 @@ pub struct LeaderboardEntry {
 /// but is filtered out of that board.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct LeaderboardUserEntry {
     /// Window PnL in USDC, same semantics as the board rows (finite windows
     /// marked, `all` realized-only).

@@ -3,7 +3,7 @@ use std::io::Write;
 use clap::{ArgAction, Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
 use polyoxide_polymarket::data::{
-    v2::types::{FilterType, TradeSide},
+    types::{FilterType, TradeSide},
     DataApi,
 };
 
@@ -71,7 +71,7 @@ impl TradesCommand {
                 limit,
                 page,
             } => {
-                let mut request = data.v2().trades().taker_only(taker_only).limit(limit);
+                let mut request = data.trades().taker_only(taker_only).limit(limit);
                 if let Some(user) = user {
                     request = request.user(user);
                 }
