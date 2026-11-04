@@ -385,13 +385,10 @@ mod events {
     };
     use serde::Deserialize;
 
-    use super::decode;
     use crate::clob::Clob;
-    use crate::gamma::{
-        types::{ClosedFilter, ProtocolVersion},
-        GammaError,
-    };
+    use crate::gamma::{types::ClosedFilter, GammaError, OutcomeIdsError};
     use crate::shared::keys::{self, TokenId};
+    use crate::shared::protocol;
 
     /// The CLOB's facts about an event, beside [`EventGroup`]'s fields.
     #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -419,25 +416,24 @@ mod events {
         id: String,
     }
 
-    /// A JSON-encoded array of strings, as Gamma sends a market's outcomes
-    /// and token ids.
-    fn strings(json: Option<&str>, what: &str) -> Result<Vec<String>, ClassifiedError> {
-        json.map_or(Ok(Vec::new()), |json| {
-            serde_json::from_str(json).map_err(|_| decode(what))
-        })
-    }
-
     impl Clob {
         /// The id of the first event Gamma lists for a token's market, open
         /// or closed: Gamma leaves a closed market out unless asked for it,
         /// and `closed=any` asks for both states, which it takes with the
-        /// token as the identifier filter it requires.
+        /// token as the identifier filter it requires. A Protocol V2 id is a
+        /// position id, which Gamma filters by `position_ids`; any other is a
+        /// clob token id.
         async fn event_id_of(&self, token: &TokenId) -> Result<Option<String>, ClassifiedError> {
+            let filter = if protocol::is_v2_position_id(token.as_str()) {
+                "position_ids"
+            } else {
+                "clob_token_ids"
+            };
             let markets = Request::<Vec<MarketEvents>, GammaError>::new(
                 self.gamma.http_client.clone(),
                 "/markets",
             )
-            .query("clob_token_ids", token.as_str())
+            .query(filter, token.as_str())
             .query("closed", ClosedFilter::Any)
             .send()
             .await?;
@@ -459,30 +455,25 @@ mod events {
             let mut group = EventGroup::new(event.id.clone());
             group.title = event.title.clone();
             for market in &event.markets {
-                // Only a v1 market's outcomes are the CLOB's tokens.
-                if market.version != Some(ProtocolVersion::V1) {
-                    continue;
-                }
-                let tokens = strings(
-                    market.clob_token_ids.as_deref(),
-                    "token ids that are not a JSON array of strings",
-                )?;
-                let labels = strings(
-                    market.outcomes.as_deref(),
-                    "outcomes that are not a JSON array of strings",
-                )?;
-                if tokens.len() != labels.len() {
-                    return Err(decode(
-                        "a market whose token ids and outcomes differ in number",
-                    ));
-                }
-                for (token, label) in tokens.into_iter().zip(labels) {
-                    // A token id no key can carry is a response this client
-                    // cannot read, not a value the caller sent.
-                    let token = TokenId::new(token)
+                let outcomes = match market.outcome_ids() {
+                    Ok(outcomes) => outcomes,
+                    // A market on a protocol this client does not know has no
+                    // outcomes the CLOB trades here.
+                    Err(
+                        OutcomeIdsError::MissingVersion | OutcomeIdsError::UnsupportedVersion(_),
+                    ) => continue,
+                    Err(err) => return Err(ClassifiedError::new(Class::Decode, err)),
+                };
+                for outcome_id in outcomes {
+                    // An id no key can carry is a response this client cannot
+                    // read, not a value the caller sent.
+                    let token = TokenId::new(outcome_id.id)
                         .map_err(|err| ClassifiedError::new(Class::Decode, err))?;
-                    let mut outcome =
-                        EventOutcome::new(keys::clob(&token), market.condition_id.clone(), label);
+                    let mut outcome = EventOutcome::new(
+                        keys::clob(&token),
+                        market.condition_id.clone(),
+                        outcome_id.outcome,
+                    );
                     // An empty title is none, as a missing one is.
                     outcome.market_title = market
                         .group_item_title
