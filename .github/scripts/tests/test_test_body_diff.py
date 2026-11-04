@@ -655,10 +655,31 @@ row = "polyoxide_x::Gone"
      "an earlier `\\[\\[drift\\]\\]` entry names too"),
     ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nrow = \"x::Y\"\n" * 2,
      "an earlier `\\[\\[retired\\]\\]` entry names too"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\n", "exactly one of row or removal"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nrow = \"x::Y\"\nremoval = \"k\"\n",
+     "exactly one of row or removal"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nremoval = \"\"\n", "exactly one of row or removal"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nremoval = 1\n", "exactly one of row or removal"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nremoval = \" k\"\n",
+     "gives `removal` as ' k'; give it with no surrounding space or backticks"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nremoval = \"`k`\"\n", "gives `removal` as '`k`'"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nrow = \"x::Y \"\n", "gives `row` as 'x::Y '"),
+    ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nremovals = \"k\"\n",
+     "exactly one of row or removal, and `kind` optionally"),
+    (f"[[drift]]\nfile = \"a\"\nitem = \"t\"\nrow = \"R6\"\nsha256 = \"{SHA}\"\nremoval = \"k\"\n",
+     "has unknown \\['removal'\\]"),
 ])
 def test_a_malformed_config_cannot_be_decided(text: str, message: str) -> None:
     with pytest.raises(BodyDiffError, match=message):
         body_diff.parse_config(text)
+
+
+def test_a_retirement_may_cite_a_removal_instead_of_a_row() -> None:
+    config = body_diff.parse_config(
+        "[[retired]]\nfile = \"a/tests/x.rs\"\nitem = \"t\"\n"
+        "removal = \"polyoxide-x crate_missing\"\n")
+    assert config.retired[0].removal == "polyoxide-x crate_missing"
+    assert config.retired[0].row == ""
 
 
 def test_drift_rows_are_read_from_the_table() -> None:
@@ -771,8 +792,10 @@ def moved(tests: str = X_TESTS, src: str = X_SRC) -> dict[str, str | None]:
     }
 
 
-def compare(repo: Path, rows=(), config: Config | None = None):
-    return body_diff.compare(repo, "v0", tuple(rows), config or Config(), DRIFT_ROWS)
+def compare(repo: Path, rows=(), config: Config | None = None,
+            removals: frozenset[str] = frozenset(), listing: str = ""):
+    return body_diff.compare(repo, "v0", tuple(rows), config or Config(), DRIFT_ROWS,
+                             removals=removals, listing=listing)
 
 
 def reported(result, moves: bool = False) -> tuple[int, str, str]:
@@ -915,6 +938,68 @@ def test_a_retirement_of_a_test_that_is_not_lost_is_stale(repo: Path) -> None:
     baseline(repo, TREE)
     result = compare(repo, [Row("polyoxide_x::Gone", None, "gone")], retired("polyoxide_x::Gone"))
     assert result.status == 1 and "is stale" in result.problems[0]
+
+
+KEY = "polyoxide-x function_missing: polyoxide_x::add (src/lib.rs)"
+
+
+def retired_by(removal: str) -> Config:
+    return Config(retired=(body_diff.Entry("polyoxide-x/tests/mock_api.rs", "another", "fn",
+                                           "", removal=removal),))
+
+
+def test_a_test_retired_with_a_listed_removal_passes(repo: Path) -> None:
+    baseline(repo, TREE)
+    edit(repo, moved(without_another()))
+    status, out, err = reported(compare(repo, [CRATE_ROW], retired_by(KEY),
+                                        frozenset({KEY}), "docs/s3-removals.md"))
+    assert (status, err) == (0, "")
+    assert (f"Retired with the removal `{KEY}`: "
+            "polyoxide-x/tests/mock_api.rs:15 fn another") in out
+
+
+def test_a_retirement_citing_an_unlisted_removal_fails(repo: Path) -> None:
+    baseline(repo, TREE)
+    edit(repo, moved(without_another()))
+    result = compare(repo, [CRATE_ROW], retired_by(KEY),
+                     frozenset({"polyoxide-y crate_missing"}), "docs/s3-removals.md")
+    assert result.status == 1 and len(result.lost) == 1
+    assert result.problems == [f"`[[retired]]` for polyoxide-x/tests/mock_api.rs fn another "
+                               f"cites the removal `{KEY}`, which docs/s3-removals.md does "
+                               f"not list under `## Removed`"]
+
+
+def test_a_retirement_by_removal_with_no_listing_read_fails(repo: Path) -> None:
+    baseline(repo, TREE)
+    edit(repo, moved(without_another()))
+    result = compare(repo, [CRATE_ROW], retired_by(KEY))
+    assert result.status == 1 and len(result.lost) == 1
+    assert "does not list under `## Removed`" in result.problems[0]
+
+
+def test_a_retirement_by_removal_of_a_test_that_is_not_lost_is_stale(repo: Path) -> None:
+    baseline(repo, TREE)
+    result = compare(repo, config=retired_by(KEY), removals=frozenset({KEY}))
+    assert result.status == 1 and "is stale" in result.problems[0]
+
+
+def test_removals_are_the_stage_listings_removed_keys(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text(
+        "[workspace]\n[workspace.metadata.polyoxide]\nstage = \"S3\"\n")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/s3-removals.md").write_text(
+        "---\nbaseline: v0.40.0\n---\n\n# S3 removals\n\n## Removed\n\n"
+        f"- `{KEY}`: story 4; use `polyoxide_x::sum`.\n\n"
+        "## Doc-hidden paths consumers import\n\n")
+    assert body_diff._removals(tmp_path) == (frozenset({KEY}), "docs/s3-removals.md",
+                                             "v0.40.0")
+
+
+def test_removals_in_a_stage_with_no_listing_cannot_be_decided(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text(
+        "[workspace]\n[workspace.metadata.polyoxide]\nstage = \"S2\"\n")
+    with pytest.raises(BodyDiffError, match="stage S2 has no removal listing"):
+        body_diff._removals(tmp_path)
 
 
 def test_an_item_left_unpaired_pairs_by_a_unique_name_anywhere(repo: Path) -> None:
@@ -1254,6 +1339,30 @@ def test_main_cannot_decide_without_its_inputs(repo: Path, capsys) -> None:
     edit(repo, {"ci/test-body-diff.toml": "", "docs/rename-manifest.md": None})
     assert body_diff.main([], root=repo) == 2
     assert "could not read docs/rename-manifest.md" in capsys.readouterr().err
+
+
+def listing_of(key: str, listed_from: str = "v0") -> str:
+    return (f"---\nbaseline: {listed_from}\n---\n\n# S3 removals\n\n## Removed\n\n"
+            f"- `{key}`: story 4; use `polyoxide_y::x::sum`.\n\n"
+            "## Doc-hidden paths consumers import\n\n")
+
+
+def test_main_retires_a_test_by_its_listed_removal(repo: Path, capsys) -> None:
+    baseline(repo, CLI_TREE)
+    head = moved(without_another())
+    head["Cargo.toml"] += "\n[workspace.metadata.polyoxide]\nstage = \"S3\"\n"
+    config = ("[[retired]]\nfile = \"polyoxide-x/tests/mock_api.rs\"\nitem = \"another\"\n"
+              f"removal = \"{KEY}\"\n")
+    edit(repo, {**head, "ci/test-body-diff.toml": config, "docs/s3-removals.md": listing_of(KEY)})
+    assert body_diff.main([], root=repo) == 0
+    assert f"Retired with the removal `{KEY}`" in capsys.readouterr().out
+    edit(repo, {"docs/s3-removals.md": listing_of("polyoxide-x crate_missing")})
+    assert body_diff.main([], root=repo) == 1
+    assert "does not list under `## Removed`" in capsys.readouterr().err
+    edit(repo, {"docs/s3-removals.md": listing_of(KEY, "v9")})
+    assert body_diff.main([], root=repo) == 2
+    assert ("::error::docs/s3-removals.md lists removals from v9, not v0, so its keys "
+            "cannot retire a test here") in capsys.readouterr().err
 
 
 # --- the real tree -----------------------------------------------------------

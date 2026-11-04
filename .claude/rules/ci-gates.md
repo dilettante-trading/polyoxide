@@ -285,9 +285,11 @@ stage does not hold, printing each one's key to copy there.
   that is not a call's, and braces around a lone expression after `=>` or a closure's `|…|`).
 - **Fails** on a changed item unless a `[[drift]]` entry names a DRIFT row of
   `_bmad-output/specs/spec-venue-extensibility/divergences.md` and the diff's sha256; on a lost
-  item unless a `[[retired]]` entry names it and an old path whose covering manifest row gives a
-  reason; and on any `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that
-  pairs or rewrites nothing.
+  item unless a `[[retired]]` entry names it and either an old path whose covering manifest row
+  gives a reason (`row`) or a key under `## Removed` in the stage's removal listing (`removal`,
+  S3's way, since the manifest is S2's and final; an entry gives exactly one); and on any
+  `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that pairs or rewrites
+  nothing.
 - **The 77 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's

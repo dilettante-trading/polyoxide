@@ -82,8 +82,12 @@
 #   item = "<module path and name>"
 #   kind = "fn"                         (optional)
 #   row  = "<old path in docs/rename-manifest.md>"
-#   Lets a test go with its subject. The manifest row covering `row`, the longest
-#   old path that is a prefix of it at `::`, must give a reason, not a new path.
+#   removal = "<a key under ## Removed in the stage's listing>"    in place of `row`
+#   Lets a test go with its subject, and gives exactly one of `row` and `removal`.
+#   The manifest row covering `row`, the longest old path that is a prefix of it at
+#   `::`, must give a reason, not a new path. A `removal` must be a key the stage's
+#   removal listing (docs/s3-removals.md in S3) holds under `## Removed`: S3's way,
+#   since the manifest is S2's and final.
 #
 # Add each [[drift]] or [[retired]] entry below as its own table. S2's entries
 # went with the switch to S3, whose baseline is the S2 release.
