@@ -76,14 +76,24 @@ and the prose guides disagree, the source wins. Facts read from it, which this d
 ### 1. `shared::protocol` (crate-private, built with `clob` or `relay`)
 
 A new module `polyoxide-polymarket/src/shared/protocol.rs`, declared in `shared/mod.rs` under
-`#[cfg(any(feature = "clob", feature = "relay"))]` as `pub(crate) mod protocol;`. It holds exact
-ports of the reference:
+`#[cfg(any(feature = "clob", feature = "relay"))]` as `pub(crate) mod protocol;`:
 
 - `pub(crate) fn parse_position_id(id: &str) -> Option<U256>`: fact 1's parse (trim, then decimal
-  or `0x`/`0b`/`0o`, then uint256 range).
-- `pub(crate) fn is_v2_position_id(id: &str) -> bool`: fact 1.
-- `pub(crate) fn decode_v2_outcome_position_id(id: &str) -> Option<(FixedBytes<31>, u8)>`: fact 7;
-  `None` for any refusal.
+  or `0x`/`0b`/`0o`, then uint256 range), an exact port.
+- `pub(crate) fn decode_v2_outcome_position_id(id: &str) -> Option<(FixedBytes<31>, u8)>`: fact 7,
+  an exact port; `None` for any refusal.
+- `pub(crate) fn is_v2_position_id(id: &str) -> bool`, under `#[cfg(feature = "clob")]` (only
+  `clob` asks it): **true when py-sdk's `is_v2_position_id` (fact 1) and
+  `decode_v2_outcome_position_id` (fact 7) both accept the id**. It is one condition stricter
+  than py-sdk's predicate (the owner's decision, 2026-11-04). py-sdk's predicate alone calls any
+  id with bits 40 to 103 clear V2, toy ids such as `1`, `100` and `123456` included. Those can
+  name no V2 position: their module byte is 0. They are also the ids existing tests sign with
+  pinned values: `v2_order_signature_is_deterministic` and
+  `order_digest_uses_correct_exchange_for_neg_risk` (token `100`) and the session-key vectors
+  (py-sdk's golden order, token `1`). Requiring the id to decode too keeps every such test as it
+  is. It agrees with py-sdk on every id the venue can issue: a V1 id is a keccak hash, so its
+  bits 40 to 103 are not all clear; a V2 id has module byte 1 to 3 and outcome byte 0 or 1. The
+  only ids classified differently are ones no market can carry, and the rules files say so.
 
 Nothing here is public. Each module wraps it in its own types and errors.
 
@@ -182,12 +192,15 @@ only through its one `From<ApiError>`.
   do. Each `OutcomeId` becomes an `EventOutcome` keyed `keys::clob(&TokenId::new(id))`, so `v1`
   and `v2` outcomes appear together.
 - The private `strings` helper goes if nothing else uses it.
-- `tests/venue_clob.rs`'s `event_group_leaves_out_the_outcomes_of_a_v2_market` is retired (a
-  `[[retired]]` entry) and replaced by `event_group_keys_a_v2_market_by_its_position_ids`, whose
-  event fixture gives market 1 `version: "v2"` and a `positionIds` pair and asserts that its
-  outcomes appear with those ids. A new DRIFT row (the next free `R` number in
-  `_bmad-output/specs/spec-venue-extensibility/divergences.md`, dated the day it lands) records
-  the change, which users can see: event groups now list V2 outcomes.
+- `tests/venue_clob.rs`'s `event_group_leaves_out_the_outcomes_of_a_v2_market` is deleted and
+  replaced by `event_group_keys_a_v2_market_by_its_position_ids`, whose event fixture gives
+  market 1 `version: "v2"` and a `positionIds` pair and asserts that its outcomes appear with
+  those ids. `tests/venue_clob.rs` did not exist at the `v0.40.0` baseline, so the test-bodies
+  gate tracks none of its items: the replacement needs no `[[retired]]` or `[[drift]]` entry
+  (an entry that matches nothing fails the job) and no DRIFT row. The change is visible to users
+  (event groups now list V2 outcomes) and is recorded in the commit message and the CLOB rules.
+- A second new test, `event_group_skips_a_market_with_no_known_version`, gives market 1
+  `version: "v3"` and asserts that its outcomes are absent and the group still returns.
 
 ### 5. Relay: Router position ops
 
@@ -250,6 +263,24 @@ V2 conditions are covered by the mirror's text and not yet seen live; that payou
 rows whose `status` is `resolved`; and, in `polymarket-gamma.md`, that a V2 market's
 `resolution_status` replaces `uma_resolution_status`.
 
+## Limits
+
+- **Outside services.** No new host or route. Every call goes through an existing client: the
+  CLOB (`/tick-size`, `/balance-allowance`, `/order`), gamma (`/markets`, with `position_ids=`
+  in place of `clob_token_ids=`, and `/events/{id}`) and the relayer (`execute`'s existing
+  routes). Each keeps its client's window-quota table, timeout, retry policy and error
+  classification unchanged, and a failure surfaces as that client's error, as today. Story 2
+  removes one request (`/neg-risk`) for V2 ids. `Trading::place` makes the same requests as
+  today.
+- **The live probe** makes at most 7 requests per run: one gamma list of 100 markets, then
+  `/book`, `/tick-size` and `/neg-risk` for each of a binary market's 2 ids. It runs on the
+  clients' default quotas and timeouts. A non-2xx is a real failure; a network failure is
+  `transient` through test-support's tag.
+- **Supplied numbers.** Router amounts are any uint256 (`U256`), zero included, as in py-sdk; the
+  chain enforces balances. An outcome index is 0 or 1, enforced by `V2PositionId::parse`,
+  its one constructor. A position id is a uint256 (fact 1's parse), and a condition id is 62 hex digits,
+  or 64 ending `00` or `01` (fact 6). `outcome_ids` takes no number. Nothing else is supplied.
+
 ## Testing
 
 ### Golden vectors
@@ -274,11 +305,14 @@ version, exchange, target and asset type:
   separator, the struct hash, the signing digest, the Anvil key #0 signature, and
   `build_order_signature`'s output, with the session-key envelope built by the same py-sdk calls
   the existing script uses.
-- **`id_vectors.json`** (same directory). `is_v2_position_id` over a table: the ids above, a
-  V1 id, hex, binary and octal spellings, surrounding whitespace, a negative value, 2^256, the empty
-  string and non-numeric text. `decode_v2_outcome_position_id` over valid ids and over a module 0,
-  a module 4 and an outcome byte 2. `resolve_order_balance_allowance_target` for BUY and SELL
-  against V1 and V2.
+- **`id_vectors.json`** (same directory). One table over these inputs: the ids above, a V1 id,
+  `1`, `100`, `123456`, hex, binary and octal spellings of a V2 id, surrounding whitespace, a
+  negative value, 2^256, the empty string, non-numeric text, and V2-shaped ids with module byte 0,
+  module byte 4 and outcome byte 2. Each row records both of py-sdk's answers:
+  `is_v2_position_id`, and `decode_v2_outcome_position_id`'s condition id and outcome index, or
+  `null` when it refuses. Rust's `is_v2_position_id` is tested as the conjunction of the two
+  recorded answers (§1), and its `decode_v2_outcome_position_id` against the second. A second
+  table records `resolve_order_balance_allowance_target` for BUY and SELL against V1 and V2.
 - **`router_vectors.json`** (`tests/fixtures/relay/protocol_v2/`). Calldata from
   `router_split_call`, `router_merge_call` and `router_redeem_call` with `router=` py-sdk's
   `protocol_v2_router`; `_protocol_v2_condition_id_bytes` over accepted (62 hex, 64 ending `00`,
@@ -324,6 +358,8 @@ survive:
 - A V2 order sent to the CTF (or neg-risk) exchange.
 - The type-3 envelope's app domain built at version `"2"` for a V2 order.
 - The reserved-bit mask shifted by one bit, or inverted.
+- `is_v2_position_id` dropping its decode condition (then `1` is V2, and
+  `v2_order_signature_is_deterministic` fails).
 - `CONDITIONAL-V2` → `CONDITIONAL`.
 - `outcome_ids` choosing by which field is present.
 - `parse_v2_condition_id` accepting any last byte.
@@ -372,9 +408,10 @@ the owner's go-ahead for a credentialed order run.
 ## Release and gates
 
 - Additive: no public item is removed, so `docs/s3-removals.md` gains nothing. Every function
-  an existing test calls keeps its signature (§2), so only the `event_group` test's body changes.
-- The `event_group` test is retired and replaced (`[[retired]]` in `ci/test-body-diff.toml`) under
-  a new DRIFT row (§4). Any other changed test body needs its own `[[drift]]` entry and row.
+  an existing test calls keeps its signature (§2), and the one replaced test postdates the
+  baseline (§4), so `ci/test-body-diff.toml` gains nothing. A test body that would change
+  anywhere else is a stop: it needs a `[[drift]]` entry and a DRIFT row, which the owner
+  decides.
 - No version bump on this branch. The release notes record the behaviour users can see: V2
   orders, balances and event groups, and the selector.
 - Run the CI jobs this touches before handing over: format; lint and test; package; msrv;
@@ -388,13 +425,14 @@ the owner's go-ahead for a credentialed order run.
 Each leaves the tree building and green.
 
 1. **Vectors.** `scripts/capture_polymarket_protocol_v2.py` and the four fixture files with their
-   `PROVENANCE.md`; `shared::protocol` with its `id_vectors.json` tests.
-2. **CLOB.** `Chain::exchange_v3`, `order_exchange` and the versioned domain, `create_order`'s
+   `PROVENANCE.md`. No Rust, so no story carries code that nothing calls yet.
+2. **CLOB.** `shared::protocol` with its `id_vectors.json` tests, `Chain::exchange_v3`,
+   `order_exchange` and the versioned domain, `create_order`'s
    `/neg-risk` skip, `balance_allowance`'s asset type, their vector and mock tests, the doc
    comments, and the CLOB, session-key and `auth.md` docs.
 3. **Gamma and event groups.** `OutcomeId`, `Market::outcome_ids`, `OutcomeIdsError` and its
-   `Classify`; `event_group` and `event_id_of`; the retired and replacement test with its DRIFT
-   row; the gamma docs.
+   `Classify`; `event_group` and `event_id_of`; the replaced and new `event_group` tests; the
+   gamma docs.
 4. **Relay.** `V2PositionId`, `parse_v2_condition_id`, the calldata builders, the client calls and
    submits, their tests, and the relay docs and redemption doc comments.
 5. **Live, resolution and mutations.** `live_v2_market_is_served`, the `deferred-work.md` entry,
