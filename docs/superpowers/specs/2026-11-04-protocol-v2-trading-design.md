@@ -406,8 +406,12 @@ survive:
    with an order book among the newest 100 open markets". This is the signal the issue asks for:
    the nightly reports it as environmental until a V2 market with a book exists.
 3. Otherwise read its ids with `outcome_ids()` (a refusal is a real failure), then for each id read
-   `/book`, `/tick-size` and `/neg-risk`, and fail as real on any non-2xx, which answers the issue's
-   open question about the per-token helpers.
+   `/book`, `/tick-size` and `/neg-risk`, and fail as real on a non-2xx from `/book` or
+   `/tick-size`, which the client depends on. `/neg-risk`'s status is printed (`eprintln!`, e.g.
+   "neg-risk for <id>: <status>") and never fails the test, because the client skips that route
+   for a V2 id (§2): the printed status answers the issue's open question about the per-token
+   helpers without filing a `real` issue while the client works (the owner's decision,
+   2026-11-04).
 
 No bare `unwrap`, `expect` or `panic!` (`live_unwraps.py`). The test posts no order. Upstream's
 checklist (BUY and SELL fills and balances on a V2 and a CTF market) goes to
