@@ -217,34 +217,6 @@ macro_rules! open_enum {
     };
 }
 
-/// Implements `specta::Type` as a `String` for each named type, behind the
-/// calling crate's `specta` feature: the shape an [`open_enum!`](crate::open_enum)
-/// type has on the wire.
-///
-/// It is a macro of its own, rather than part of `open_enum!`, because the
-/// `cfg(feature = "specta")` it emits is evaluated in the calling crate, and a
-/// crate that declares no such feature would fail its `unexpected_cfgs` check.
-///
-/// ```text
-/// polyoxide_venue::specta_as_string!(ProtocolVersion, ResolutionStatus, HomeAway);
-/// ```
-#[macro_export]
-macro_rules! specta_as_string {
-    ($($name:ty),+ $(,)?) => {
-        $(
-            #[cfg(feature = "specta")]
-            impl ::specta::Type for $name {
-                fn inline(
-                    type_map: &mut ::specta::TypeMap,
-                    generics: ::specta::Generics,
-                ) -> ::specta::DataType {
-                    <::std::string::String as ::specta::Type>::inline(type_map, generics)
-                }
-            }
-        )+
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

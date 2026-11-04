@@ -31,7 +31,7 @@ impl OutcomeIndex {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// Side of a fill, from the row's wallet's perspective (`BUY` / `SELL`).
     pub enum TradeSide {
         /// `BUY`
@@ -41,7 +41,7 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// `side` on an activity row. Trades carry `BUY`/`SELL`, tips carry
     /// `IN`/`OUT`, and rows where no side applies carry an empty string.
     pub enum ActivitySide {
@@ -58,7 +58,7 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// Activity row type. `TIP` is never in the default set and is only
     /// returned when requested explicitly. Split, merge, redeem and conversion
     /// on a range event keep `SPLIT`, `MERGE`, `REDEEM` and `CONVERSION`. The host refuses a `type` filter
@@ -110,7 +110,7 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// Position lifecycle state (`OPEN` / `REDEEMABLE` / `CLOSED`), plus two
     /// request-only filters (`REDEEMABLE_LOST` / `MERGEABLE`).
     ///
@@ -139,7 +139,7 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// The contract family that issued a token (`TokenRef::module`).
     ///
     /// `v1_ctf` is the ConditionalTokens market (module 0); every other value is
@@ -157,14 +157,6 @@ polyoxide_venue::open_enum! {
         Directional => "directional",
     }
 }
-
-polyoxide_venue::specta_as_string!(
-    TradeSide,
-    ActivitySide,
-    ActivityType,
-    PositionStatus,
-    TokenModule
-);
 
 polyoxide_venue::wire_enum! {
     /// Ranking window for boards (`day` / `week` / `month` / `all`).

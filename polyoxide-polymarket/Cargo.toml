@@ -205,6 +205,8 @@ polyoxide-test-support = { path = "../polyoxide-test-support", features = ["quer
 # perps, rtds and sports run on. Path-only, so cargo strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 mockito = { workspace = true }
+# The open enums' TypeScript export test (specta_open_enums), at prader-rs's pin.
+specta-typescript = "=0.0.7"
 serde_json = { workspace = true }
 dotenvy = "0.15"
 futures-util = { workspace = true }
@@ -286,6 +288,10 @@ required-features = ["data"]
 [[test]]
 name = "records_data"
 required-features = ["data"]
+
+[[test]]
+name = "specta_open_enums"
+required-features = ["gamma", "data", "specta"]
 
 [[test]]
 name = "spec_agreement_data"

@@ -291,6 +291,7 @@ To remove a public item in a PR:
 - `polyoxide-polymarket struct_pub_field_missing: field tx_hash of struct ComboActivity (src/data/types.rs)` retire-data-v1 story 5: `data::types` now holds v2's types (story 4 removed v1's), and the v2 type of that name has no such member; read its v2 fields (`docs/s3-migration.md`).
 - `polyoxide-polymarket struct_pub_field_missing: field user_address of struct ComboActivity (src/data/types.rs)` retire-data-v1 story 5: `data::types` now holds v2's types (story 4 removed v1's), and the v2 type of that name has no such member; read its v2 fields (`docs/s3-migration.md`).
 - `polyoxide-polymarket struct_pub_field_missing: field user_address of struct ComboPosition (src/data/types.rs)` retire-data-v1 story 5: `data::types` now holds v2's types (story 4 removed v1's), and the v2 type of that name has no such member; read its v2 fields (`docs/s3-migration.md`).
+- `polyoxide-venue declarative_macro_missing: macro specta_as_string (src/wire.rs)` retire-data-v1 story 5b: gamma's and data's open enums take a named TypeScript union from `polyoxide-polymarket`'s own macro (spec D17), so the `string` shape had no caller left; a crate of yours that gave an open enum that shape implements `specta::Type` for it directly.
 
 ## Changes the gate does not key
 
