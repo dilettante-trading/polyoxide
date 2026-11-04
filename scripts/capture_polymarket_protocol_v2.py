@@ -402,8 +402,9 @@ def router_vectors(ids: dict, sibling: str) -> dict:
     # through `id_vectors.json`'s outcome-byte-2 row, so the script only checks it.
     try:
         router_redeem_call(router=router, condition_id=condition, outcome_index=2, amount=1)
-    except UserInputError:
-        pass
+    except UserInputError as error:
+        if not str(error).startswith("Protocol v2 outcome index must be 0 or 1"):
+            sys.exit(f"router_redeem_call refused outcome index 2 for another reason: {error}")
     else:
         sys.exit("router_redeem_call accepted outcome index 2")
 
@@ -500,14 +501,33 @@ def selector_vectors(ids: dict, sibling: str) -> dict:
     # `positionIds` is a real JSON array, as gamma serves it; `clobTokenIds` stays text.
     positions = [ids["v2_binary"], sibling]
     one_position = [ids["v2_binary"]]
-    # (case, version, clobTokenIds, positionIds, expected pair or the refusal's type)
+    # (case, version, clobTokenIds, positionIds, expected pair or the refusal), a refusal
+    # being its type, or `(type, message prefix)` where py-sdk's message names the reason.
     cases = (
         ("v1_with_position_ids", "v1", clob, positions, v1_pair),
         ("v2_with_both", "v2", clob, positions, [ids["v2_binary"], sibling]),
-        ("missing_version", None, clob, positions, UnexpectedResponseError),
+        (
+            "missing_version",
+            None,
+            clob,
+            positions,
+            (UnexpectedResponseError, "Missing market version"),
+        ),
         ("unknown_version", "v3", clob, positions, ValidationError),
-        ("v2_one_position_id", "v2", clob, one_position, UnexpectedResponseError),
-        ("v1_no_clob_token_ids", "v1", None, positions, UnexpectedResponseError),
+        (
+            "v2_one_position_id",
+            "v2",
+            clob,
+            one_position,
+            (UnexpectedResponseError, "Incomplete market position IDs"),
+        ),
+        (
+            "v1_no_clob_token_ids",
+            "v1",
+            None,
+            positions,
+            (UnexpectedResponseError, "Missing market token IDs"),
+        ),
     )
     rows = []
     for name, version, clob_token_ids, position_ids, expected in cases:
@@ -521,8 +541,11 @@ def selector_vectors(ids: dict, sibling: str) -> dict:
             if pair != expected:
                 sys.exit(f"{name}: py-sdk chose {pair} ({error!r}), expected {expected}")
         else:
-            if not isinstance(error, expected):
-                sys.exit(f"{name}: py-sdk gave {pair} / {error!r}, expected a {expected.__name__}")
+            kind, prefix = expected if isinstance(expected, tuple) else (expected, None)
+            if not isinstance(error, kind):
+                sys.exit(f"{name}: py-sdk gave {pair} / {error!r}, expected a {kind.__name__}")
+            if prefix is not None and not str(error).startswith(prefix):
+                sys.exit(f"{name}: refused with {str(error)!r}, expected it to start {prefix!r}")
             if isinstance(error, ValidationError) and not any(
                 item["loc"] == ("version",) for item in error.errors()
             ):
