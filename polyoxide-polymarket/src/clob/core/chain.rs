@@ -34,6 +34,19 @@ impl Chain {
             _ => None,
         }
     }
+
+    /// The Protocol V2 exchange (ExchangeV3) on this chain, where one is
+    /// deployed.
+    ///
+    /// Polygon mainnet has it. `None` on Amoy, where no Protocol V2
+    /// deployment is known. It is not a field of [`Contracts`], whose fields
+    /// are all public.
+    pub const fn exchange_v3(&self) -> Option<Address> {
+        match self {
+            Chain::PolygonMainnet => Some(address!("e3333700cA9d93003F00f0F71f8515005F6c00Aa")),
+            Chain::PolygonAmoy => None,
+        }
+    }
 }
 
 /// Contract addresses for different chains
@@ -147,5 +160,23 @@ mod tests {
         assert_eq!(Chain::PolygonMainnet, Chain::PolygonMainnet);
         assert_eq!(Chain::PolygonAmoy, Chain::PolygonAmoy);
         assert_ne!(Chain::PolygonMainnet, Chain::PolygonAmoy);
+    }
+
+    #[test]
+    fn exchange_v3_is_py_sdks_mainnet_address_and_absent_on_amoy() {
+        // py-sdk 0.12.0's `environments.py` (production only); it knows no
+        // Amoy Protocol V2 deployment.
+        assert_eq!(
+            Chain::PolygonMainnet.exchange_v3(),
+            Some(address!("e3333700cA9d93003F00f0F71f8515005F6c00Aa"))
+        );
+        assert_eq!(Chain::PolygonAmoy.exchange_v3(), None);
+        // It is not one of the CTF exchanges.
+        let ctf = Contracts::POLYGON_MAINNET;
+        assert_ne!(Chain::PolygonMainnet.exchange_v3(), Some(ctf.exchange));
+        assert_ne!(
+            Chain::PolygonMainnet.exchange_v3(),
+            Some(ctf.neg_risk_exchange)
+        );
     }
 }
