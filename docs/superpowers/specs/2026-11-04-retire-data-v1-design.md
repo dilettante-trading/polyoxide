@@ -28,6 +28,8 @@ own on `main`, cut when the owner says. Every removed or re-typed public item ge
   release, against the flattened paths. Its session was told on 2026-11-04 and acknowledged.
 - A retired test cites its subject's entry in `docs/s3-removals.md` (D9), not a row of S2's
   final rename manifest.
+- prader-rs #179's second ask is folded in too, widened to gamma's open enums by the owner
+  (D17): the open enums export to TypeScript as named open unions.
 
 **1.4 Sources (measured 2026-11-04).**
 
@@ -230,9 +232,42 @@ gone. Its tests and `rate-limits.md`'s tables follow.
   renames, D3's error rename, D5's two `PositionExt` renames and D6's constructible records.
   The release's CHANGELOG quotes it.
 
+**D17. Open enums export to TypeScript as named open unions (prader-rs #179, the owner's
+choice of 2026-11-04, which covers gamma's open enums too).**
+
+- **Which enums.** The eight open enums that `polyoxide_venue::specta_as_string!` gives a
+  `string` shape today: data's `TradeSide`, `ActivitySide`, `ActivityType`, `PositionStatus`
+  and `TokenModule`, and gamma's `ProtocolVersion`, `ResolutionStatus` and `HomeAway`.
+- **What each exports** under specta 2.0.0-rc.20 and specta-typescript 0.0.7, prader's
+  pins: `export type TradeSide = "BUY" | "SELL" | OpenString` (every known wire spelling, in
+  declaration order), beside one shared
+  `export type OpenString = (string) & ({ [key in never]: never })`, which is
+  `string & {}`.
+- **TypeScript semantics** (checked with tsc 6.0.3, 2026-11-04):
+  - any string is assignable, so the type stays open as `Other(raw)` does;
+  - `Record<TradeSide, V>` must name every known spelling;
+  - `Exclude<TradeSide, OpenString>` is `never`, since every literal is also a
+    `string & {}`, so a `switch` over the type needs a `default` arm.
+- **Mechanism.** A crate-private wrapper macro in `polyoxide-polymarket`'s `shared` takes an
+  `open_enum!` body. It invokes `polyoxide_venue::open_enum!` with it unchanged, and, under
+  the crate's `specta` feature, expands a private shape module from the same variant list.
+  The module holds a unit enum of the wire spellings and an `#[serde(untagged)]` enum named
+  as the open enum, whose variants are the known set (`#[specta(inline)]`) and
+  `OpenString`. The open enum's `Type::inline` and `Type::reference` delegate to that
+  untagged enum.
+  - The variant list exists once.
+  - `OpenString` is defined once, in `shared`, so specta sees one type of that name.
+  - `polyoxide-venue` gains no specta dependency, and `specta_as_string!`, left with no
+    caller, is removed (its `s3-removals.md` entry, and `wire-enums.md`).
+- **Tests.** `polyoxide-polymarket` gains specta-typescript `=0.0.7` as a dev-dependency.
+  A test under `specta`, `gamma` and `data` exports each of the eight enums. It asserts the
+  enum's TypeScript is exactly the union of `ALL`'s `as_str()` spellings plus `OpenString`,
+  and that `OpenString`'s export is the line above, with no duplicate type names. Shown red
+  first against today's `string` shape.
+
 ## 3. Delivery
 
-Six commits on the branch. Each builds, and each runs the gates its stories touch. The
+Seven commits on the branch. Each builds, and each runs the gates its stories touch. The
 final gates are all ten CI jobs, wasm included.
 
 1. **The gate (D9).** Full three-layer review: a defect could weaken a gate.
@@ -244,7 +279,9 @@ final gates are all ten CI jobs, wasm included.
    D13, D15's deletions).** Full review: it removes public API.
 5. **The flatten, workspace-wide (D2, D3, D6, D7, D8's flatten, D10's `[paths]` and drift,
    D12, D15's updates).** Full review.
-6. **Docs and specs (D14, D16).** One review pass.
+6. **The TypeScript open unions (D17).** One review pass. It sits after the flatten so it
+   writes the final paths once.
+7. **Docs and specs (D14, D16).** One review pass.
 
 **After merge:** the version bump is a commit of its own on `main`, cut when the owner says.
 After the release publishes, the prader-rs #179 session is told the version, D2's and D3's

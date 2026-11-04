@@ -4,7 +4,7 @@
 
 **Goal:** Remove Polymarket's retired Data API v1 from polyoxide, make v2 the `data` module's only API at its root, and make v2's records constructible (prader-rs #179).
 
-**Architecture:** Six commits, each building and passing the gates it touches. The spec is `docs/superpowers/specs/2026-11-04-retire-data-v1-design.md` (D1–D16), and where this plan and the spec disagree, the spec binds. The order: teach the test-body gate to retire a test by its removal entry; move the CLOB's two v1 readers onto v2; move the send-loop proofs onto v2; delete v1 workspace-wide; flatten `data::v2` into `data`; then fix up the docs and spec mirrors.
+**Architecture:** Seven commits, each building and passing the gates it touches. The spec is `docs/superpowers/specs/2026-11-04-retire-data-v1-design.md` (D1–D17), and where this plan and the spec disagree, the spec binds. The order: teach the test-body gate to retire a test by its removal entry; move the CLOB's two v1 readers onto v2; move the send-loop proofs onto v2; delete v1 workspace-wide; flatten `data::v2` into `data`; export the open enums to TypeScript as named open unions; then fix up the docs and spec mirrors.
 
 **Tech Stack:** Rust 1.91 MSRV / 1.99.0 dev shell, mockito, PyO3 + maturin (`uv`), Python gate scripts under `scripts/` with pytest under `.github/scripts/tests/`.
 
@@ -1029,6 +1029,223 @@ Claude-Session: https://claude.ai/code/session_013q61bHPZYguEucdtVYY9QG"
 
 ---
 
+## Task 5b: Open enums as named TypeScript unions (D17)
+
+Prototyped on 2026-11-04 in a scratch crate against specta 2.0.0-rc.20 and specta-typescript 0.0.7, and the export checked with prader's tsc 6.0.3.
+
+**Files:**
+- Create: `polyoxide-polymarket/src/shared/open_enum.rs`, `polyoxide-polymarket/tests/specta_open_enums.rs`
+- Modify: `polyoxide-polymarket/src/shared/mod.rs`, `src/data/types/common.rs`, `src/gamma/types.rs`, `polyoxide-polymarket/Cargo.toml` (dev-dependency and `[[test]]`)
+- Modify: `polyoxide-venue/src/wire.rs` (delete `specta_as_string!`), `polyoxide-venue/src/lib.rs` (its doc line), `docs/s3-removals.md`, `.claude/rules/wire-enums.md`
+
+- [ ] **Step 1: Write the failing test.** Add `specta-typescript = "=0.0.7"` to `polyoxide-polymarket`'s `[dev-dependencies]`, with the comment `# the open enums' TypeScript export test (specta_open_enums), prader's pin`. If the crate declares its tests, add the stanza `[[test]] name = "specta_open_enums" required-features = ["gamma", "data", "specta"]`. Then create `tests/specta_open_enums.rs`:
+
+```rust
+//! The open enums export to TypeScript as named open unions (spec D17): every
+//! known wire spelling, then `OpenString`, which is `string & {}`.
+
+use std::collections::BTreeMap;
+
+use polyoxide_polymarket::{data::types as data, gamma::types as gamma};
+use specta::{Type, TypeMap};
+use specta_typescript::Typescript;
+
+const OPEN_STRING: &str = "export type OpenString = (string) & ({ [key in never]: never })";
+
+/// Every named type `T` registers, by name, as specta-typescript exports it.
+fn exports(register: impl FnOnce(&mut TypeMap)) -> BTreeMap<String, String> {
+    let mut map = TypeMap::default();
+    register(&mut map);
+    assert_eq!(specta::internal::detect_duplicate_type_names(&map), vec![]);
+    let ts = Typescript::default();
+    map.iter()
+        .map(|(_, named)| {
+            let text = specta_typescript::export_named_datatype(&ts, named, &map).unwrap();
+            (named.name().to_string(), text)
+        })
+        .collect()
+}
+
+/// `export type Name = "A" | "B" | OpenString`, from the enum's own spellings.
+fn union(name: &str, spellings: impl IntoIterator<Item = String>) -> String {
+    let known: Vec<String> = spellings.into_iter().map(|s| format!("\"{s}\"")).collect();
+    format!("export type {name} = {} | OpenString", known.join(" | "))
+}
+
+macro_rules! open_unions {
+    ($($ty:ty => $name:literal),* $(,)?) => {{
+        let exported = exports(|map| {
+            $( let _ = <$ty as Type>::reference(map, &[]); )*
+        });
+        assert!(exported["OpenString"].ends_with(OPEN_STRING), "{}", exported["OpenString"]);
+        $(
+            let spellings = <$ty>::ALL.iter().map(|v| v.as_str().to_string());
+            assert_eq!(exported[$name], union($name, spellings));
+        )*
+        assert_eq!(exported.len(), [$($name),*].len() + 1, "{exported:#?}");
+    }};
+}
+
+#[test]
+fn every_open_enum_exports_its_known_spellings_and_open_string() {
+    open_unions! {
+        data::TradeSide => "TradeSide",
+        data::ActivitySide => "ActivitySide",
+        data::ActivityType => "ActivityType",
+        data::PositionStatus => "PositionStatus",
+        data::TokenModule => "TokenModule",
+        gamma::ProtocolVersion => "ProtocolVersion",
+        gamma::ResolutionStatus => "ResolutionStatus",
+        gamma::HomeAway => "HomeAway",
+    }
+}
+```
+
+- [ ] **Step 2: Run it and see it fail.**
+
+Run: `direnv exec . cargo test -p polyoxide-polymarket --features gamma,data,specta --test specta_open_enums 2>&1 | tail -8`
+Expected: FAIL. `exported["OpenString"]` panics on the missing key, because today the enums are inlined as `string` and register no named type.
+
+- [ ] **Step 3: The wrapper macro.** Create `polyoxide-polymarket/src/shared/open_enum.rs`:
+
+```rust
+//! `polyoxide_venue::open_enum!` with a TypeScript shape (spec D17). Under the
+//! `specta` feature, an enum declared through [`specta_open_enum!`] exports as
+//! a named union of its known wire spellings and [`OpenString`], so a
+//! TypeScript consumer sees `"BUY" | "SELL" | (string & {})`, not `string`.
+
+/// Any string beside an open enum's known spellings: `string & {}` in
+/// TypeScript, so the known literals stay distinct from it.
+#[cfg(feature = "specta")]
+#[derive(specta::Type)]
+#[allow(dead_code)] // a TypeScript shape only, never built
+pub(crate) struct OpenString {
+    #[serde(flatten)]
+    text: Text,
+    #[serde(flatten)]
+    nothing: std::collections::HashMap<Never, Never>,
+}
+
+/// `string`, as a field specta can flatten.
+#[cfg(feature = "specta")]
+struct Text;
+
+#[cfg(feature = "specta")]
+impl specta::Type for Text {
+    fn inline(type_map: &mut specta::TypeMap, generics: specta::Generics) -> specta::DataType {
+        <String as specta::Type>::inline(type_map, generics)
+    }
+}
+
+#[cfg(feature = "specta")]
+impl specta::Flatten for Text {}
+
+/// No value: `{ [key in never]: never }`, TypeScript's `{}`, as a map of it.
+#[cfg(feature = "specta")]
+#[derive(specta::Type)]
+enum Never {}
+
+/// Declares an open enum with `polyoxide_venue::open_enum!`, and gives it,
+/// under `specta`, the named union shape (spec D17). The variant list is the
+/// one `open_enum!` takes, written once.
+macro_rules! specta_open_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $( $(#[$vmeta:meta])* $variant:ident => $wire:literal ),+ $(,)?
+        }
+    ) => {
+        polyoxide_venue::open_enum! {
+            $(#[$meta])*
+            $vis enum $name {
+                $( $(#[$vmeta])* $variant => $wire ),+
+            }
+        }
+
+        #[cfg(feature = "specta")]
+        const _: () = {
+            mod shape {
+                #[derive(specta::Type)]
+                #[allow(dead_code)]
+                pub(super) enum Known {
+                    $( #[serde(rename = $wire)] $variant ),+
+                }
+
+                #[derive(specta::Type)]
+                #[serde(untagged)]
+                #[allow(dead_code)]
+                pub(super) enum $name {
+                    #[specta(inline)]
+                    Known(Known),
+                    Other($crate::shared::OpenString),
+                }
+            }
+
+            impl specta::Type for $name {
+                fn inline(
+                    type_map: &mut specta::TypeMap,
+                    generics: specta::Generics,
+                ) -> specta::DataType {
+                    <shape::$name as specta::Type>::inline(type_map, generics)
+                }
+
+                fn reference(
+                    type_map: &mut specta::TypeMap,
+                    generics: &[specta::DataType],
+                ) -> specta::datatype::reference::Reference {
+                    <shape::$name as specta::Type>::reference(type_map, generics)
+                }
+            }
+        };
+    };
+}
+
+pub(crate) use specta_open_enum;
+```
+
+In `src/shared/mod.rs`, add `#[cfg(any(feature = "gamma", feature = "data"))] mod open_enum;` and `#[cfg(any(feature = "gamma", feature = "data"))] pub(crate) use open_enum::specta_open_enum;`, plus `#[cfg(all(feature = "specta", any(feature = "gamma", feature = "data")))] pub(crate) use open_enum::OpenString;`. Put them in the file's existing cfg-grouped layout and let `cargo fmt` order them.
+
+- [ ] **Step 4: Use it.** In `src/data/types/common.rs`, each of `TradeSide`, `ActivitySide`, `ActivityType`, `PositionStatus` and `TokenModule` changes from `polyoxide_venue::open_enum! {` to `crate::shared::specta_open_enum! {`, body unchanged, and the `polyoxide_venue::specta_as_string!(…)` call goes. Do the same in `src/gamma/types.rs` for `ProtocolVersion`, `ResolutionStatus` and `HomeAway`, and delete its `specta_as_string!` line. Any other open enum stays on `polyoxide_venue::open_enum!`.
+
+- [ ] **Step 5: Remove `specta_as_string!`.** Delete the macro and its doc comment from `polyoxide-venue/src/wire.rs`, along with the "[`specta_as_string!`] gives open enums their `specta` shape." line in `polyoxide-venue/src/lib.rs`. Then, in `.claude/rules/wire-enums.md`, replace "data's closed enums pass `#[cfg_attr(feature = "specta", derive(specta::Type))]`, and gamma and data give their open enums a `String` shape with one `polyoxide_venue::specta_as_string!(..)`." with "data's closed enums pass `#[cfg_attr(feature = "specta", derive(specta::Type))]`, and gamma's and data's open enums that specta exports are declared through `polyoxide-polymarket`'s crate-private `shared::specta_open_enum!`. It wraps `open_enum!` and, under `specta`, exports a named union of the known spellings and `OpenString` (`string & {}`), held by `tests/specta_open_enums.rs`."
+
+- [ ] **Step 6: Run the test and see it pass, then the gates.**
+
+```bash
+direnv exec . cargo test -p polyoxide-polymarket --features gamma,data,specta --test specta_open_enums 2>&1 | tail -3
+for m in gamma data; do direnv exec . cargo check -p polyoxide-polymarket --no-default-features --features $m,specta 2>&1 | tail -1; done
+direnv exec . cargo check -p polyoxide-polymarket --no-default-features --features gamma 2>&1 | tail -1
+direnv exec . cargo clippy --all-targets --all-features --keep-going -- -D warnings 2>&1 | tail -2
+RUSTDOCFLAGS="-D warnings" direnv exec . cargo doc --no-deps --all-features --workspace 2>&1 | tail -1
+env RUSTFLAGS= RUSTC_WRAPPER= CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 direnv exec . python3 scripts/api_removals.py check --baseline v0.40.0 2>&1 | tail -8
+direnv exec . python3 scripts/test_body_diff.py --baseline v0.40.0 | tail -1
+cd .github/scripts && direnv exec . uv run pytest tests/ -q 2>&1 | tail -2; cd -
+```
+
+Expected: the test passes; each build, clippy and the doc build are clean; the removals gate prints `polyoxide-venue declarative_macro_missing: specta_as_string` (or similar). Add that key to `docs/s3-removals.md`: "retire-data-v1 story 5b: gamma's and data's open enums take their TypeScript shape from `polyoxide-polymarket`'s own macro (spec D17); a crate of yours that gave an open enum a `string` shape implements `specta::Type` itself." Re-run the gate. Also run `cargo test --doc -p polyoxide-venue`, since the deleted doc held a `text` block, not a doctest.
+
+- [ ] **Step 7: Review (one pass), then commit.**
+
+```bash
+git add polyoxide-polymarket/src/shared/open_enum.rs polyoxide-polymarket/src/shared/mod.rs polyoxide-polymarket/src/data/types/common.rs polyoxide-polymarket/src/gamma/types.rs polyoxide-polymarket/tests/specta_open_enums.rs polyoxide-polymarket/Cargo.toml Cargo.lock polyoxide-venue/src/wire.rs polyoxide-venue/src/lib.rs docs/s3-removals.md .claude/rules/wire-enums.md
+git commit -m "feat(polymarket)!: open enums export to TypeScript as named open unions
+
+Data's TradeSide, ActivitySide, ActivityType, PositionStatus and
+TokenModule, and gamma's ProtocolVersion, ResolutionStatus and HomeAway,
+exported as plain \`string\`. Each is now a named union of its known wire
+spellings and OpenString (\`string & {}\`), so TypeScript keeps the
+literals, a Record over the type names every known key, and an unknown
+spelling still type-checks as Other(raw) decodes (prader-rs #179).
+polyoxide-venue's specta_as_string! goes with its last caller.
+
+BREAKING CHANGE: polyoxide_venue::specta_as_string! is removed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013q61bHPZYguEucdtVYY9QG"
+```
+
+---
+
 ## Task 6: Docs, specs and the nightly (D14, D16)
 
 - [ ] **Step 1: Spec mirrors.** Check `docs/specs/data/*.md` and `docs/specs/undocumented/*` for any fact that still holds for v2, such as a host-wide Cloudflare limit, and move it into `docs/specs/data-v2/OBSERVED.md`. Then:
@@ -1076,8 +1293,8 @@ Claude-Session: https://claude.ai/code/session_013q61bHPZYguEucdtVYY9QG"
 
 ---
 
-## After the six commits
+## After the seven commits
 
 - Run the whole-branch review: three layers, since the branch removes public API and changes a gate.
 - Update `polyoxide-open-threads` memory: v1 retired on the branch, waiting for merge and the 0.47.0 bump.
-- Hand off to the owner: the merge to local `main` (main-first), the version bump (its own commit, when the owner says), and the push. After the release publishes, message the prader-rs #179 session with the version, the path and error renames, and the per-type list (every row struct and `Page`/`Pagination` dropped `#[non_exhaustive]`; `OutcomeIndex::new` added; enums unchanged).
+- Hand off to the owner: the merge to local `main` (main-first), the version bump (its own commit, when the owner says), and the push. After the release publishes, message the prader-rs #179 session with the version, the path and error renames, and the per-type list (every row struct and `Page`/`Pagination` dropped `#[non_exhaustive]`; `OutcomeIndex::new` added; enums keep it), plus each of the eight open enums with the exact TypeScript it exports (`tests/specta_open_enums.rs` prints none, so run the export once and paste it), and the caveat that `Exclude<T, OpenString>` is `never`.
