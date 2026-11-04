@@ -399,10 +399,12 @@ survive:
 
 1. List the newest 100 open gamma markets (`order=id`, `ascending=false`, `limit=100`), as
    `live_markets_carry_a_known_protocol_version` does, and take the first with
-   `version == Some(V2)`.
+   `version == Some(V2)` and `enable_order_book == Some(true)` (the owner's decision, 2026-11-04:
+   a V2 market listed before its book is enabled would 404 on `/book` and file a `real` issue
+   that says nothing about position ids).
 2. If there is none, fail through test-support's `environmental` tag with "no Protocol V2 market
-   among the newest 100 open markets". This is the signal the issue asks for: the nightly reports it
-   as environmental until a V2 market exists.
+   with an order book among the newest 100 open markets". This is the signal the issue asks for:
+   the nightly reports it as environmental until a V2 market with a book exists.
 3. Otherwise read its ids with `outcome_ids()` (a refusal is a real failure), then for each id read
    `/book`, `/tick-size` and `/neg-risk`, and fail as real on any non-2xx, which answers the issue's
    open question about the per-token helpers.
