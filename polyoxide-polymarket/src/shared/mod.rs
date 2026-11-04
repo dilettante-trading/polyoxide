@@ -32,7 +32,7 @@ pub mod auth;
     feature = "perps"
 ))]
 pub mod keys;
-#[cfg(feature = "clob")]
+#[cfg(any(feature = "clob", feature = "relay"))]
 pub(crate) mod protocol;
 #[cfg(any(feature = "clob", feature = "relay"))]
 pub mod session_signer;

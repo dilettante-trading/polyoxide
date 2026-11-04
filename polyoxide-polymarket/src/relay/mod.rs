@@ -134,8 +134,8 @@ pub use session_signers::{
     SESSION_SIGNER_REQUEST_TIMEOUT,
 };
 pub use types::{
-    GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
-    TransactionRequest, TransactionState, WalletType,
+    parse_v2_condition_id, GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction,
+    SafeTx, SubmitResponse, TransactionRequest, TransactionState, V2PositionId, WalletType,
 };
 pub use wallet::{
     derive_deposit_wallet_beacon, derive_deposit_wallet_uups, derive_proxy, derive_safe, WalletKind,

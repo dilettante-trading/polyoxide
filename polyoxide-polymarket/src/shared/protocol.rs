@@ -44,6 +44,7 @@ pub(crate) fn decode_v2_outcome_position_id(id: &str) -> Option<(FixedBytes<31>,
 /// 0) and are the ids older tests sign with. It agrees with py-sdk on every id
 /// a market can carry: a V1 id is a keccak hash, so its bits 40 to 103 are not
 /// all clear, and a V2 id has module byte 1 to 3 and outcome byte 0 or 1.
+#[cfg(feature = "clob")]
 pub(crate) fn is_v2_position_id(id: &str) -> bool {
     let Some(value) = parse_position_id(id) else {
         return false;
@@ -61,10 +62,12 @@ mod tests {
 
     #[derive(serde::Deserialize)]
     struct Vectors {
+        #[cfg(feature = "clob")]
         ids: Ids,
         position_ids: Vec<Row>,
     }
 
+    #[cfg(feature = "clob")]
     #[derive(serde::Deserialize)]
     struct Ids {
         v1: String,
@@ -121,6 +124,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "clob")]
     #[test]
     fn the_rule_is_the_conjunction_of_py_sdks_two_answers() {
         for row in vectors().position_ids {
@@ -150,6 +154,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "clob")]
     #[test]
     fn the_four_fixture_ids_classify_as_the_venue_issues_them() {
         let ids = vectors().ids;
@@ -160,6 +165,7 @@ mod tests {
         assert!(parse_position_id(&ids.v1).is_some());
     }
 
+    #[cfg(feature = "clob")]
     #[test]
     fn toy_ids_stay_v1_though_py_sdks_mask_alone_accepts_them() {
         // The divergence the rules files record: py-sdk's mask calls these V2,

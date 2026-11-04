@@ -242,6 +242,9 @@ mod tests {
     use alloy::signers::local::PrivateKeySigner;
     use alloy::signers::Signer as _;
 
+    use crate::relay::error::RelayError;
+    use crate::relay::types::{parse_v2_condition_id, V2PositionId};
+
     const VECTORS: &str =
         include_str!("../../tests/fixtures/relay/session_keys/relay_vectors.json");
     const ANVIL_KEY_0: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -442,5 +445,165 @@ mod tests {
             vectors()["session_key_lifetime_secs"].as_u64().unwrap()
         );
         assert_eq!(DEFAULT_BATCH_DEADLINE_SECS, 600);
+    }
+
+    // ── Protocol V2: position ids and condition ids ─────────────
+
+    const ROUTER_VECTORS: &str =
+        include_str!("../../tests/fixtures/relay/protocol_v2/router_vectors.json");
+    const ID_VECTORS: &str = include_str!("../../tests/fixtures/clob/protocol_v2/id_vectors.json");
+
+    /// py-sdk's refusals of a position id, verbatim.
+    const POSITION_UINT256: &str = "Position ID must be a uint256 value";
+    const POSITION_MODULE: &str = "Position ID must use a supported protocol v2 module";
+    const POSITION_YES_NO: &str = "Protocol v2 position ID must be a YES/NO position ID";
+    /// py-sdk's refusal of a condition id, verbatim.
+    const CONDITION_REFUSED: &str =
+        "Protocol v2 condition ID must be bytes31, or bytes32 with a binary outcome byte";
+
+    fn router_vectors() -> serde_json::Value {
+        serde_json::from_str(ROUTER_VECTORS).unwrap()
+    }
+
+    fn id_vectors() -> serde_json::Value {
+        serde_json::from_str(ID_VECTORS).unwrap()
+    }
+
+    /// The message of a refusal made before anything was sent.
+    fn refusal(err: RelayError) -> String {
+        match err {
+            RelayError::Api(polyoxide_core::ApiError::Validation(message)) => message,
+            other => panic!("expected a validation refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn v2_position_id_parse_agrees_with_py_sdk_on_every_row() {
+        let v = id_vectors();
+        let rows = v["position_ids"].as_array().unwrap();
+        assert!(rows.len() >= 20, "{} rows", rows.len());
+        let mut accepted = 0;
+        let mut refused = 0;
+        for row in rows {
+            let input = row["input"].as_str().unwrap();
+            match (&row["decoded"], V2PositionId::parse(input)) {
+                (serde_json::Value::Null, Err(err)) => {
+                    refused += 1;
+                    let message = refusal(err);
+                    assert!(
+                        [POSITION_UINT256, POSITION_MODULE, POSITION_YES_NO]
+                            .contains(&message.as_str()),
+                        "{input:?}: {message}"
+                    );
+                }
+                (decoded, Ok(position)) if !decoded.is_null() => {
+                    accepted += 1;
+                    assert_eq!(
+                        format!("0x{}", hex::encode(position.condition_id())),
+                        decoded["condition_id"].as_str().unwrap(),
+                        "{input:?}"
+                    );
+                    assert_eq!(
+                        u64::from(position.outcome_index()),
+                        decoded["outcome_index"].as_u64().unwrap(),
+                        "{input:?}"
+                    );
+                }
+                (decoded, result) => {
+                    panic!("{input:?}: py-sdk decoded {decoded}, parse gave {result:?}")
+                }
+            }
+        }
+        assert!(accepted >= 6, "{accepted} accepted rows");
+        assert!(refused >= 8, "{refused} refused rows");
+    }
+
+    #[test]
+    fn v2_position_id_refusals_carry_py_sdks_messages() {
+        let v2: U256 = id_vectors()["ids"]["v2_binary"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        // The id with one byte of its 32 replaced: index 0 is the module byte,
+        // index 31 the outcome byte.
+        let with = |index: usize, byte: u8| {
+            let mut bytes = v2.to_be_bytes::<32>();
+            bytes[index] = byte;
+            U256::from_be_bytes(bytes).to_string()
+        };
+        let two_pow_256 =
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936";
+        for (input, message) in [
+            ("abc".to_string(), POSITION_UINT256),
+            (String::new(), POSITION_UINT256),
+            ("-1".to_string(), POSITION_UINT256),
+            (two_pow_256.to_string(), POSITION_UINT256),
+            ("1".to_string(), POSITION_MODULE),
+            ("100".to_string(), POSITION_MODULE),
+            (with(0, 0), POSITION_MODULE),
+            (with(0, 4), POSITION_MODULE),
+            (with(31, 2), POSITION_YES_NO),
+            // py-sdk checks the module before the outcome.
+            (
+                {
+                    let mut bytes = v2.to_be_bytes::<32>();
+                    bytes[0] = 0;
+                    bytes[31] = 2;
+                    U256::from_be_bytes(bytes).to_string()
+                },
+                POSITION_MODULE,
+            ),
+        ] {
+            let err = V2PositionId::parse(&input).expect_err(&input);
+            assert_eq!(refusal(err), message, "{input}");
+        }
+    }
+
+    #[test]
+    fn v2_position_id_accepts_the_neg_risk_module_and_outcome_one() {
+        let ids = &id_vectors()["ids"];
+        let v2: U256 = ids["v2_binary"].as_str().unwrap().parse().unwrap();
+        let with = |index: usize, byte: u8| {
+            let mut bytes = v2.to_be_bytes::<32>();
+            bytes[index] = byte;
+            U256::from_be_bytes(bytes).to_string()
+        };
+        let base = V2PositionId::parse(ids["v2_binary"].as_str().unwrap()).unwrap();
+        let other_module = V2PositionId::parse(&with(0, 2)).unwrap();
+        let sibling = V2PositionId::parse(&with(31, 1)).unwrap();
+        assert_eq!(base.outcome_index(), 0);
+        assert_eq!(sibling.outcome_index(), 1);
+        // Only the outcome byte moved, so the condition is the same; the module byte is
+        // part of the condition.
+        assert_eq!(sibling.condition_id(), base.condition_id());
+        assert_ne!(other_module.condition_id(), base.condition_id());
+    }
+
+    #[test]
+    fn v2_condition_ids_narrow_as_py_sdk_does() {
+        let v = router_vectors();
+        let rows = v["condition_ids"].as_array().unwrap();
+        let mut narrowed = 0;
+        let mut refused = 0;
+        for row in rows {
+            let input = row["input"].as_str().unwrap();
+            match (row["bytes31"].as_str(), parse_v2_condition_id(input)) {
+                (Some(expected), Ok(got)) => {
+                    narrowed += 1;
+                    assert_eq!(format!("0x{}", hex::encode(got)), expected, "{input:?}");
+                }
+                (None, Err(err)) => {
+                    refused += 1;
+                    assert_eq!(refusal(err), CONDITION_REFUSED, "{input:?}");
+                }
+                (expected, result) => {
+                    panic!("{input:?}: py-sdk gave {expected:?}, parse gave {result:?}")
+                }
+            }
+        }
+        assert!(rows.len() >= 8, "{} rows", rows.len());
+        assert!(narrowed >= 4, "{narrowed} narrowed rows");
+        assert!(refused >= 4, "{refused} refused rows");
     }
 }
