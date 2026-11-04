@@ -200,11 +200,14 @@ whose similarity falls under 30%, and `[fixtures]`/`[literals]` cover the fixtur
 **D13. Rate limits.** `shared::data_limits_on` drops the v1 rows (`/closed-positions`,
 `/positions`, `/trades`), the user-pnl host's `/user-pnl` and the bare `/`, which matched only
 the root that `health()` read. Polymarket now publishes v2's figures (fetched 2026-11-04: 800/10s
-general; `/v2/trades` 300; `/v2/positions`, `/v2/positions/combos`, `/v2/activity`,
-`/v2/activity/combos` and `/v2/prices-history` 200 each; `/v2/status` 100), so, as
-`rate-limits.md` requires of a published surface, the table transcribes them, each path its own
-row. `/v2/user-pnl` and `/v2/holders`, which it does not list, keep their measured 400. The
-`documented_data_limits` tests pin both sets, and `rate-limits.md` records them.
+general; `/v2/trades` 300; `/v2/positions` with `/v2/positions/combos`, and `/v2/activity` with
+`/v2/activity/combos`, 200 per printed row; `/v2/prices-history` 200; `/v2/status` 100), and, as
+`rate-limits.md` requires of a published surface, the table transcribes them, with two owner
+choices (2026-11-04): each combined row is one shared bucket, as the page's combined CLOB ledger
+row is; and `/v2/trades` keeps the measured 200, since a soak at the published 300's pace drew
+429s. `/v2/user-pnl` and `/v2/holders`, which the table does not list, keep their measured 400.
+`documented_data_limits` pins the table, the general and the sharing, and `OBSERVED.md` records
+the soak.
 
 **D14. Spec mirrors and the nightly.**
 

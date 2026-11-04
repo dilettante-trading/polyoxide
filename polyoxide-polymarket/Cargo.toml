@@ -258,8 +258,7 @@ required-features = ["gamma"]
 name = "wire_agreement_gamma"
 required-features = ["gamma"]
 
-# The data module's suites (Story 5.3); `tests/common/` is their shared mock
-# server helper.
+# The data module's suites (Story 5.3).
 [[test]]
 name = "enum_wire_data"
 required-features = ["data"]

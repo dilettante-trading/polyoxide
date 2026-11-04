@@ -178,6 +178,10 @@ mod documented_data_limits {
     //! as fetched on 2026-11-04, its v2 section: Polymarket retired v1 on
     //! 2026-11-02. The published health row of the v1 table read `/ok`, which
     //! `data-api.polymarket.com` answers 404; v2's is `/v2/status`.
+    //!
+    //! The table prints `/v2/positions` with `/v2/positions/combos`, and
+    //! `/v2/activity` with `/v2/activity/combos`, as one row each, as it prints
+    //! the CLOB's ledger reads, which share one bucket: each pair shares one.
 
     use super::agreement::*;
     use super::*;
@@ -185,7 +189,6 @@ mod documented_data_limits {
     /// The published table, transcribed by hand. This is the golden vector.
     fn documented() -> Vec<DocumentedRule> {
         vec![
-            ("/v2/trades", Some(Method::GET), vec![(300, 10)]),
             ("/v2/positions", Some(Method::GET), vec![(200, 10)]),
             ("/v2/positions/combos", Some(Method::GET), vec![(200, 10)]),
             ("/v2/activity", Some(Method::GET), vec![(200, 10)]),
@@ -200,10 +203,13 @@ mod documented_data_limits {
         assert_matches_published(&shared::data_limits(), documented(), 800);
     }
 
-    /// Routes the published table does not list: each count is the highest
-    /// clean ramp rate recorded in `docs/specs/data-v2/OBSERVED.md`.
+    /// Routes paced by a measured rate, recorded in
+    /// `docs/specs/data-v2/OBSERVED.md`: `/v2/trades`, whose published 300/10s
+    /// drew 429s at the pace it allows (2026-11-04), keeps the 200/10s measured
+    /// clean before, and the two routes the table does not list keep 400/10s.
     fn measured_v2() -> Vec<DocumentedRule> {
         vec![
+            ("/v2/trades", Some(Method::GET), vec![(200, 10)]),
             ("/v2/user-pnl", Some(Method::GET), vec![(400, 10)]),
             ("/v2/holders", Some(Method::GET), vec![(400, 10)]),
         ]
@@ -233,25 +239,44 @@ mod documented_data_limits {
         .await;
     }
 
-    #[tokio::test]
-    async fn positions_and_combo_positions_do_not_share_an_allowance() {
-        // Upstream publishes 200/10s for each of `/v2/positions` and its
-        // `/combos`, not 200/10s combined. Emptying one must leave the other
-        // untouched — the inverse of the CLOB ledger group, where sharing *is*
-        // the published behaviour.
-        //
-        // The margin here is ~50ms (shared) against ~13ms (separate, and only
-        // that much because the request still passes the surface's general
-        // 800/10s bucket). Both sides of that gap are load-bearing, so the
-        // threshold sits between them rather than at zero.
+    #[test]
+    fn every_route_passes_the_published_general_allowance() {
         let rl = shared::data_limits();
-        rl.acquire("/v2/positions/combos", Some(&Method::GET)).await;
+        for path in ["/v2/trades", "/v2/positions", "/v2/oi", "/v2/status"] {
+            let general = &rl.effective_quota(&Method::GET, path)[0];
+            assert_eq!(
+                (general.count, general.period),
+                (800, Duration::from_secs(10)),
+                "{path} passes a general bucket other than the published 800/10s"
+            );
+        }
+    }
+
+    #[test]
+    fn each_combo_route_shares_its_parents_allowance() {
+        // Published as one row: emptying either route's bucket empties the
+        // other's. The two pairs and `/v2/trades` stay apart.
+        let rl = shared::data_limits();
+        let bucket = |path: &str| rl.effective_quota(&Method::GET, path)[1].bucket;
+        assert_eq!(bucket("/v2/positions/combos"), bucket("/v2/positions"));
+        assert_eq!(bucket("/v2/activity/combos"), bucket("/v2/activity"));
+        assert_ne!(bucket("/v2/positions"), bucket("/v2/activity"));
+        assert_ne!(bucket("/v2/positions"), bucket("/v2/trades"));
+    }
+
+    #[tokio::test]
+    async fn a_combo_request_spends_its_parents_allowance() {
+        // The runtime half: one combo request empties the shared single-token
+        // bucket, so the parent route waits a full 50ms replenish.
+        let rl = shared::data_limits();
+        rl.acquire("/v2/activity/combos", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
-        rl.acquire("/v2/positions", Some(&Method::GET)).await;
+        rl.acquire("/v2/activity", Some(&Method::GET)).await;
         assert!(
-            start.elapsed() < Duration::from_millis(25),
-            "/v2/positions was throttled by /v2/positions/combos emptying its own bucket"
+            start.elapsed() >= Duration::from_millis(30),
+            "/v2/activity went out after {:?}; it is not sharing /v2/activity/combos' bucket",
+            start.elapsed()
         );
     }
 }
@@ -930,7 +955,7 @@ mod cooldown_tests {
     async fn acquire_is_immediate_without_a_cooldown() {
         let rl = shared::data_limits();
         let t = tokio::time::Instant::now();
-        rl.acquire("/closed-positions", None).await;
+        rl.acquire("/v2/positions", None).await;
         assert!(
             t.elapsed() < Duration::from_millis(1),
             "an untripped limiter must not delay: waited {:?}",
@@ -943,10 +968,10 @@ mod cooldown_tests {
         let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(5));
 
-        // /trades has its own bucket, full and untouched. It must wait anyway:
+        // /v2/trades has its own bucket, full and untouched. It must wait anyway:
         // the block is on the IP, and every path shares it.
         let t = tokio::time::Instant::now();
-        rl.acquire("/trades", None).await;
+        rl.acquire("/v2/trades", None).await;
         assert!(
             t.elapsed() >= Duration::from_secs(5),
             "a sibling path resumed after {:?}, before the cooldown expired",
@@ -959,14 +984,14 @@ mod cooldown_tests {
         let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(3));
 
-        // The shape from the report: several /closed-positions calls in flight
+        // The shape from the report: several /v2/positions calls in flight
         // at once. One 429 has to stop all of them, not just its own caller.
         let t = tokio::time::Instant::now();
         tokio::join!(
-            rl.acquire("/closed-positions", None),
-            rl.acquire("/closed-positions", None),
-            rl.acquire("/closed-positions", None),
-            rl.acquire("/closed-positions", None),
+            rl.acquire("/v2/positions", None),
+            rl.acquire("/v2/positions", None),
+            rl.acquire("/v2/positions", None),
+            rl.acquire("/v2/positions", None),
         );
         assert!(
             t.elapsed() >= Duration::from_secs(3),
@@ -985,7 +1010,7 @@ mod cooldown_tests {
         rl.begin_cooldown(Duration::from_secs(1));
 
         let t = tokio::time::Instant::now();
-        rl.acquire("/positions", None).await;
+        rl.acquire("/v2/activity", None).await;
         assert!(
             t.elapsed() >= Duration::from_secs(10),
             "the longer cooldown was truncated to {:?}",
@@ -1007,7 +1032,7 @@ mod cooldown_tests {
         };
 
         let t = tokio::time::Instant::now();
-        rl.acquire("/closed-positions", None).await;
+        rl.acquire("/v2/positions", None).await;
         extender.await.unwrap();
         // Extended to 1s + 5s = 6s. Waking at the original 2s deadline and
         // returning would resume straight into the still-active ban.
@@ -1022,7 +1047,7 @@ mod cooldown_tests {
     async fn an_expired_cooldown_stops_delaying() {
         let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
-        rl.acquire("/closed-positions", None).await;
+        rl.acquire("/v2/positions", None).await;
         // The quota keeps the runtime's clock, so its own pacing shows in
         // virtual time: let the general bucket (about 11 ms) and the row's
         // (about 75 ms) both refill, so that only the cooldown could still
@@ -1030,7 +1055,7 @@ mod cooldown_tests {
         tokio::time::advance(Duration::from_millis(100)).await;
 
         let t = tokio::time::Instant::now();
-        rl.acquire("/closed-positions", None).await;
+        rl.acquire("/v2/positions", None).await;
         assert!(
             t.elapsed() < Duration::from_millis(1),
             "the limiter stayed blocked for {:?} after the cooldown expired",

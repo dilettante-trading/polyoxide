@@ -355,7 +355,9 @@ def _recent_trade():
     routes refuse with a 400 (docs/specs/data-v2/OBSERVED.md), so they are skipped.
     """
     trades = polyoxide.DataApiSync().trades(limit=50).data
-    trade = next(t for t in trades if len(t.condition_id) == 66)
+    trade = next((t for t in trades if len(t.condition_id) == 66), None)
+    if trade is None:
+        pytest.skip("the newest 50 trades are all combo trades")
     return trade.proxy_wallet, trade.condition_id, trade.token_id
 
 

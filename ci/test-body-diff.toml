@@ -281,11 +281,6 @@ item = "every_enum_matches_the_spec"
 row = "R21"
 sha256 = "6103b1930eb27050c934d6b301ec99abc9ca274a2f52169f464ab7ab5e2271f4"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/polymarket_limits.rs"
-item = "cooldown_tests::an_expired_cooldown_stops_delaying"
-row = "R22"
-sha256 = "587011b6ff011697ce6899d1de6670d5d548b7d4d5a3f857b692b35f95405d2b"
 
 [[drift]]
 file = "polyoxide-core/tests/mock_request.rs"
@@ -592,11 +587,6 @@ sha256 = "7e6cf8bed2770876ce0656b8138ede28861357b6829f16483d9c99693f1210bf"
 
 
 
-[[drift]]
-file = "polyoxide-polymarket/tests/polymarket_limits.rs"
-item = "documented_data_limits::documented"
-row = "R27"
-sha256 = "e2e01a2dd50acc0a011e118470b9b297f9ad4fda47c0f5be9c4ea73a0a9715ab"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/polymarket_limits.rs"
@@ -610,11 +600,6 @@ item = "documented_data_limits::every_v2_route_resolves_to_its_measured_quota"
 row = "R27"
 sha256 = "a08199a0a769a840047135434889f7e035b4d41225579216b57a5edba3e39e56"
 
-[[drift]]
-file = "polyoxide-polymarket/tests/polymarket_limits.rs"
-item = "documented_data_limits::measured_v2"
-row = "R27"
-sha256 = "dafdbca8b087ac035f89b30a4b13e8c9ed9be85949338781f137d0999b161446"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/polymarket_limits.rs"
@@ -1962,3 +1947,54 @@ file = "polyoxide-py/src/types/data_v2.rs"
 item = "tests::captured"
 row = "R27"
 sha256 = "795336c6f247eea8f9176b2356fb1571aeb81ddb84e028fa1a1f50e34981b0ab"
+
+# R27: the review of stories 4 and 5: the cooldown tests drive v2 paths, and the
+# data table shares a bucket per published pair, with /v2/trades at its measured 200.
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::a_cooldown_extended_mid_wait_is_honoured_in_full"
+row = "R27"
+sha256 = "f07b4dfe25c21ea636ba318ebd49818c15a1c3e701438061246249aed16434e1"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::a_cooldown_holds_back_a_path_that_never_saw_the_429"
+row = "R27"
+sha256 = "9c2c5992d38fc1b83721ebb6eb1912a440ec3ce0f7b274648aa8c4fbe087e1e1"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::a_shorter_cooldown_never_cuts_a_longer_one_short"
+row = "R27"
+sha256 = "145a607a2494c63da1e2cd651c4066400fed13e92164d05586a273233087738c"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::acquire_is_immediate_without_a_cooldown"
+row = "R27"
+sha256 = "f31c6ca5fbc755844311771ef155647e162cfea32916df947de4f4f0b9425ea0"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::an_expired_cooldown_stops_delaying"
+row = "R27"
+sha256 = "c5fee7150ba5ad16e3eeb7a494f7c4bbe3871edd61000666003b3b95f802a0fa"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "cooldown_tests::concurrent_requests_all_observe_one_cooldown"
+row = "R27"
+sha256 = "8a6261f503f17a769608b74e62fbfe8649a5d5f5af0da0d548a4a7140567517e"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::documented"
+row = "R27"
+sha256 = "4d2aa86794781836283fc3c63d79efb007298f131517a75eb8f218d74e4af5f0"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::measured_v2"
+row = "R27"
+sha256 = "3f27a9e9b43e266e47d82e368e17e50af03db973dd06b53e773a4d66fd88fde1"

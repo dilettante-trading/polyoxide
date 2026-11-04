@@ -8,7 +8,7 @@ use std::time::Duration;
 
 #[cfg(feature = "clob")]
 use polyoxide_core::http::Method;
-#[cfg(feature = "clob")]
+#[cfg(any(feature = "clob", feature = "data"))]
 use polyoxide_core::rate_limit::Matching;
 use polyoxide_core::rate_limit::{RateLimiter, WindowQuotaTable};
 use polyoxide_rt::Runtime;
@@ -185,18 +185,18 @@ pub fn gamma_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
 /// 2026-11-02): <https://docs.polymarket.com/api-reference/rate-limits>.
 ///
 /// - General (every `/v2` route): 800/10s
-/// - `/v2/trades`: 300/10s
-/// - `/v2/positions` and `/v2/positions/combos`: 200/10s each
-/// - `/v2/activity` and `/v2/activity/combos`: 200/10s each
+/// - `/v2/positions` and `/v2/positions/combos`: 200/10s, one allowance for both
+/// - `/v2/activity` and `/v2/activity/combos`: 200/10s, one allowance for both
 /// - `/v2/prices-history`: 200/10s
 /// - `/v2/status`: 100/10s
 ///
-/// Two routes the table does not list keep the rates measured on them before
-/// it was published, which sit under the general allowance: `/v2/user-pnl` and
-/// `/v2/holders`, 400/10s each (`docs/specs/data-v2/OBSERVED.md`).
+/// The table prints each pair as one row, as it prints the CLOB's ledger reads,
+/// which share one bucket, so each pair shares one here.
 ///
-/// A row is a prefix, matched at a segment boundary, and the first row that
-/// matches wins, so each `/combos` row precedes its parent's.
+/// Three routes keep a measured rate instead (`docs/specs/data-v2/OBSERVED.md`):
+/// `/v2/trades`, published at 300/10s, drew 429s on 2026-11-04 at the 27 req/s
+/// a tenth under that allows, so it keeps the 200/10s measured clean before;
+/// `/v2/user-pnl` and `/v2/holders`, which the table does not list, keep 400/10s.
 #[cfg(feature = "data")]
 pub fn data_limits() -> RateLimiter {
     data_limits_on(polyoxide_rt::default_runtime())
@@ -207,15 +207,18 @@ pub fn data_limits() -> RateLimiter {
 pub fn data_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
     let mut table = WindowQuotaTable::new(800, TEN_SECONDS);
     table.with_runtime(runtime);
+    let positions = table.bucket(200, TEN_SECONDS);
+    let activity = table.bucket(200, TEN_SECONDS);
     table
-        .prefix("/v2/trades", None, 300, TEN_SECONDS)
-        .prefix("/v2/positions/combos", None, 200, TEN_SECONDS)
-        .prefix("/v2/positions", None, 200, TEN_SECONDS)
-        .prefix("/v2/activity/combos", None, 200, TEN_SECONDS)
-        .prefix("/v2/activity", None, 200, TEN_SECONDS)
+        .row(Matching::Prefix, "/v2/positions/combos", None, &[positions])
+        .row(Matching::Prefix, "/v2/positions", None, &[positions])
+        .row(Matching::Prefix, "/v2/activity/combos", None, &[activity])
+        .row(Matching::Prefix, "/v2/activity", None, &[activity])
         .prefix("/v2/prices-history", None, 200, TEN_SECONDS)
         .prefix("/v2/status", None, 100, TEN_SECONDS)
-        // Not in the published table: measured, `docs/specs/data-v2/OBSERVED.md`.
+        // Measured, `docs/specs/data-v2/OBSERVED.md`: published at 300/10s.
+        .prefix("/v2/trades", None, 200, TEN_SECONDS)
+        // Not in the published table: measured.
         .prefix("/v2/user-pnl", None, 400, TEN_SECONDS)
         .prefix("/v2/holders", None, 400, TEN_SECONDS);
     table.build()

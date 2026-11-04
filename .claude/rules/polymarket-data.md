@@ -14,24 +14,30 @@ paths:
 
 Polymarket retired Data API v1 on 2026-11-02, and its `user-pnl-api` and `lb-api` hosts with it:
 every v1 route answers `410 {"error":"Data API v1 has been retired"}`, and the bare `/` too. The
-client keeps one host, `data-api.polymarket.com`, and every route is v2's, through `data.v2()`.
+client keeps one host, `data-api.polymarket.com`, and every route is v2's, a method of `DataApi`
+(`data.trades()`, `data.positions(user)`).
 Tests build with `DataApi::builder().build()`. `tests/mock_data.rs` holds the send-loop proofs
 `docs/MUTANTS.md` cites beside the routes' mock tests, and the other `*_data.rs` suites hold the
 rest.
 
-## v2 (`data.v2()`)
+## The contract
 
-v2's contract: a `data` envelope, cursor-only pagination and snake_case fields.
+A `data` envelope, cursor-only pagination and snake_case fields.
 
+- The record structs under `data::types`, and `Page` and `Pagination`, are not
+  `#[non_exhaustive]`, so a consumer builds its own rows and pages (prader-rs #179): a field
+  added, removed or renamed is a breaking change, and raises the 0.x minor.
+  `tests/records_data.rs` builds each by literal, field by field, so the build fails on any of
+  them. The enums stay `#[non_exhaustive]` beside their `Other(raw)`.
 - Paged builders return `Page<T>` from `send()` and a `Stream` from `.pages()`, which clones one
   request per page so a walk cannot change its filters: on `trades`/`activity` a changed filter
   re-anchors the walk silently, and on `positions` the `title`, `condition` and window filters are
   not in the cursor at all.
-- An error with the v2 body becomes `DataError::V2` (a stable `code`, the server's `retryable`
+- An error with the structured body becomes `DataError::Venue` (a stable `code`, the server's `retryable`
   flag, surfaced and not obeyed, and `trace_id`), recognised by body shape rather than path.
 - Its spec is the one mirror served by the API host (`/v2/openapi.json`) rather than
   docs.polymarket.com, so a parity audit that only walks `/api-spec/` misses it.
-- `/v2/tokens` (#52) is `v2().tokens(TokenKey)`: like `resolutions`, it takes exactly one selector
+- `/v2/tokens` (#52) is `data.tokens(TokenKey)`: like `resolutions`, it takes exactly one selector
   family per request, `TokenKey::TokenIds` (at most 50) or `TokenKey::Conditions` (at most 10), and
   an unknown id is absent from the list rather than a `404`. Its `module` is the open
   `TokenModule`, since only `v1_ctf` and `neg_risk` rows have been seen on the wire.

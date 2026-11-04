@@ -59,38 +59,16 @@ spread = clob.markets().spread("TOKEN_ID")
 print(spread)
 ```
 
-### Data API (user positions and leaderboard)
+### Data API
+
+`DataApi` and `DataApiSync` serve the Data API's routes as methods (Polymarket
+retired Data API v1 on 2026-11-02, so they are v2's): snake_case fields,
+cursor-only paging, and errors with a stable `code`.
 
 ```python
-import asyncio
-from polyoxide import DataApi
+from polyoxide import DataApiSync
 
-async def main():
-    data = DataApi()
-
-    # Leaderboard
-    leaders = await data.leaderboard().get(limit=10, time_period="WEEK")
-    for t in leaders:
-        print(t.user_name, t.pnl)
-
-    # User positions
-    positions = await data.user("0xADDRESS").list_positions(limit=5)
-    for p in positions:
-        print(p.title, p.size)
-
-asyncio.run(main())
-```
-
-### Data API v2 (cursor pages)
-
-`DataApi().v2()` and `DataApiSync().v2()` expose the `/v2` routes: snake_case
-fields, cursor-only paging, and errors with a stable `code`. Their result classes
-live in `polyoxide.v2`, since several share a name with a v1 class.
-
-```python
-from polyoxide import DataApiSync, v2
-
-data = DataApiSync().v2()
+data = DataApiSync()
 
 # One page, and the cursor for the next one
 page = data.trades(limit=50)
@@ -101,11 +79,15 @@ for page in data.iter_activity("0xADDRESS", types=["TRADE"], limit=500):
     for row in page.data:
         print(row.activity_type, row.usdc_size)
 
-# None, not an error, for a wallet the API does not know
+# A wallet's positions, and None, not an error, for a wallet the API does not know
+positions = data.positions(user="0xADDRESS", limit=5)
 stats = data.user_stats("0xADDRESS")
+
+# The trader leaderboard
+leaders = data.leaderboard(time_period="week", limit=10)
 ```
 
-Async walks use `async for page in DataApi().v2().iter_trades(...)`. Enum
+Async walks use `async for page in DataApi().iter_trades(...)`. Enum
 arguments take the exact wire spelling (`time_period="week"`,
 `sort_direction="DESC"`), and a value the route does not accept raises
 `ValueError` before any request is sent.
@@ -140,18 +122,11 @@ No arguments required (uses public/unauthenticated endpoints).
 ### DataApi / DataApiSync
 
 Constructed with optional `base_url`, `timeout_ms`, and `pool_size` keyword arguments.
-
-| Namespace | Methods |
-|-----------|---------|
-| `.user(address)` | `list_positions(...)`, `positions_value(...)`, `closed_positions(...)`, `trades(...)`, `activity(...)`, `traded()` |
-| `.trades()` | `list(...)` |
-| `.holders()` | `list(markets, ...)` |
-| `.open_interest()` | `get(...)` |
-| `.live_volume()` | `get(event_id)` |
-| `.leaderboard()` | `get(...)` |
-| `.builders()` | `leaderboard(...)`, `volume(...)` |
-| `.health()` | `ping()` |
-| `.v2()` | `approvals`, `positions`, `combo_positions`, `user_pnl`, `user_stats`, `user_volume`, `value`, `activity`, `combo_activity`, `trades`, `holders`, `live_volume`, `open_interest`, `prices_history`, `resolutions`, `biggest_winners`, `builders_leaderboard`, `builder_volume`, `leaderboard`, `leaderboard_user`, `status`; each paged route also has `iter_<route>(...)` |
+Each route is a method: `approvals`, `positions`, `combo_positions`, `user_pnl`,
+`user_stats`, `user_volume`, `value`, `activity`, `combo_activity`, `trades`, `holders`,
+`live_volume`, `open_interest`, `prices_history`, `resolutions`, `tokens`,
+`biggest_winners`, `builders_leaderboard`, `builder_volume`, `leaderboard`,
+`leaderboard_user` and `status`; each paged route also has `iter_<route>(...)`.
 
 ## Result Objects
 

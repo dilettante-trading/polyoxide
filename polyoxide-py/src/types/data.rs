@@ -1,5 +1,5 @@
-//! Python classes for Data API rows, registered on `polyoxide`
-//! submodule. Each wraps the serialized Rust value, as the v1 classes do, so a
+//! Python classes for Data API rows, registered on `polyoxide`. Each wraps the
+//! serialized Rust value, as the gamma and CLOB classes do, so a
 //! getter returns exactly what the typed row held. Nested objects (approval
 //! contracts, combo legs, PnL points, freshness details) come back as dicts.
 //!

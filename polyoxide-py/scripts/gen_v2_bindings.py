@@ -11,7 +11,7 @@ Usage (from the repository root):
     python3 polyoxide-py/scripts/gen_v2_bindings.py rows         # py_type! blocks + register()
     python3 polyoxide-py/scripts/gen_v2_bindings.py routes       # the v2_namespaces! invocation
     python3 polyoxide-py/scripts/gen_v2_bindings.py stub-rows    # row classes for v2.pyi
-    python3 polyoxide-py/scripts/gen_v2_bindings.py stub-routes  # DataV2 / DataV2Sync for v2.pyi
+    python3 polyoxide-py/scripts/gen_v2_bindings.py stub-routes  # DataApi / DataApiSync for __init__.pyi
 
 Rules:
 - one class per schema a route returns, plus `Pagination`; nested objects stay dicts
@@ -71,7 +71,7 @@ ROUTES = [
                  opt("updated_after", "int"), opt("updated_before", "int"), LIMIT, CURSOR],
          build="client.combo_positions(user)"),
     dict(name="user_pnl", shape="plain", row="UserPnlSeries", path="/v2/user-pnl",
-         doc="A wallet's cumulative PnL series. Not the same series as `data.pnl()`.",
+         doc="A wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served.",
          params=[req("user"), opt("interval", "choice:PnlInterval"), opt("fidelity", "choice:PnlFidelity")],
          build="client.user_pnl(user)"),
     dict(name="user_stats", shape="optional", row="UserStats", path="/v2/user-stats",
@@ -157,7 +157,7 @@ ROUTES = [
 
 
 def rust_path(schema):
-    return f"polyoxide_polymarket::data::v2::{'Pagination' if schema == 'Pagination' else 'types::' + schema}"
+    return f"polyoxide_polymarket::data::{'Pagination' if schema == 'Pagination' else 'types::' + schema}"
 
 
 def gen_rows():
@@ -314,8 +314,8 @@ def gen_stub_rows():
 def gen_stub_routes():
     out = []
     for is_async, cls, doc in (
-        (True, "DataV2", "Async Data API v2 routes. Obtain with `DataApi().v2()`."),
-        (False, "DataV2Sync", "Sync Data API v2 routes. Obtain with `DataApiSync().v2()`."),
+        (True, "DataApi", "Async client for the Polymarket Data API; each method is a route."),
+        (False, "DataApiSync", "Sync client for the Polymarket Data API; each method is a route."),
     ):
         methods = []
         for r in ROUTES:

@@ -11,7 +11,7 @@ Each entry names its evidence. Re-check before relying on an old one.
 The spec describes `trade_pnl` as "the compatibility chart series (`p` on the
 bare user-pnl route)", which suggests `/v2/user-pnl` can replace
 `data.pnl()`. It cannot. Same wallets, `interval=1w`, `fidelity=1d`, joined on
-timestamp, 2026-09-14 (`scripts/compare_v2_overlaps.py`, plus one wallet checked by
+timestamp, 2026-09-14 (`scripts/compare_v2_overlaps.py` (removed with v1, in git history), plus one wallet checked by
 hand during design):
 
 | wallet | points joined | `trade_pnl` vs `p` |
@@ -265,11 +265,15 @@ both `/v2/user-stats` and `/v2/leaderboard?user=` (2026-09-14).
 
 ## Measured rate limits
 
-Upstream publishes no v2 figures. Each route below was ramped with
+Upstream published no v2 figures until late 2026; by 2026-11-04 its rate-limit page
+(https://docs.polymarket.com/api-reference/rate-limits) lists them: 800/10s general,
+`/v2/trades` 300, `/v2/positions` with `/v2/positions/combos` 200, `/v2/activity` with
+`/v2/activity/combos` 200, `/v2/prices-history` 200 and `/v2/status` 100.
+`shared::data_limits` transcribes them, each combined row as one shared bucket, except
+where a measurement below disagrees. Each route below was ramped with
 `polyoxide-polymarket/examples/v2_soak` (raw requests, every URL distinct so the CDN
-cannot answer, abort on the first 429) and then validated at the shipped
-limiter's pace. `shared::data_limits` pins the counts in the table at the
-end of this section.
+cannot answer, abort on the first 429) and then validated at the shipped limiter's
+pace. The table at the end of this section is what `shared::data_limits` pins.
 
 ### Ramps
 
@@ -442,16 +446,33 @@ At the plan's default of 4 requests in flight, latency capped the run at 11.47 r
 against the row's 17.9, so the limiter never bound and the run did not test the row.
 The remaining validations use `--concurrency 16`, and this route is re-run with it.
 
+#### The published `/v2/trades` figure (2026-11-04)
+
+With the published 300/10s pinned, `/v2/trades` paces at 26.9 req/s. Validated with
+`--route trades --pace client --stage-secs 180`:
+
+| Run (UTC) | Concurrency | Requests | Achieved req/s | p99 ms | 429s | Cache hits | Result |
+|-----------|-------------|----------|----------------|--------|------|------------|--------|
+| 2026-11-04 | 4 | 2885 | 16.03 | 441 | 0 | 0 | PASS, but latency-bound below the row's pace |
+| 2026-11-04 | 10 | 218 | — | 372 | 0 | 1 | invalid: a URL the first run had requested came from the CDN |
+| 2026-11-04 | 10 | 1826 | ~26 until it stopped | 526 | 5 | 0 | **FAIL**: throttled at 70 s (unrecognised 429, no `Retry-After`) |
+
+So the published figure is not reachable as a rate, as v1's ramp (429s at 29.65 req/s)
+suggested, and `/v2/trades` keeps the 200/10s it was validated at above (the owner's
+choice, 2026-11-04).
+
 ### Pinned
 
-| Route | Per 10s | Ramp stopped by |
-|-------|---------|-----------------|
-| `/v2/positions` | 200 | 429 (unrecognised body) at 30 req/s |
-| `/v2/positions/combos` | 400 | clean to 40 req/s (harness ceiling) |
-| `/v2/trades` | 200 | 429 (unrecognised body) at 30 req/s |
-| `/v2/activity` | 400 | clean to 40 req/s (harness ceiling) |
-| `/v2/user-pnl` | 400 | clean to 40 req/s (harness ceiling); p99 near the saturation threshold at 30 |
-| `/v2/holders` | 400 | clean to 40 req/s (harness ceiling), measured with `include_pnl=true` |
+| Route | Per 10s | From |
+|-------|---------|------|
+| general | 800 | published |
+| `/v2/positions` and `/v2/positions/combos` | 200, one bucket | published; the ramp's 429 at 30 req/s on `/v2/positions` agrees |
+| `/v2/activity` and `/v2/activity/combos` | 200, one bucket | published (the ramp ran clean to 40 req/s on `/v2/activity` alone) |
+| `/v2/prices-history` | 200 | published |
+| `/v2/status` | 100 | published |
+| `/v2/trades` | 200 | measured: the published 300 drew 429s at its pace (above) |
+| `/v2/user-pnl` | 400 | measured, not published: clean to 40 req/s (harness ceiling); p99 near the saturation threshold at 30 |
+| `/v2/holders` | 400 | measured, not published: clean to 40 req/s (harness ceiling), with `include_pnl=true` |
 
 ## Browser transport (2026-11)
 

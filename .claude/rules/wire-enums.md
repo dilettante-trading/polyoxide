@@ -12,8 +12,8 @@ paths:
 
 # Wire enums
 
-`polyoxide-venue`'s macros declare the wire enums of gamma (`src/gamma/types.rs`), data v2
-(`src/data/v2/types/common.rs`), perps (`src/perps/types.rs`) and relay (`src/relay/types.rs`,
+`polyoxide-venue`'s macros declare the wire enums of gamma (`src/gamma/types.rs`), data
+(`src/data/types/common.rs`), perps (`src/perps/types.rs`) and relay (`src/relay/types.rs`,
 `session_signers.rs`), all in `polyoxide-polymarket`, and of Binance (`usdm/types.rs` and
 `spot/types.rs`):
 

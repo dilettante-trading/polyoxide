@@ -2224,7 +2224,7 @@ class DataApi:
         interval: str | None = None,
         fidelity: str | None = None,
     ) -> Coroutine[Any, Any, UserPnlSeries]:
-        """A wallet's cumulative PnL series. Not the same series as `data.pnl()`."""
+        """A wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served."""
         ...
     def user_stats(
         self,
@@ -2594,7 +2594,7 @@ class DataApiSync:
         interval: str | None = None,
         fidelity: str | None = None,
     ) -> UserPnlSeries:
-        """A wallet's cumulative PnL series. Not the same series as `data.pnl()`."""
+        """A wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served."""
         ...
     def user_stats(
         self,

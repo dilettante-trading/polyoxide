@@ -353,6 +353,14 @@ stage does not hold, printing each one's key to copy there.
   R26 is core's `mock_request` `<impl polyoxide_core::Authenticator for StampAttempt>::sign`,
   which logs the body it signs through `String::from_utf8_lossy` since `RequestParts::body`
   became bytes (#87).
+  R27 is Data API v1's retirement and the flatten of `data::v2` into `data`: the CLOB's position
+  and trade mocks, the send-loop proofs, the header, error-class, query-setter and limit
+  agreement tests moved off v1 routes, and every v2 suite item whose body called `data.v2()`.
+  Three items that cited R14 or R22 (`spec_agreement_data_v2`'s `NOT_MODELLED` and `ROUTES`,
+  `data::v2::error`'s `tests::parts`) changed again with the flatten, so their one entry, whose
+  sha256 pins the whole diff, cites R27. The `[[retired]]` entries (lost v1 tests) each cite
+  their subject's `docs/s3-removals.md` key, and `[files]`, `[paths]` and `[literals]` hold the
+  flatten's file merges, path rewrites and fixture directory.
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.

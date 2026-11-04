@@ -445,7 +445,7 @@ v2_namespaces! {
             user: String,
         ) -> PyV2Approvals => |client| client.approvals(user);
 
-        /// `GET /v2/user-pnl`: a wallet's cumulative PnL series. Not the same series as `data.pnl()`.
+        /// `GET /v2/user-pnl`: a wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served.
         #[pyo3(signature = (user, *, interval=None, fidelity=None))]
         fn user_pnl(
             user: String,

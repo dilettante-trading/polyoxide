@@ -369,7 +369,7 @@ const CASES: &[Case] = &[
             ("condition", "conditions-1,conditions-2"),
         ],
     },
-    // a list of unknown activity types sends nothing.
+    // an empty condition list sends no `condition` key.
     Case {
         builder: "ListTrades",
         path: "/v2/trades",

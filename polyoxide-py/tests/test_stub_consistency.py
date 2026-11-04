@@ -136,6 +136,15 @@ def test_every_exported_class_has_a_stub() -> None:
     assert exported - set(_STUB_CLASSES) == set()
 
 
+def test_the_data_records_are_exported_from_polyoxide() -> None:
+    """The row classes, `Page` and its iterators are importable from `polyoxide`
+    itself, not only from the compiled module the stub check falls back to."""
+    records = {"Page", "PageIterator", "PageIteratorSync", "Pagination", "Activity", "Trade",
+               "Position", "ServiceStatus", "UserStats", "MetaHolder"}
+    assert records <= set(polyoxide.__all__)
+    assert all(hasattr(polyoxide, name) for name in records)
+
+
 def test_the_data_clients_carry_the_routes() -> None:
     assert len(_DATA_METHODS) > 40, _DATA_METHODS
 
