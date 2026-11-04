@@ -1361,3 +1361,71 @@ async fn live_fak_unmatched_is_typed_error() {
         "an unmatched FAK must not be retriable"
     );
 }
+
+// ── Protocol V2 (read-only, no credentials) ─────────────────────
+
+/// A Protocol V2 market is served end to end: its ids come out of
+/// `Market::outcome_ids`, and the CLOB answers `/book`, `/tick-size` and
+/// `/neg-risk` for each. This answers the open question of whether the
+/// per-token helpers serve position ids.
+///
+/// Fails as `environmental` while the newest open markets include no V2 one:
+/// the nightly logs that and moves on, so the first run after a V2 market
+/// exists is the first real signal. It reads three routes per id and posts no
+/// order.
+#[tokio::test]
+#[ignore]
+async fn live_v2_market_is_served() {
+    use polyoxide_polymarket::gamma::types::ProtocolVersion;
+
+    let gamma = Gamma::builder().build().or_fail("gamma client");
+    let markets = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .order("id")
+        .ascending(false)
+        .limit(100)
+        .send()
+        .await
+        .or_fail("list the newest open markets");
+
+    let Some(market) = markets
+        .iter()
+        .find(|market| market.version == Some(ProtocolVersion::V2))
+    else {
+        environmental("no Protocol V2 market among the newest 100 open markets");
+    };
+
+    let outcomes = market.outcome_ids().or_fail("the V2 market's outcome ids");
+    assert!(
+        !outcomes.is_empty(),
+        "market {} lists no outcome ids",
+        market.id
+    );
+
+    let clob = public_client();
+    for outcome in &outcomes {
+        let id = &outcome.id;
+        let book = clob
+            .markets()
+            .order_book(id)
+            .send()
+            .await
+            .or_fail("the V2 outcome's order book");
+        assert_eq!(
+            &book.asset_id, id,
+            "the book answers for the id that was asked"
+        );
+        clob.markets()
+            .tick_size(id)
+            .send()
+            .await
+            .or_fail("the V2 outcome's tick size");
+        clob.markets()
+            .neg_risk(id)
+            .send()
+            .await
+            .or_fail("the V2 outcome's neg-risk flag");
+    }
+}
