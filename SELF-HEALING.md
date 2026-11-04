@@ -105,7 +105,6 @@ mirror in `docs/specs/`:
 |-------|----------|-----------------|
 | clob | `docs.polymarket.com/api-spec/clob-openapi.yaml` | `docs/specs/clob/openapi.yaml` |
 | gamma | `docs.polymarket.com/api-spec/gamma-openapi.yaml` | `docs/specs/gamma/openapi.yaml` |
-| data | `docs.polymarket.com/api-spec/data-openapi.yaml` | `docs/specs/data/openapi.yaml` |
 | data-v2 | `data-api.polymarket.com/v2/openapi.json` (served by the API host, not the docs site) | `docs/specs/data-v2/openapi.json` |
 | relay | `docs.polymarket.com/api-spec/relayer-openapi.yaml` | `docs/specs/relay/openapi.yaml` |
 | perps | `docs.polymarket.com/api-spec/perps-openapi.json` | `docs/specs/perps/openapi.json` |
@@ -150,9 +149,6 @@ Actions open pull requests anyway.
   `slug`-keyed payload and a text ping/pong that the server never sends, so the
   mirror is modelled on captured wire frames, and diffing it would report drift
   forever.
-- **Undocumented hosts** (`docs/specs/undocumented/`) — `user-pnl-api` and
-  `lb-api` publish no spec to diff against; their shapes were derived from live
-  responses, and `polyoxide-polymarket`'s `live_data` suite is the drift check.
 - **RTDS** (`docs/specs/rtds/`) — Upstream publishes no AsyncAPI for
   `ws-live-data`; the mirror is modelled on captured wire frames, so there is
   nothing to diff it against.

@@ -91,7 +91,7 @@ that builds on 0.40 builds unchanged.
   `polymarket-clob-ws`, whose crate root pins `DynTrading` and, with `polymarket-data`,
   `Clob: Trading`. The CLOB stores no client
   order id, so a `Clob` remembers the ones it placed in-process (at most 10,000, lost with the
-  process). `positions` reads Data v1 with no dust filter, `balances` holds the pUSD collateral,
+  process). `positions` reads the Data API (v1 with no dust filter then; v2 since the Data API v1 section below), `balances` holds the pUSD collateral,
   and `events()` opens its own user socket for each call.
 - No dependency tree gains a crate: `trading` builds futures-core, which every build that turns
   it on already has through futures-util.
@@ -300,3 +300,70 @@ What is added, so a native build that sets none of it is unchanged:
 **For a crate outside the workspace that invokes `client_config_setters!`:** the macro's
 `runtime` setter names `polyoxide_rt::Runtime`, which `polyoxide-core` does not re-export, so the
 invoking crate declares `polyoxide-rt` itself. `transport_setters!` needs it the same way.
+
+## Data API v1 retired (retire-data-v1)
+
+Consumer impact: breaking. Polymarket retired Data API v1 on 2026-11-02: every v1 route on
+`data-api.polymarket.com`, the bare `/`, and the `user-pnl-api` and `lb-api` hosts answer `410`.
+polyoxide removes v1 and makes v2 the `data` module itself. Each removed path is keyed in
+[`s3-removals.md`](s3-removals.md).
+
+**Rust: each v1 call and its replacement.** Every route is a `DataApi` method now; the v2 rows
+are snake_case, page by cursor (`Page<T>`, `.cursor(..)`, `.pages()`), and use `Option` for a
+value the API may not have.
+
+| v1 call | Now |
+|---|---|
+| `data.user(addr).list_positions()`, `.closed_positions()` | `data.positions(addr)`, with `.status(PositionStatus::Open \| Closed \| Redeemable \| ..)` |
+| `data.user(addr).positions_value()` | `data.value(addr)` |
+| `data.user(addr).trades()`, `data.trades().list()` | `data.trades()`, with `.user(addr)` or `.conditions(..)` |
+| `data.user(addr).activity()` | `data.activity(addr)` |
+| `data.user(addr).traded()`, `data.traded(addr)` | `data.user_stats(addr)`; `None` for a wallet the API does not know |
+| `data.holders().list(markets)` | `data.holders(conditions)` |
+| `data.open_interest()`, `data.live_volume()` | `data.open_interest()`, `data.live_volume(event_ids)` |
+| `data.leaderboard()` | `data.leaderboard()`, `data.leaderboard_user(addr)` |
+| `data.builders()` | `data.builders_leaderboard()`, `data.builder_volume()` |
+| `data.market_positions()` | `data.positions(PositionAnchor::Condition(condition))` |
+| `data.combos()` | `data.combo_positions(addr)`, `data.combo_activity(addr)` |
+| `data.approvals()` | `data.approvals(addr)` |
+| `data.pnl()` (`user-pnl-api`) | `data.user_pnl(addr)`, which is not the same series |
+| `data.rankings()` (`lb-api`) | `data.leaderboard()`, which ranks volume in shares, not USDC |
+| `data.health()` | `data.status()`; its 200 is the host's liveness signal now that `/` is gone |
+| `data.accounting()`, `data.misc()` | nothing: v2 serves no accounting snapshot, `/other` or `/revisions` |
+| `DataApiBuilder::pnl_base_url`, `rankings_base_url` | nothing: the client keeps one host |
+
+**Rust: the flatten.** `data::v2::X` is `data::X` (`data::types::Position`, `data::Page`,
+`data::api::feeds::ListTrades`), and `data.v2().x()` is `data.x()`; `DataV2` is gone.
+`V2Error` is `data::VenueError` and `DataError::V2` is `DataError::Venue`, fields unchanged.
+`SortDirection` and `Allowance` keep their `data::types` paths.
+
+**Rust: building records.** Every struct under `data::types`, and `Page` and `Pagination`, drops
+`#[non_exhaustive]`, so a consumer builds its own rows and pages by struct literal; a field added
+to one is therefore a breaking change from here on. The enums stay `#[non_exhaustive]` beside
+their `Other(raw)`. `OutcomeIndex::new(raw)` builds an index, `999` (`UNLABELED`) included.
+
+**Rust: the CLOB's `Trading` and `Trades`.** `Trades` reads one taker-only `/v2/trades` page of
+100. `positions` walks `/v2/positions` (`status=OPEN`, which includes redeemable rows); v2 serves a
+holding of 0.1 share or less only as closed, so such dust is no longer listed. `PositionExt`'s
+`initial_value` is `entry_cost` (v2's `entry_cost_usdc`) and `cash_pnl` is `unrealized_pnl`; an end
+date of `1970-01-01` or empty, and an outcome index of 999, are `None`.
+
+**Rate limits.** The data client paces by Polymarket's published v2 table: 800/10s general, 200
+per printed pair (`/v2/positions` with its `/combos`, `/v2/activity` with its `/combos`, one shared
+allowance each), `/v2/prices-history` 200, `/v2/status` 100. `/v2/trades` keeps the measured 200,
+since the published 300 drew 429s at its pace; `/v2/user-pnl` and `/v2/holders` keep 400.
+
+**TypeScript (specta).** Data's `TradeSide`, `ActivitySide`, `ActivityType`, `PositionStatus` and
+`TokenModule`, and gamma's `ProtocolVersion`, `ResolutionStatus` and `HomeAway`, export as named
+unions of their known spellings and `OpenString` (`string & {}`) instead of `string`, for example
+`export type TradeSide = "BUY" | "SELL" | OpenString`. `polyoxide_venue::specta_as_string!` is
+removed.
+
+**Python.** `DataApi()` and `DataApiSync()` keep their constructor; every route is a method
+(`DataApi().trades()`), and the row classes, `Page` and its iterators are importable from
+`polyoxide` (`from polyoxide import Trade`). `DataApi().v2()`, `polyoxide.v2`, the v1 methods
+(`user()`, the v1 `trades()`, `holders()`, `leaderboard()`, `health()`, ...) and the v1 row classes
+are gone.
+
+**CLI.** `polyoxide polymarket data …` keeps every command and flag; `data health` prints
+`/v2/status`.

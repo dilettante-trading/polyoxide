@@ -163,24 +163,12 @@ kind = "openapi"
 url = "https://docs.polymarket.com/api-spec/gamma-openapi.yaml"
 vendored = "docs/specs/gamma/openapi.yaml"
 
-[workspace.metadata.polyoxide.mirrors.data]
-name = "Data"
-section = "covered"
-base_urls = ["https://data-api.polymarket.com"]
-description = "User positions, trades, combos, leaderboard"
-
-[[workspace.metadata.polyoxide.mirrors.data.specs]]
-id = "data"
-kind = "openapi"
-url = "https://docs.polymarket.com/api-spec/data-openapi.yaml"
-vendored = "docs/specs/data/openapi.yaml"
-
 [workspace.metadata.polyoxide.mirrors.data-v2]
 name = "Data v2"
 section = "covered"
 base_urls = ["https://data-api.polymarket.com/v2"]
-description = "The Data API's second contract: `data` envelope, cursor pagination, snake_case"
-crate_note = "`data.v2()`"
+description = "The Data API (v2; v1 retired 2026-11-02): `data` envelope, cursor pagination, snake_case"
+crate_note = "`data`"
 
 [[workspace.metadata.polyoxide.mirrors.data-v2.specs]]
 id = "data-v2"
@@ -214,13 +202,6 @@ kind = "asyncapi"
 url = "https://docs.polymarket.com/asyncapi-sports.json"
 vendored = "docs/specs/sports/asyncapi.json"
 covers = "Sports feed. **Does not match the wire**; implemented from captured frames, see [sports/OBSERVED.md](sports/OBSERVED.md)"
-
-[workspace.metadata.polyoxide.mirrors.undocumented]
-name = "Undocumented hosts"
-section = "excluded"
-base_urls = ["https://user-pnl-api.polymarket.com", "https://lb-api.polymarket.com"]
-description = "Profit and loss series and leaderboard rankings, derived from live responses"
-exclude = "`user-pnl-api` and `lb-api` publish no spec to diff against; their shapes were derived from live responses, and `polyoxide-polymarket`'s `live_data` suite is the drift check."
 
 [workspace.metadata.polyoxide.mirrors.rtds]
 name = "RTDS"

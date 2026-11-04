@@ -167,7 +167,7 @@ type never depends on the wording of a message:
 | `RestrictedError` | `Restricted` | The venue will not serve this caller (418, 451) |
 | `DecodeError` | `Decode` | A response that did not decode, or a page walk that could not continue |
 
-A Data API v2 error maps by its `code`: `invalid_request` to `ValidationError`,
+A Data API error with its structured body maps by its `code`: `invalid_request` to `ValidationError`,
 `rate_limited` to `RateLimitError`, `request_timeout` to `TimeoutError` (a
 subclass of `UnavailableError`), and any other code to `ApiError`. Every
 exception also carries `status`, `code`, `retryable`, `trace_id`, `parameter`

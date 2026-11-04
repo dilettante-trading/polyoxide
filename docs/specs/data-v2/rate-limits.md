@@ -1,67 +1,35 @@
 # Data API Rate Limits
 
-Base URL: `https://data-api.polymarket.com`
+Base URL: `https://data-api.polymarket.com` (every route under `/v2`; Polymarket retired
+Data API v1 on 2026-11-02).
 
 Enforcement: sliding time window. Upstream describes these as IP-based Cloudflare
 throttling — over-limit requests are delayed/queued rather than rejected outright.
 
-Source: <https://docs.polymarket.com/api-reference/rate-limits>, fetched 2026-08-05.
-
-These are v1 routes. Data API v2 publishes no limits; the measured `/v2` rows are in
-[../data-v2/OBSERVED.md](../data-v2/OBSERVED.md#measured-rate-limits).
+Source: <https://docs.polymarket.com/api-reference/rate-limits>, its Data API v2 section,
+fetched 2026-11-04. What `shared::data_limits` pins, and the measurements behind each row
+it does not take from this table, are in [OBSERVED.md](OBSERVED.md#measured-rate-limits).
 
 ## General
 
 | Limit | Window |
 |-------|--------|
-| 1,000 requests | 10 seconds |
+| 800 requests (all `/v2` endpoints) | 10 seconds |
 
 ## Endpoint-Specific
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| `/trades` | 200 | 10s |
-| `/positions` | 150 | 10s |
-| `/closed-positions` | 150 | 10s |
-| `/` (health) | 100 | 10s |
+| `/v2/trades` | 300 | 10s |
+| `/v2/positions`, `/v2/positions/combos` | 200 | 10s |
+| `/v2/activity`, `/v2/activity/combos` | 200 | 10s |
+| `/v2/prices-history` | 200 | 10s |
+| `/v2/status` | 100 | 10s |
 
-### The health row is published as `/ok`, but that route does not exist here
-
-Upstream's table spells the health row `Health check (/ok)`. That path returns
-**404** on this host:
-
-```
-GET https://data-api.polymarket.com/      -> 200  {"data":"OK"}
-GET https://data-api.polymarket.com/ok    -> 404  404 page not found
-```
-
-The `/ok` spelling is boilerplate repeated into every surface's table on that
-page. Only `clob.polymarket.com` actually serves `/ok`. The cap belongs to `/`,
-which is the route this host answers on and the one the `data` module requests.
-
-Attaching the cap to `/ok` instead is not a harmless spelling difference: it
-leaves the real health route governed only by the 1,000/10s general bucket, a
-10x over-permit, while the `/ok` entry caps a route nobody can call.
-
-## Sibling hosts
-
-Two namespaces target sibling hosts that share one `RateLimiter` (`polyoxide_polymarket::shared::data_limits()`) with the main
-Data API client (see `HttpClient::with_base_url`).
-
-| Host | Namespace | Limit | Window |
-|------|-----------|-------|--------|
-| `user-pnl-api.polymarket.com` | `data.pnl()` | 200 | 10s |
-| `lb-api.polymarket.com` | `data.rankings()` | *(none published)* | — |
-
-Upstream publishes the User PNL figure as a host-wide allowance ("User PNL API |
-200 req / 10s"), not a per-path one. polyoxide models it as a path rule on
-`/user-pnl`, which is exact today because that is the only route it calls on
-that host — but note the limiter matches on **path alone and has no host
-dimension**, so a future sibling route colliding with a main-host path (`/trades`,
-`/positions`) would draw from the wrong bucket.
-
-`lb-api` has no published limit, so `/volume` and `/profit` fall to the shared
-general bucket.
+Each two-path row is read as one shared allowance, as the same page's combined CLOB ledger
+row is. `/v2/trades` drew 429s at the pace its 300 allows, so the client keeps the measured
+200 (OBSERVED.md). v1's table, which the sections below were measured against, is in git
+history.
 
 ## What the published table cannot tell you
 
@@ -115,8 +83,8 @@ arithmetic alone still failed. `quota()` therefore also reserves a tenth of
 every published count, pacing this route at 13.4 req/s.
 
 Measured against the live host with
-`polyoxide-polymarket/examples/closed_positions_soak.rs`, whose `--rate` flag drives a
-chosen rate (omit it to exercise the shipped limiter):
+`closed_positions_soak.rs` (removed with v1, in git history), whose `--rate` flag drove a
+chosen rate:
 
 | Shape | Rate | Share of published | Result |
 |---|---|---|---|

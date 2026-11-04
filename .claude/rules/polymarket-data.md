@@ -7,7 +7,7 @@ paths:
   - "polyoxide-cli/src/commands/polymarket/data/**"
   - "polyoxide-cli/tests/data.rs"
   - "scripts/{capture_polymarket_data,gen_data_v2_types}.py"
-  - "docs/specs/{data,data-v2,undocumented}/**"
+  - "docs/specs/data-v2/**"
 ---
 
 # Polymarket Data API

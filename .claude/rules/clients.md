@@ -78,7 +78,7 @@ and failing with its own message.
 ## Query setters
 
 Query parameters are chained with builder methods before `.send().await?`
-(`gamma.markets().list().open(true).send().await?`, `data.v2().leaderboard().send().await?`).
+(`gamma.markets().list().open(true).send().await?`, `data.leaderboard().send().await?`).
 The setters come from `polyoxide_core::query_setters!`, one entry per setter keeping its doc
 comment, name, argument type and key:
 
