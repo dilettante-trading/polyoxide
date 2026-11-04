@@ -5,6 +5,7 @@ paths:
   - "polyoxide-polymarket/tests/fixtures/clob/**"
   - "polyoxide-polymarket/examples/{test_order,get_nonce,twap_stream}.rs"
   - "scripts/capture_polymarket_clob.py"
+  - "scripts/capture_polymarket_protocol_v2.py"
   - "docs/specs/clob/**"
 ---
 
@@ -30,7 +31,7 @@ EIP-712 domains and are verified by different parties.
 |---|---|---|
 | **L1** | creating/deriving API credentials (`/auth/api-key`, `/auth/derive-api-key`) | EIP-712 `ClobAuth`, domain `ClobAuthDomain` v1, **no `verifyingContract`** |
 | **L2** | everything else authenticated: orders, balances, trades | HMAC-SHA256 over `timestamp + method + path [+ body]`, url-safe base64 |
-| **Order signing** | the signed order payload itself, posted under L2 | EIP-712 `Order`, domain `Polymarket CTF Exchange` v2, **with** `verifyingContract` |
+| **Order signing** | the signed order payload itself, posted under L2 | EIP-712 `Order`, domain `Polymarket CTF Exchange` at version `"2"` (the CTF exchanges) or `"3"` (ExchangeV3, for a Protocol V2 position id), **with** `verifyingContract` |
 
 On `wasm32` alloy declares its `Signer` futures `!Send`, so `core/eip712.rs` signs every digest
 through one private `sign_digest`, which holds the future in a `send_wrapper::SendWrapper` there
@@ -41,8 +42,19 @@ have one. `docs/specs/clob/auth.md` has both type strings; `src/clob/core/eip712
 against golden vectors from `py-clob-client`. Signature type 3 (Deposit Wallets) and session keys:
 `session-keys.md`.
 
-The module signs exchange domain `"2"` only, which is correct for Gamma `v1` markets; Protocol V2
-markets sign for ExchangeV3 (domain `"3"`) and are not supported (#51, `polymarket-gamma.md`).
+The domain is chosen per order, from its token id alone (`order_exchange` in `core/eip712.rs`, on
+`shared::protocol::is_v2_position_id`), as py-sdk 0.12.0 does. An id is a Protocol V2 position id
+when py-sdk's `is_v2_position_id` (bits 40 to 103 clear) **and** its `decode_v2_outcome_position_id`
+(module byte 1 to 3, outcome byte 0 or 1) both accept it. A V2 id signs domain `"3"` on ExchangeV3
+(`Chain::exchange_v3`, Polygon mainnet only; on Amoy the order is refused as `InvalidRequest` when
+it signs), **whatever `neg_risk` says**; any other id signs `"2"` on the CTF or neg-risk exchange
+that `neg_risk` picks, exactly as before. The rule is one condition stricter than py-sdk's bare
+mask, which also calls toy ids such as `1`, `100` and `123456` V2; those name no V2 position (module
+byte 0) and are the ids the older pinned tests sign with, so they stay V1. It agrees with py-sdk on
+every id a market can carry. The same rule makes `get_market_metadata` skip `/neg-risk` for a V2 id
+(it keeps `/tick-size`) and `balance_allowance` send `CONDITIONAL-V2`. `tests/fixtures/clob/protocol_v2/`
+pins all of it, captured from py-sdk 0.12.0 by `scripts/capture_polymarket_protocol_v2.py`. Gamma's
+side, the outcome ids of a V2 market, is `polymarket-gamma.md`.
 
 ## Order kill outcomes are not faults
 
@@ -104,7 +116,8 @@ crate list shows it.
 - `place` supports every account the native order routes sign for, a Deposit Wallet's (signature
   type 3) included: the order's id is its EIP-712 hash under its exchange's domain, computed before
   signing for every signature type, and a Deposit Wallet's order is signed as its ERC-7739
-  envelope.
+  envelope. For a Protocol V2 id that domain is ExchangeV3's (version `"3"`), and `neg_risk` in
+  `ClobOrderOptions` is ignored.
 - `place` refuses before it sends anything, as `InvalidRequest`: a key of another product; an
   extension other than `ClobOrderOptions` (`neg_risk`, `tick_size` and `expiration`; no fee terms,
   since a V2 order signs no fee rate; not `Eq`, since `TickSize` is not); reduce-only; `post_only`

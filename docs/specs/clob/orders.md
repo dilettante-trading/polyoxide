@@ -3,7 +3,9 @@
 Base URL: `https://clob.polymarket.com`
 
 > **Note (CLOB V2):** polyoxide signs and submits orders using the CLOB **V2**
-> scheme (EIP-712 domain version `"2"`, V2 exchange contracts). The V2 signed
+> scheme (EIP-712 domain version `"2"`, V2 exchange contracts; version `"3"` on
+> ExchangeV3 for a Protocol V2 position id, see `auth.md`'s "Order-signing domain,
+> per protocol"). The V2 signed
 > order replaces `taker`/`nonce`/`feeRateBps` with `timestamp`, `metadata`, and a
 > `builder` `bytes32` field. Fees are **not** part of the signed order — they are
 > collected on-chain at match time. The example bodies below show the legacy V1

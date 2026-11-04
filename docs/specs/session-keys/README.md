@@ -54,8 +54,10 @@ Read on 2026-09-25:
 `maker` = `signer` = the Deposit Wallet address; `signatureType` = 3. The signature is
 an ERC-7739 `TypedDataSign` envelope:
 
-1. EIP-712 domain `Polymarket CTF Exchange`, version `2`, chain 137, verifying
-   contract = the exchange (standard or neg-risk, as for any V2 order).
+1. EIP-712 domain `Polymarket CTF Exchange`, chain 137: version `3` and verifying
+   contract = ExchangeV3 for a Protocol V2 position id; version `2` and the standard
+   or neg-risk exchange (as for any V2 order) otherwise.
+   `polyoxide-polymarket/tests/fixtures/clob/protocol_v2/order_vectors.json` pins both.
 2. Primary type `TypedDataSign { contents: Order, name, version, chainId,
    verifyingContract, salt }` with `contents` = the V2 `Order`, `name = "DepositWallet"`,
    `version = "1"`, `chainId = 137`, `verifyingContract` = the Deposit Wallet,
