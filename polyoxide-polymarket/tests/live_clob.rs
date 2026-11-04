@@ -1369,10 +1369,12 @@ async fn live_fak_unmatched_is_typed_error() {
 /// `/neg-risk` for each. This answers the open question of whether the
 /// per-token helpers serve position ids.
 ///
-/// Fails as `environmental` while the newest open markets include no V2 one:
-/// the nightly logs that and moves on, so the first run after a V2 market
-/// exists is the first real signal. It reads three routes per id and posts no
-/// order.
+/// It takes the first open V2 market whose order book is enabled: a V2 market
+/// listed before its book is would 404 on `/book`, which says nothing about
+/// position ids. Fails as `environmental` while the newest open markets include
+/// none: the nightly logs that and moves on, so the first run after such a
+/// market exists is the first real signal. It reads three routes per id and
+/// posts no order.
 #[tokio::test]
 #[ignore]
 async fn live_v2_market_is_served() {
@@ -1390,11 +1392,10 @@ async fn live_v2_market_is_served() {
         .await
         .or_fail("list the newest open markets");
 
-    let Some(market) = markets
-        .iter()
-        .find(|market| market.version == Some(ProtocolVersion::V2))
-    else {
-        environmental("no Protocol V2 market among the newest 100 open markets");
+    let Some(market) = markets.iter().find(|market| {
+        market.version == Some(ProtocolVersion::V2) && market.enable_order_book == Some(true)
+    }) else {
+        environmental("no Protocol V2 market with an order book among the newest 100 open markets");
     };
 
     let outcomes = market.outcome_ids().or_fail("the V2 market's outcome ids");
