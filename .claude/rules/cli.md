@@ -81,6 +81,12 @@ A bulk, resumable, rate-limited downloader for CLOB historical price data
 `manifest.jsonl`. Parquet output requires building the CLI with the `parquet` feature. Its
 `--format csv|jsonl|parquet` is a different `OutputFormat`, in `polymarket::clob::prices::types`.
 
+Market discovery (`select::discover_targets`) picks each Gamma market's ids by its `version`: a
+`v2` market's are its position ids, read through `Market::outcome_ids` (a selector refusal skips
+the market with a stderr warning), since the CLOB has no book for its `clob_token_ids`; a `v1`
+market's, and an unversioned market's, are its `clob_token_ids`; a market of another version is
+skipped with a warning.
+
 ## `polymarket data`
 
 The group reads Data API v2, except `data health`, which stays on v1's `/` because `/v2/status`
