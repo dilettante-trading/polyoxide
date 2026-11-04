@@ -28,7 +28,7 @@ paths:
   (`relay::types`, re-exported from `relay`) refuse with `RelayError::validation` and py-sdk's
   messages; `parse` sits on the crate-private `shared::protocol`, which `clob` or `relay` builds,
   and `parse_v2_condition_id` is self-contained. `parse` applies py-sdk's layout decode only, with
-  no reserved-bit mask, so it accepts some ids the CLOB classifies as V1 (`id_vectors.json` row 19,
+  no reserved-bit mask, so it accepts some ids the CLOB classifies as V1 (`id_vectors.json`'s row with bit 40 set,
   about 1 in 11,000 CTF token ids), exactly as py-sdk does: take ids from a `v2` market's
   `Market::outcome_ids`. A
   position id is a uint256 (decimal, `0x`, `0b` or `0o`, whitespace trimmed) whose first byte is a

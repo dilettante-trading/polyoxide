@@ -580,7 +580,7 @@ impl V2PositionId {
     /// the last are the condition. Every refusal is an `InvalidRequest` with py-sdk's message.
     ///
     /// This is py-sdk's layout decode only, with no reserved-bit mask, so it accepts some ids
-    /// the CLOB classifies as V1 (`id_vectors.json` row 19, about 1 in 11,000 CTF token ids),
+    /// the CLOB classifies as V1 (`id_vectors.json`'s row with bit 40 set, about 1 in 11,000 CTF token ids),
     /// exactly as py-sdk does. Take ids from a `v2` market's `Market::outcome_ids`.
     pub fn parse(id: &str) -> Result<Self, RelayError> {
         let value = parse_position_id(id)
