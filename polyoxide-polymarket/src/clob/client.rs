@@ -1,5 +1,6 @@
 use crate::shared::{
-    self, PolymarketRetryPolicy, RateLimitStatus, SignerLimiter, Tier, TradingRequest,
+    self, protocol::is_v2_position_id, PolymarketRetryPolicy, RateLimitStatus, SignerLimiter, Tier,
+    TradingRequest,
 };
 use polyoxide_core::http::Method;
 use polyoxide_core::{ClientConfig, DynAuthenticator, HttpClient, Request};
@@ -473,6 +474,10 @@ impl Clob {
     // Helper methods for order creation
 
     /// Fetch market metadata (neg_risk and tick_size) for a token
+    ///
+    /// A Protocol V2 position id settles on ExchangeV3 whatever `neg_risk` says,
+    /// so for one the `/neg-risk` lookup is skipped and `neg_risk` is the
+    /// options' value, else `false`. The tick size is looked up for every token.
     async fn get_market_metadata(
         &self,
         token_id: &str,
@@ -481,6 +486,8 @@ impl Clob {
         // Fetch or use provided neg_risk status
         let neg_risk = if let Some(neg_risk) = options.and_then(|o| o.neg_risk) {
             neg_risk
+        } else if is_v2_position_id(token_id) {
+            false
         } else {
             let neg_risk_resp = self.markets().neg_risk(token_id.to_string()).send().await?;
             neg_risk_resp.neg_risk

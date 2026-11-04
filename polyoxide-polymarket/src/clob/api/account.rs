@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use alloy::primitives::Address;
 use std::sync::Arc;
 
-use crate::shared::{SessionSignerScope, Tier};
+use crate::shared::{protocol::is_v2_position_id, SessionSignerScope, Tier};
 use polyoxide_core::http::Method;
 use polyoxide_core::{ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request};
 use rust_decimal::Decimal;
@@ -26,14 +26,23 @@ pub struct AccountApi {
 
 impl AccountApi {
     /// Get balance and allowance for a token
+    ///
+    /// Sends `asset_type=CONDITIONAL-V2` for a Protocol V2 position id and
+    /// `CONDITIONAL` for any other.
     pub fn balance_allowance(
         &self,
         token_id: impl Into<String>,
     ) -> Request<BalanceAllowanceResponse, ClobError> {
+        let token_id = token_id.into();
+        let asset_type = if is_v2_position_id(&token_id) {
+            "CONDITIONAL-V2"
+        } else {
+            "CONDITIONAL"
+        };
         Request::new(self.http_client.clone(), "/balance-allowance")
             .authenticator(self.l2.clone())
-            .query("asset_type", "CONDITIONAL")
-            .query("token_id", token_id.into())
+            .query("asset_type", asset_type)
+            .query("token_id", token_id)
             .query("signature_type", self.signature_type as u8)
     }
 
@@ -48,7 +57,8 @@ impl AccountApi {
     /// Force a refresh of the caller's balance and allowances from on-chain data.
     ///
     /// Calls `GET /balance-allowance/update` with the following query parameters:
-    /// - `asset_type` (required): `"COLLATERAL"` or `"CONDITIONAL"`.
+    /// - `asset_type` (required): `"COLLATERAL"`, `"CONDITIONAL"`, or
+    ///   `"CONDITIONAL-V2"` for a Protocol V2 position id.
     /// - `token_id` (optional): asset ID. Defaults to `"-1"` (ERC20 collateral) server-side.
     /// - `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE,
     ///   `3` = Deposit Wallet. Defaults to `0` server-side.

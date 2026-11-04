@@ -260,6 +260,11 @@ required-features = ["gamma"]
 name = "wire_agreement_gamma"
 required-features = ["gamma"]
 
+# `Market::outcome_ids` against py-sdk's selector vectors (Protocol V2).
+[[test]]
+name = "outcome_ids_gamma"
+required-features = ["gamma"]
+
 # The data module's suites (Story 5.3).
 [[test]]
 name = "enum_wire_data"

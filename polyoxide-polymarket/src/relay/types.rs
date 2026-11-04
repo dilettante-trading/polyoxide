@@ -1,3 +1,6 @@
+use crate::relay::error::RelayError;
+use crate::shared::protocol::{decode_v2_outcome_position_id, parse_position_id};
+use alloy::primitives::FixedBytes;
 use alloy::sol;
 use serde::{Deserialize, Serialize};
 
@@ -556,4 +559,76 @@ mod tests {
         .unwrap();
         assert_eq!(p.nonce, 8);
     }
+}
+
+/// A Protocol V2 YES/NO position: its 31-byte condition and its outcome index (0 or 1).
+///
+/// [`V2PositionId::parse`] is the only constructor, so an outcome index outside
+/// 0 and 1 cannot be held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct V2PositionId {
+    condition_id: FixedBytes<31>,
+    outcome_index: u8,
+}
+
+impl V2PositionId {
+    /// Decode a position id, as py-sdk's `decode_v2_outcome_position_id` does.
+    ///
+    /// `id` is a uint256 in decimal, or in `0x`, `0b` or `0o` notation, with
+    /// surrounding whitespace ignored. Its first byte is the module (1 binary, 2 neg-risk,
+    /// 3 combinatorial), its last the outcome index (0 or 1) and the 31 bytes before
+    /// the last are the condition. Every refusal is an `InvalidRequest` with py-sdk's message.
+    ///
+    /// This is py-sdk's layout decode only, with no reserved-bit mask, so it accepts some ids
+    /// the CLOB classifies as V1 (`id_vectors.json`'s row with bit 40 set, about 1 in 11,000 CTF token ids),
+    /// exactly as py-sdk does. Take ids from a `v2` market's `Market::outcome_ids`.
+    pub fn parse(id: &str) -> Result<Self, RelayError> {
+        let value = parse_position_id(id)
+            .ok_or_else(|| RelayError::validation("Position ID must be a uint256 value"))?;
+        match decode_v2_outcome_position_id(id) {
+            Some((condition_id, outcome_index)) => Ok(Self {
+                condition_id,
+                outcome_index,
+            }),
+            // py-sdk checks the module byte before the outcome byte.
+            None if !(1..=3).contains(&value.to_be_bytes::<32>()[0]) => Err(
+                RelayError::validation("Position ID must use a supported protocol v2 module"),
+            ),
+            None => Err(RelayError::validation(
+                "Protocol v2 position ID must be a YES/NO position ID",
+            )),
+        }
+    }
+
+    /// The position's condition: the 31 bytes before its outcome byte.
+    pub fn condition_id(&self) -> FixedBytes<31> {
+        self.condition_id
+    }
+
+    /// The outcome index, 0 or 1.
+    pub fn outcome_index(&self) -> u8 {
+        self.outcome_index
+    }
+}
+
+/// Narrow a Protocol V2 condition id to 31 bytes, as py-sdk does.
+///
+/// Accepts `0x` followed by 62 hex digits, or by 64 hex digits ending in `00` or `01`
+/// (a bytes32 with a binary outcome byte, which is dropped), in either case of the
+/// prefix and the digits. Anything else is an `InvalidRequest` with py-sdk's message.
+pub fn parse_v2_condition_id(id: &str) -> Result<FixedBytes<31>, RelayError> {
+    const REFUSED: &str =
+        "Protocol v2 condition ID must be bytes31, or bytes32 with a binary outcome byte";
+    let lower = id.to_ascii_lowercase();
+    let mut digits = lower
+        .strip_prefix("0x")
+        .ok_or_else(|| RelayError::validation(REFUSED))?;
+    if digits.len() == 64 && (digits.ends_with("00") || digits.ends_with("01")) {
+        digits = &digits[..62];
+    }
+    if digits.len() != 62 {
+        return Err(RelayError::validation(REFUSED));
+    }
+    let bytes = hex::decode(digits).map_err(|_| RelayError::validation(REFUSED))?;
+    Ok(FixedBytes::<31>::from_slice(&bytes))
 }

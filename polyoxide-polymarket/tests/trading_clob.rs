@@ -1924,3 +1924,137 @@ async fn an_order_id_the_clob_names_differently_is_rekeyed_and_logged_as_a_warni
     assert!(warned[0].2.contains("venue=0xorder1"), "{:?}", warned[0]);
     assert!(warned[0].2.contains("computed=0x"), "{:?}", warned[0]);
 }
+
+// --- Protocol V2 ---
+
+const PROTOCOL_V2_IDS: &str = include_str!("fixtures/clob/protocol_v2/id_vectors.json");
+const PROTOCOL_V2_ORDERS: &str = include_str!("fixtures/clob/protocol_v2/order_vectors.json");
+
+#[path = "common/protocol_v2_digest.rs"]
+mod protocol_v2_digest;
+
+/// `place` on a Protocol V2 key reports the ExchangeV3 order hash as the
+/// order's id: the venue's answer names no order, so the id is the one `place`
+/// computed before signing. The hash is rebuilt here from py-sdk's recorded
+/// ExchangeV3 domain separator and the posted order, and the posted signature
+/// must recover to the account under that same digest.
+#[allow(clippy::field_reassign_with_default)]
+#[tokio::test]
+async fn place_on_a_protocol_v2_key_names_the_order_by_its_exchange_v3_hash() {
+    let ids: Value = serde_json::from_str(PROTOCOL_V2_IDS).unwrap();
+    let orders: Value = serde_json::from_str(PROTOCOL_V2_ORDERS).unwrap();
+    let v2_id = ids["ids"]["v2_binary"].as_str().unwrap().to_string();
+    let separator = |case: &str| -> alloy::primitives::B256 {
+        orders["cases"][case]["domain_separator"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    let v3 = separator("v2_eoa");
+    let v2 = separator("v1_eoa");
+    assert_ne!(v3, v2, "the fixture's two domains differ");
+
+    let mut server = Server::new_async().await;
+    // `match_query(Matcher::Any)` makes `expect(0)` real.
+    let neg_risk = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let posted = Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+    let sink = posted.clone();
+    let post = server
+        .mock("POST", "/order")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body_from_request(move |request| {
+            sink.lock().unwrap().push(request.body().unwrap().clone());
+            br#"{"success":true,"status":"live","transactionsHashes":[]}"#.to_vec()
+        })
+        .expect(1)
+        .create_async()
+        .await;
+    let clob = client(&server);
+    let mut options = ClobOrderOptions::default();
+    options.tick_size = Some(TickSize::Hundredth);
+    let request = with_options(
+        OrderRequest::new(
+            keys::clob(&TokenId::new(v2_id.clone()).unwrap()),
+            Side::Buy,
+            d("0.52"),
+            d("10"),
+        ),
+        options,
+    );
+
+    let placed = clob.place(request).await.unwrap();
+
+    neg_risk.assert_async().await;
+    post.assert_async().await;
+    let body: Value = serde_json::from_slice(&posted.lock().unwrap()[0]).unwrap();
+    // The wire writes the salt as a number and the order holds it as text.
+    let mut wire = body["order"].clone();
+    wire["salt"] = Value::String(wire["salt"].to_string());
+    let signed: polyoxide_polymarket::clob::SignedOrder = serde_json::from_value(wire).unwrap();
+    assert_eq!(signed.order.token_id, v2_id);
+
+    let digest = protocol_v2_digest::digest(v3, &signed.order);
+    assert_eq!(
+        placed.id,
+        OrderId::new(format!("0x{}", alloy::primitives::hex::encode(digest)))
+    );
+    assert_eq!(placed.status, OrderStatus::Open);
+    let hardhat_0 = account().address();
+    assert_eq!(
+        protocol_v2_digest::signer_of(&signed.signature, digest),
+        hardhat_0
+    );
+    // Not the id, nor the signed digest, of the same order under the CTF domain.
+    let ctf_digest = protocol_v2_digest::digest(v2, &signed.order);
+    assert_ne!(ctf_digest, digest);
+    assert_ne!(
+        protocol_v2_digest::signer_of(&signed.signature, ctf_digest),
+        hardhat_0
+    );
+}
+
+/// A caller's `neg_risk: Some(true)` does not make a Protocol V2 order a
+/// negative-risk one: it is signed for ExchangeV3 whatever the option says, so
+/// the order reports `neg_risk` false.
+#[allow(clippy::field_reassign_with_default)]
+#[tokio::test]
+async fn place_on_a_protocol_v2_key_reports_neg_risk_false_whatever_the_options_say() {
+    let ids: Value = serde_json::from_str(PROTOCOL_V2_IDS).unwrap();
+    let v2_id = ids["ids"]["v2_binary"].as_str().unwrap().to_string();
+
+    let mut server = Server::new_async().await;
+    let post = server
+        .mock("POST", "/order")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"success":true,"status":"live","transactionsHashes":[]}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let clob = client(&server);
+    let mut options = ClobOrderOptions::default();
+    options.tick_size = Some(TickSize::Hundredth);
+    options.neg_risk = Some(true);
+    let request = with_options(
+        OrderRequest::new(
+            keys::clob(&TokenId::new(v2_id).unwrap()),
+            Side::Buy,
+            d("0.52"),
+            d("10"),
+        ),
+        options,
+    );
+
+    let placed = clob.place(request).await.unwrap();
+
+    post.assert_async().await;
+    let ext = placed.extensions.get::<OrderExt>().unwrap();
+    assert_eq!(ext.neg_risk, Some(false));
+}

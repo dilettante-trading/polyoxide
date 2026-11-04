@@ -1361,3 +1361,81 @@ async fn live_fak_unmatched_is_typed_error() {
         "an unmatched FAK must not be retriable"
     );
 }
+
+// ── Protocol V2 (read-only, no credentials) ─────────────────────
+
+/// A Protocol V2 market is served end to end: its ids come out of
+/// `Market::outcome_ids`, and the CLOB answers `/book` and `/tick-size` for
+/// each, which the client depends on, so a non-2xx from either fails as `real`.
+/// `/neg-risk` is read too, but its outcome is only printed
+/// (`neg-risk for <id>: <status>`) and never fails the test: the client skips
+/// that route for a V2 id, so the leg records what the CLOB answers. Together
+/// they answer the open question of whether the per-token helpers serve
+/// position ids.
+///
+/// It takes the first open V2 market whose order book is enabled: a V2 market
+/// listed before its book is would 404 on `/book`, which says nothing about
+/// position ids. Fails as `environmental` while the newest open markets include
+/// none: the nightly logs that and moves on, so the first run after such a
+/// market exists is the first real signal. It reads three routes per id and
+/// posts no order.
+#[tokio::test]
+#[ignore]
+async fn live_v2_market_is_served() {
+    use polyoxide_core::ApiError;
+    use polyoxide_polymarket::clob::ClobError;
+    use polyoxide_polymarket::gamma::types::ProtocolVersion;
+
+    let gamma = Gamma::builder().build().or_fail("gamma client");
+    let markets = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .order("id")
+        .ascending(false)
+        .limit(100)
+        .send()
+        .await
+        .or_fail("list the newest open markets");
+
+    let Some(market) = markets.iter().find(|market| {
+        market.version == Some(ProtocolVersion::V2) && market.enable_order_book == Some(true)
+    }) else {
+        environmental("no Protocol V2 market with an order book among the newest 100 open markets");
+    };
+
+    let outcomes = market.outcome_ids().or_fail("the V2 market's outcome ids");
+    assert!(
+        !outcomes.is_empty(),
+        "market {} lists no outcome ids",
+        market.id
+    );
+
+    let clob = public_client();
+    for outcome in &outcomes {
+        let id = &outcome.id;
+        let book = clob
+            .markets()
+            .order_book(id)
+            .send()
+            .await
+            .or_fail("the V2 outcome's order book");
+        assert_eq!(
+            &book.asset_id, id,
+            "the book answers for the id that was asked"
+        );
+        clob.markets()
+            .tick_size(id)
+            .send()
+            .await
+            .or_fail("the V2 outcome's tick size");
+        // Recorded, never judged: the client skips `/neg-risk` for a V2 id.
+        match clob.markets().neg_risk(id).send().await {
+            Ok(flag) => eprintln!("neg-risk for {id}: OK, neg_risk={}", flag.neg_risk),
+            Err(ClobError::Api(ApiError::Response(response))) => {
+                eprintln!("neg-risk for {id}: {}", response.status.as_u16())
+            }
+            Err(other) => eprintln!("neg-risk for {id}: no status ({other})"),
+        }
+    }
+}

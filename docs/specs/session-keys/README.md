@@ -54,8 +54,10 @@ Read on 2026-09-25:
 `maker` = `signer` = the Deposit Wallet address; `signatureType` = 3. The signature is
 an ERC-7739 `TypedDataSign` envelope:
 
-1. EIP-712 domain `Polymarket CTF Exchange`, version `2`, chain 137, verifying
-   contract = the exchange (standard or neg-risk, as for any V2 order).
+1. EIP-712 domain `Polymarket CTF Exchange`, chain 137: version `3` and verifying
+   contract = ExchangeV3 for a Protocol V2 position id; version `2` and the standard
+   or neg-risk exchange (as for any V2 order) otherwise.
+   `polyoxide-polymarket/tests/fixtures/clob/protocol_v2/order_vectors.json` pins both.
 2. Primary type `TypedDataSign { contents: Order, name, version, chainId,
    verifyingContract, salt }` with `contents` = the V2 `Order`, `name = "DepositWallet"`,
    `version = "1"`, `chainId = 137`, `verifyingContract` = the Deposit Wallet,
@@ -148,11 +150,13 @@ For a CTF market it calls `redeemPositions(pUSD, 0x0, conditionId, [1, 2])` on t
 collateral adapter (`0xAdA100Db00Ca00073811820692005400218FcE1f`); for a neg-risk market
 the target is the neg-risk collateral adapter
 (`0xadA2005600Dec949baf300f4C6120000bDB6eAab`). It never calls the Conditional Tokens
-contract directly. A protocol-V2 market goes through the V2 router's `redeem` and is not
-covered here. pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`) is the Deposit Wallet
-collateral; polyoxide's Safe and Proxy paths still redeem against USDC on the Conditional
-Tokens contract, which is what they did before Deposit Wallets existed and has not been
-re-checked against py-sdk. The Manage Positions page's API tab gives the same adapters,
+contract directly. A protocol-V2 market goes through the V2 router's `redeem`, which
+polyoxide builds with `RelayClient::v2_redeem_call` and sends with `submit_v2_redeem` (for an
+external signer, pass the call to `deposit_wallet_batch_typed_data`, then
+`submit_deposit_wallet_batch_from`). pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`) is the
+Deposit Wallet collateral; polyoxide's Safe and Proxy paths still redeem against USDC on the
+Conditional Tokens contract, which is what they did before Deposit Wallets existed and has not
+been re-checked against py-sdk. The Manage Positions page's API tab gives the same adapters,
 collateral and index sets.
 
 ## Deposit Wallet address derivation

@@ -20,7 +20,9 @@ paths:
   cannot verify for the wallet. `v1_exchange.envelope_digest` in
   `polyoxide-polymarket/tests/fixtures/clob/session_keys/order_vectors.json` pins py-sdk's golden
   digest, and `polyoxide-polymarket/src/clob/core/eip712.rs` checks it. A session key adds a 6492
-  envelope on top.
+  envelope on top. For a Protocol V2 position id the same envelope is hashed under ExchangeV3
+  (domain version `"3"`), not a CTF exchange; `polyoxide-polymarket/tests/fixtures/clob/protocol_v2/order_vectors.json`
+  pins the owner's and the session key's signatures (py-sdk 0.12.0).
 - The role (owner or session key) is never inferred from addresses:
   `SigningTarget::DepositWallet { wallet, role }` carries it.
 - **No mirror.** The published OpenAPI omits almost all of it (the relay mirror documents only

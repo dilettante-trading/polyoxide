@@ -8,9 +8,14 @@
 //! the relay keeps its own copy of that wrapper because `relay` builds without the
 //! `clob` module, and pins it to the same py-sdk bytes.
 //!
-//! Everything here is pure and pinned to `tests/fixtures/relay/session_keys/relay_vectors.json`.
+//! Everything here is pure and pinned to `tests/fixtures/relay/session_keys/relay_vectors.json`
+//! and, for the Protocol V2 Router calldata, `tests/fixtures/relay/protocol_v2/router_vectors.json`.
+//! The Router calldata builders (`router_split_calldata`, `router_merge_calldata` and
+//! `router_redeem_calldata`) live here but serve Safe and Proxy wallets too, not only Deposit
+//! Wallets.
 
-use alloy::primitives::{Address, Bytes, B256, U256};
+use crate::relay::types::V2PositionId;
+use alloy::primitives::{Address, Bytes, FixedBytes, B256, U256};
 use alloy::sol;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
 
@@ -60,6 +65,10 @@ pub(crate) mod protocol {
         function approve(address spender, uint256 amount);
         function setApprovalForAll(address operator, bool approved);
         function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
+
+        function split(bytes31 conditionId, uint256 amount);
+        function merge(bytes31 conditionId, uint256 amount);
+        function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount);
     }
 }
 
@@ -235,12 +244,48 @@ pub fn redeem_positions_calldata(
     .abi_encode()
 }
 
+/// Calldata for the Protocol V2 Router's `split(bytes31,uint256)`.
+///
+/// `amount` is in base units (6 decimals); any `U256` encodes, zero included.
+pub fn router_split_calldata(condition_id: FixedBytes<31>, amount: U256) -> Vec<u8> {
+    protocol::splitCall {
+        conditionId: condition_id,
+        amount,
+    }
+    .abi_encode()
+}
+
+/// Calldata for the Protocol V2 Router's `merge(bytes31,uint256)`.
+///
+/// `amount` is in base units (6 decimals); any `U256` encodes, zero included.
+pub fn router_merge_calldata(condition_id: FixedBytes<31>, amount: U256) -> Vec<u8> {
+    protocol::mergeCall {
+        conditionId: condition_id,
+        amount,
+    }
+    .abi_encode()
+}
+
+/// Calldata for the Protocol V2 Router's `redeem(bytes31,uint256,uint256)`: the
+/// position's condition, its outcome index, then `amount` in base units.
+pub fn router_redeem_calldata(position: &V2PositionId, amount: U256) -> Vec<u8> {
+    protocol::redeemCall {
+        conditionId: position.condition_id(),
+        outcomeIndex: U256::from(position.outcome_index()),
+        amount,
+    }
+    .abi_encode()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use alloy::primitives::{address, Address, B256};
     use alloy::signers::local::PrivateKeySigner;
     use alloy::signers::Signer as _;
+
+    use crate::relay::error::RelayError;
+    use crate::relay::types::parse_v2_condition_id;
 
     const VECTORS: &str =
         include_str!("../../tests/fixtures/relay/session_keys/relay_vectors.json");
@@ -442,5 +487,272 @@ mod tests {
             vectors()["session_key_lifetime_secs"].as_u64().unwrap()
         );
         assert_eq!(DEFAULT_BATCH_DEADLINE_SECS, 600);
+    }
+
+    // ── Protocol V2: position ids and condition ids ─────────────
+
+    const ROUTER_VECTORS: &str =
+        include_str!("../../tests/fixtures/relay/protocol_v2/router_vectors.json");
+    const ID_VECTORS: &str = include_str!("../../tests/fixtures/clob/protocol_v2/id_vectors.json");
+
+    /// py-sdk's refusals of a position id, verbatim.
+    const POSITION_UINT256: &str = "Position ID must be a uint256 value";
+    const POSITION_MODULE: &str = "Position ID must use a supported protocol v2 module";
+    const POSITION_YES_NO: &str = "Protocol v2 position ID must be a YES/NO position ID";
+    /// py-sdk's refusal of a condition id, verbatim.
+    const CONDITION_REFUSED: &str =
+        "Protocol v2 condition ID must be bytes31, or bytes32 with a binary outcome byte";
+
+    fn router_vectors() -> serde_json::Value {
+        serde_json::from_str(ROUTER_VECTORS).unwrap()
+    }
+
+    fn id_vectors() -> serde_json::Value {
+        serde_json::from_str(ID_VECTORS).unwrap()
+    }
+
+    /// The message of a refusal made before anything was sent.
+    fn refusal(err: RelayError) -> String {
+        match err {
+            RelayError::Api(polyoxide_core::ApiError::Validation(message)) => message,
+            other => panic!("expected a validation refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn v2_position_id_parse_agrees_with_py_sdk_on_every_row() {
+        let v = id_vectors();
+        let rows = v["position_ids"].as_array().unwrap();
+        assert!(rows.len() >= 20, "{} rows", rows.len());
+        let mut accepted = 0;
+        let mut refused = 0;
+        for row in rows {
+            let input = row["input"].as_str().unwrap();
+            match (&row["decoded"], V2PositionId::parse(input)) {
+                (serde_json::Value::Null, Err(err)) => {
+                    refused += 1;
+                    let message = refusal(err);
+                    assert!(
+                        [POSITION_UINT256, POSITION_MODULE, POSITION_YES_NO]
+                            .contains(&message.as_str()),
+                        "{input:?}: {message}"
+                    );
+                }
+                (decoded, Ok(position)) if !decoded.is_null() => {
+                    accepted += 1;
+                    assert_eq!(
+                        format!("0x{}", hex::encode(position.condition_id())),
+                        decoded["condition_id"].as_str().unwrap(),
+                        "{input:?}"
+                    );
+                    assert_eq!(
+                        u64::from(position.outcome_index()),
+                        decoded["outcome_index"].as_u64().unwrap(),
+                        "{input:?}"
+                    );
+                }
+                (decoded, result) => {
+                    panic!("{input:?}: py-sdk decoded {decoded}, parse gave {result:?}")
+                }
+            }
+        }
+        assert!(accepted >= 6, "{accepted} accepted rows");
+        assert!(refused >= 8, "{refused} refused rows");
+    }
+
+    #[test]
+    fn v2_position_id_refusals_carry_py_sdks_messages() {
+        let v2: U256 = id_vectors()["ids"]["v2_binary"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        // The id with one byte of its 32 replaced: index 0 is the module byte,
+        // index 31 the outcome byte.
+        let with = |index: usize, byte: u8| {
+            let mut bytes = v2.to_be_bytes::<32>();
+            bytes[index] = byte;
+            U256::from_be_bytes(bytes).to_string()
+        };
+        let two_pow_256 =
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936";
+        for (input, message) in [
+            ("abc".to_string(), POSITION_UINT256),
+            (String::new(), POSITION_UINT256),
+            ("-1".to_string(), POSITION_UINT256),
+            (two_pow_256.to_string(), POSITION_UINT256),
+            ("1".to_string(), POSITION_MODULE),
+            ("100".to_string(), POSITION_MODULE),
+            (with(0, 0), POSITION_MODULE),
+            (with(0, 4), POSITION_MODULE),
+            (with(31, 2), POSITION_YES_NO),
+            // py-sdk checks the module before the outcome.
+            (
+                {
+                    let mut bytes = v2.to_be_bytes::<32>();
+                    bytes[0] = 0;
+                    bytes[31] = 2;
+                    U256::from_be_bytes(bytes).to_string()
+                },
+                POSITION_MODULE,
+            ),
+        ] {
+            let err = V2PositionId::parse(&input).expect_err(&input);
+            assert_eq!(refusal(err), message, "{input}");
+        }
+    }
+
+    #[test]
+    fn v2_position_id_accepts_the_neg_risk_module_and_outcome_one() {
+        let ids = &id_vectors()["ids"];
+        let v2: U256 = ids["v2_binary"].as_str().unwrap().parse().unwrap();
+        let with = |index: usize, byte: u8| {
+            let mut bytes = v2.to_be_bytes::<32>();
+            bytes[index] = byte;
+            U256::from_be_bytes(bytes).to_string()
+        };
+        let base = V2PositionId::parse(ids["v2_binary"].as_str().unwrap()).unwrap();
+        let other_module = V2PositionId::parse(&with(0, 2)).unwrap();
+        let sibling = V2PositionId::parse(&with(31, 1)).unwrap();
+        assert_eq!(base.outcome_index(), 0);
+        assert_eq!(sibling.outcome_index(), 1);
+        // Only the outcome byte moved, so the condition is the same; the module byte is
+        // part of the condition.
+        assert_eq!(sibling.condition_id(), base.condition_id());
+        assert_ne!(other_module.condition_id(), base.condition_id());
+    }
+
+    #[test]
+    fn v2_condition_ids_narrow_as_py_sdk_does() {
+        let v = router_vectors();
+        let rows = v["condition_ids"].as_array().unwrap();
+        let mut narrowed = 0;
+        let mut refused = 0;
+        for row in rows {
+            let input = row["input"].as_str().unwrap();
+            match (row["bytes31"].as_str(), parse_v2_condition_id(input)) {
+                (Some(expected), Ok(got)) => {
+                    narrowed += 1;
+                    assert_eq!(format!("0x{}", hex::encode(got)), expected, "{input:?}");
+                }
+                (None, Err(err)) => {
+                    refused += 1;
+                    assert_eq!(refusal(err), CONDITION_REFUSED, "{input:?}");
+                }
+                (expected, result) => {
+                    panic!("{input:?}: py-sdk gave {expected:?}, parse gave {result:?}")
+                }
+            }
+        }
+        assert!(rows.len() >= 8, "{} rows", rows.len());
+        assert!(narrowed >= 4, "{narrowed} narrowed rows");
+        assert!(refused >= 4, "{refused} refused rows");
+    }
+
+    // ── Protocol V2: Router calldata ────────────────────────────
+
+    fn hex_of(bytes: &[u8]) -> String {
+        format!("0x{}", hex::encode(bytes))
+    }
+
+    #[test]
+    fn router_split_and_merge_calldata_match_py_sdk() {
+        let v = router_vectors();
+        for (name, build) in [
+            (
+                "split",
+                router_split_calldata as fn(FixedBytes<31>, U256) -> Vec<u8>,
+            ),
+            ("merge", router_merge_calldata),
+        ] {
+            let rows = v[name].as_array().unwrap();
+            // Amounts 0, 1000000 and 2^256 - 1, for one condition.
+            assert_eq!(rows.len(), 3, "{name}");
+            for row in rows {
+                let condition: FixedBytes<31> =
+                    row["condition_id"].as_str().unwrap().parse().unwrap();
+                let amount: U256 = row["amount"].as_str().unwrap().parse().unwrap();
+                assert_eq!(
+                    hex_of(&build(condition, amount)),
+                    row["calldata"].as_str().unwrap(),
+                    "{name} {amount}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn router_split_and_merge_calldata_differ_only_in_the_selector() {
+        let v = router_vectors();
+        let condition: FixedBytes<31> = v["split"][0]["condition_id"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let split = router_split_calldata(condition, U256::from(7));
+        let merge = router_merge_calldata(condition, U256::from(7));
+        assert_ne!(split[..4], merge[..4]);
+        assert_eq!(split[4..], merge[4..]);
+        assert_eq!(split.len(), 4 + 64);
+    }
+
+    #[test]
+    fn router_redeem_calldata_matches_py_sdk_for_both_outcomes() {
+        let v = router_vectors();
+        let rows = v["redeem"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            let position = V2PositionId::parse(row["position_id"].as_str().unwrap()).unwrap();
+            // The position's own decode agrees with py-sdk's recorded one.
+            assert_eq!(
+                hex_of(position.condition_id().as_slice()),
+                row["condition_id"].as_str().unwrap()
+            );
+            assert_eq!(
+                u64::from(position.outcome_index()),
+                row["outcome_index"].as_u64().unwrap()
+            );
+            let amount: U256 = row["amount"].as_str().unwrap().parse().unwrap();
+            assert_eq!(
+                hex_of(&router_redeem_calldata(&position, amount)),
+                row["calldata"].as_str().unwrap(),
+                "outcome {}",
+                position.outcome_index()
+            );
+        }
+        // The two rows are the two outcomes of one condition.
+        assert_ne!(rows[0]["calldata"], rows[1]["calldata"]);
+    }
+
+    #[test]
+    fn the_router_redeem_batch_digest_matches_py_sdk() {
+        let v = router_vectors();
+        let batch = &v["deposit_wallet_batch"];
+        let redeem = &v["redeem"][0];
+        let position = V2PositionId::parse(redeem["position_id"].as_str().unwrap()).unwrap();
+        let amount: U256 = redeem["amount"].as_str().unwrap().parse().unwrap();
+        let fixture_call = &batch["calls"][0];
+        let call = DepositWalletCall {
+            target: fixture_call["target"].as_str().unwrap().parse().unwrap(),
+            value: fixture_call["value"].as_str().unwrap().parse().unwrap(),
+            data: router_redeem_calldata(&position, amount).into(),
+        };
+        // The call is the Router's, with the calldata py-sdk built.
+        assert_eq!(
+            call.target,
+            v["router"].as_str().unwrap().parse::<Address>().unwrap()
+        );
+        assert_eq!(hex_of(&call.data), fixture_call["data"].as_str().unwrap());
+        let digest = batch_digest(
+            v["chain_id"].as_u64().unwrap(),
+            batch["wallet"].as_str().unwrap().parse().unwrap(),
+            &[call],
+            batch["nonce"].as_str().unwrap().parse().unwrap(),
+            batch["deadline"].as_str().unwrap().parse().unwrap(),
+        );
+        assert_eq!(
+            digest,
+            batch["digest"].as_str().unwrap().parse::<B256>().unwrap()
+        );
     }
 }

@@ -275,7 +275,9 @@ where
 /// `token_id`, `maker_amount`, `taker_amount`, `side`, `signature_type`, `timestamp`,
 /// `metadata`, and `builder`. `expiration` travels on the wire (for GTD orders) but is
 /// NOT part of the signed struct. `neg_risk` is local-only (`#[serde(skip)]`) and
-/// selects the exchange vs. neg-risk-exchange verifying contract during signing.
+/// selects the exchange vs. neg-risk-exchange verifying contract during signing
+/// of a CTF token id. A Protocol V2 position id always settles on ExchangeV3
+/// (domain version `"3"`), so `neg_risk` is ignored for one.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Order {
@@ -294,6 +296,8 @@ pub struct Order {
     pub timestamp: String,
     pub metadata: B256,
     pub builder: B256,
+    /// Picks between the CTF and neg-risk CTF exchanges; ignored for a Protocol V2
+    /// position id, which always settles on ExchangeV3.
     #[serde(skip)]
     pub neg_risk: bool,
 }

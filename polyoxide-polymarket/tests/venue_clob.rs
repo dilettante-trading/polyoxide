@@ -505,8 +505,20 @@ async fn event_group_finds_a_resolved_markets_token_in_one_closed_any_request() 
     assert!(group.outcomes.iter().any(|o| o.key == key()));
 }
 
+/// A Protocol V2 outcome id of Story 1's `id_vectors.json`, by its name.
+fn v2_id(name: &str) -> String {
+    fixtures!("clob/protocol_v2").json("id_vectors")["ids"][name]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn clob_key(id: &str) -> MarketKey {
+    keys::clob(&TokenId::new(id).unwrap())
+}
+
 #[tokio::test]
-async fn event_group_leaves_out_the_outcomes_of_a_v2_market() {
+async fn event_group_keys_a_v2_market_by_its_position_ids() {
     let mut server = Server::new_async().await;
     let markets = route(
         &mut server,
@@ -516,7 +528,11 @@ async fn event_group_leaves_out_the_outcomes_of_a_v2_market() {
         1,
     )
     .await;
-    let body = event_body(|markets| markets[1]["version"] = "v2".into());
+    let (yes, no) = (v2_id("v2_binary"), v2_id("v2_neg_risk"));
+    let body = event_body(|markets| {
+        markets[1]["version"] = "v2".into();
+        markets[1]["positionIds"] = Value::from(vec![yes.clone(), no.clone()]);
+    });
     let event = route(
         &mut server,
         &format!("/events/{}", event_id()),
@@ -529,18 +545,141 @@ async fn event_group_leaves_out_the_outcomes_of_a_v2_market() {
         .as_str()
         .unwrap()
         .to_owned();
+    // The market still carries its v1 token ids; the version, not their
+    // presence, decides which ids the group lists.
+    let v1_tokens: Vec<String> = serde_json::from_str(
+        json("gamma_event")["markets"][1]["clobTokenIds"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
     let group = venue.event_group(&key()).await.unwrap();
     markets.assert_async().await;
     event.assert_async().await;
 
-    let conditions: Vec<&str> = group.outcomes.iter().map(|o| o.market.as_str()).collect();
-    assert!(
-        !conditions.contains(&v2_condition.as_str()),
-        "{conditions:?}"
+    let theirs: Vec<(MarketKey, &str)> = group
+        .outcomes
+        .iter()
+        .filter(|o| o.market == v2_condition)
+        .map(|o| (o.key.clone(), o.label.as_str()))
+        .collect();
+    assert_eq!(
+        theirs,
+        [(clob_key(&yes), "Yes"), (clob_key(&no), "No")],
+        "the v2 market's outcomes, keyed by its position ids"
     );
-    assert_eq!(group.outcomes.len(), 4, "the two v1 markets' Yes and No");
+    for token in &v1_tokens {
+        assert!(
+            group.outcomes.iter().all(|o| o.key != clob_key(token)),
+            "the v2 market's clobTokenIds must not be listed"
+        );
+    }
+    assert_eq!(group.outcomes.len(), 6, "three markets' Yes and No");
+}
+
+#[tokio::test]
+async fn event_group_skips_a_market_with_no_known_version() {
+    // `v3` is a protocol this client does not know; a missing version is none
+    // at all. Either way the market's outcomes are absent and the group still
+    // returns.
+    for version in [Some("v3"), None] {
+        let mut server = Server::new_async().await;
+        let markets = route(
+            &mut server,
+            "/markets",
+            &format!("clob_token_ids={}&closed=any", token()),
+            &fixture("gamma_markets"),
+            1,
+        )
+        .await;
+        let body = event_body(|markets| match version {
+            Some(version) => markets[1]["version"] = version.into(),
+            None => {
+                markets[1].as_object_mut().unwrap().remove("version");
+            }
+        });
+        let event = route(
+            &mut server,
+            &format!("/events/{}", event_id()),
+            "",
+            &body,
+            1,
+        )
+        .await;
+        let skipped = json("gamma_event")["markets"][1]["conditionId"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+        let group = venue.event_group(&key()).await.unwrap();
+        markets.assert_async().await;
+        event.assert_async().await;
+
+        let conditions: Vec<&str> = group.outcomes.iter().map(|o| o.market.as_str()).collect();
+        assert!(
+            !conditions.contains(&skipped.as_str()),
+            "{version:?}: {conditions:?}"
+        );
+        assert_eq!(
+            group.outcomes.len(),
+            4,
+            "{version:?}: the two v1 markets' Yes and No"
+        );
+    }
+}
+
+#[tokio::test]
+async fn event_group_finds_a_v2_key_by_its_position_ids() {
+    let mut server = Server::new_async().await;
+    let id = v2_id("v2_binary");
+    // A V2 key asks for `position_ids=`; asking for `clob_token_ids=` would
+    // find no market, since a V2 outcome is not a clob token. The exact query
+    // matches that wrong request, so `expect(0)` is not vacuous.
+    let by_position = route(
+        &mut server,
+        "/markets",
+        &format!("position_ids={id}&closed=any"),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let by_clob_token = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={id}&closed=any"),
+        "[]",
+        0,
+    )
+    .await;
+    let body = event_body(|markets| {
+        markets[0]["version"] = "v2".into();
+        markets[0]["positionIds"] = Value::from(vec![id.clone(), v2_id("v2_neg_risk")]);
+    });
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let group = venue.event_group(&clob_key(&id)).await.unwrap();
+    by_position.assert_async().await;
+    by_clob_token.assert_async().await;
+    event.assert_async().await;
+
+    assert_eq!(group.id, event_id());
+    let outcome = group
+        .outcomes
+        .iter()
+        .find(|o| o.key == clob_key(&id))
+        .expect("the V2 key's own outcome is in its event group");
+    assert_eq!(outcome.label, "Yes");
 }
 
 #[tokio::test]
@@ -802,4 +941,36 @@ async fn a_trait_error_carries_the_native_errors_class_fault_and_wait() {
         assert_eq!(err.retry_after(), native.retry_after(), "{status}");
         assert!(err.source.downcast_ref::<ClobError>().is_some(), "{status}");
     }
+}
+
+#[tokio::test]
+async fn a_v2_market_with_no_position_ids_fails_the_group_as_a_decode_failure() {
+    let mut server = Server::new_async().await;
+    let markets = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}&closed=any", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let body = event_body(|markets| {
+        let market = markets[1].as_object_mut().unwrap();
+        market.insert("version".into(), "v2".into());
+        market.remove("positionIds");
+    });
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let err = venue.event_group(&key()).await.unwrap_err();
+    markets.assert_async().await;
+    event.assert_async().await;
+    assert_eq!(err.class, Class::Decode, "{err}");
 }

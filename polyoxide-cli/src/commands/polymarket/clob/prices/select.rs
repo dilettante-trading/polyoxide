@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use color_eyre::eyre::{Context, Result};
-use polyoxide_polymarket::gamma::Gamma;
+use polyoxide_polymarket::gamma::{types::ProtocolVersion, Gamma};
 
 use crate::commands::polymarket::clob::prices::types::Target;
 
@@ -53,9 +53,14 @@ pub struct DiscoverFilters {
 
 /// Discover token ids via `gamma.markets().list()`, applying the given filters.
 ///
-/// Each returned market's `clob_token_ids` (a JSON-encoded string array) is
-/// parsed and flattened. Markets with a missing or unparseable field are
-/// skipped with a warning to stderr.
+/// The field each market's ids come from depends on its `version`. A `v2`
+/// market's ids are the ids of its `Market::outcome_ids`, which reads
+/// `position_ids` (the CLOB has no book for a `v2` market's `clob_token_ids`).
+/// A `v1` market, and a market with no `version`, take `clob_token_ids` (a
+/// JSON-encoded string array), parsed and flattened. A market of any other
+/// version is skipped with a warning naming it and its version, and so is a
+/// market whose field is missing or unparseable (or, for `v2`, which the
+/// selector refuses), with a warning to stderr.
 pub async fn discover_targets(gamma: &Gamma, filters: &DiscoverFilters) -> Result<Vec<String>> {
     let mut req = gamma.markets().list();
     if let Some(closed) = filters.closed {
@@ -81,12 +86,28 @@ pub async fn discover_targets(gamma: &Gamma, filters: &DiscoverFilters) -> Resul
 
     let mut ids = Vec::new();
     for market in markets {
-        match market.clob_token_ids.as_deref() {
-            Some(raw) => match parse_clob_token_ids(raw) {
-                Ok(parsed) => ids.extend(parsed),
+        match &market.version {
+            Some(ProtocolVersion::V2) => match market.outcome_ids() {
+                Ok(outcomes) => ids.extend(outcomes.into_iter().map(|outcome| outcome.id)),
                 Err(e) => eprintln!("warning: skipping market {}: {e}", market.id),
             },
-            None => eprintln!("warning: skipping market {} (no clob_token_ids)", market.id),
+            Some(ProtocolVersion::Other(version)) => eprintln!(
+                "warning: skipping market {} (unsupported protocol version {version})",
+                market.id
+            ),
+            Some(ProtocolVersion::V1) | None => match market.clob_token_ids.as_deref() {
+                Some(raw) => match parse_clob_token_ids(raw) {
+                    Ok(parsed) => ids.extend(parsed),
+                    Err(e) => eprintln!("warning: skipping market {}: {e}", market.id),
+                },
+                None => eprintln!("warning: skipping market {} (no clob_token_ids)", market.id),
+            },
+            // `ProtocolVersion` is `#[non_exhaustive]`: a variant added later is
+            // skipped with a warning, never read as `v1`.
+            Some(other) => eprintln!(
+                "warning: skipping market {} (unsupported protocol version {other:?})",
+                market.id
+            ),
         }
     }
     Ok(ids)

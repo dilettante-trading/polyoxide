@@ -5035,3 +5035,241 @@ async fn heartbeat_v1_invalid_payload_stays_a_generic_400() {
     }
     mock.assert_async().await;
 }
+
+// ── Protocol V2 (ExchangeV3): ids, balances and order metadata ──
+
+const PROTOCOL_V2_IDS: &str = include_str!("fixtures/clob/protocol_v2/id_vectors.json");
+const PROTOCOL_V2_ORDERS: &str = include_str!("fixtures/clob/protocol_v2/order_vectors.json");
+
+/// Hardhat account #0, the key the test clients sign with.
+const HARDHAT_0: alloy::primitives::Address =
+    alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+
+fn protocol_v2_ids() -> serde_json::Value {
+    serde_json::from_str(PROTOCOL_V2_IDS).unwrap()
+}
+
+/// One of the fixture's four ids (`v1`, `v2_binary`, `v2_neg_risk`, `v2_combo`).
+fn protocol_v2_id(name: &str) -> String {
+    protocol_v2_ids()["ids"][name].as_str().unwrap().to_string()
+}
+
+/// The exchange domain separator py-sdk recorded for one order case.
+fn protocol_v2_separator(case: &str) -> alloy::primitives::B256 {
+    let all: serde_json::Value = serde_json::from_str(PROTOCOL_V2_ORDERS).unwrap();
+    all["cases"][case]["domain_separator"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+#[path = "common/protocol_v2_digest.rs"]
+mod protocol_v2_digest;
+
+fn protocol_v2_params(token_id: &str) -> polyoxide_polymarket::clob::CreateOrderParams {
+    polyoxide_polymarket::clob::CreateOrderParams {
+        token_id: token_id.to_string(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_polymarket::clob::OrderSide::Buy,
+        order_type: polyoxide_polymarket::clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    }
+}
+
+async fn protocol_v2_tick_size(server: &mut mockito::ServerGuard, token_id: &str) -> mockito::Mock {
+    server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), token_id.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .expect(1)
+        .create_async()
+        .await
+}
+
+#[tokio::test]
+async fn balance_asset_types_follow_py_sdks_table() {
+    let rows = protocol_v2_ids()["balance_allowance_targets"]
+        .as_array()
+        .unwrap()
+        .clone();
+    // BUY rows are COLLATERAL with no asset id; SELL rows are CONDITIONAL for
+    // the V1 id and CONDITIONAL-V2 for the V2 id.
+    let types: Vec<&str> = rows
+        .iter()
+        .map(|row| row["asset_type"].as_str().unwrap())
+        .collect();
+    assert_eq!(rows.len(), 4);
+    assert_eq!(types.iter().filter(|t| **t == "COLLATERAL").count(), 2);
+    assert_eq!(types.iter().filter(|t| **t == "CONDITIONAL").count(), 1);
+    assert_eq!(types.iter().filter(|t| **t == "CONDITIONAL-V2").count(), 1);
+
+    for row in &rows {
+        let side = row["side"].as_str().unwrap();
+        let asset_id = row["asset_id"].as_str().unwrap();
+        let asset_type = row["asset_type"].as_str().unwrap();
+        let sent = row["asset_id_sent"].as_str();
+        // The whole query, in the order the request sends it, so a token id
+        // the table does not send would fail the match.
+        let query = match sent {
+            Some(sent) => {
+                assert_eq!(side, "SELL");
+                assert_eq!(sent, asset_id);
+                format!("^asset_type={asset_type}&token_id={sent}&signature_type=0$")
+            }
+            None => {
+                assert_eq!(side, "BUY");
+                format!("^asset_type={asset_type}&signature_type=0$")
+            }
+        };
+
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/balance-allowance")
+            .match_query(Matcher::Regex(query))
+            .match_header("POLY_API_KEY", "test-key")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"balance": "0", "allowances": {}}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let clob = test_authed_clob(&server);
+        let account = clob.account_api().unwrap();
+        let request = match sent {
+            Some(_) => account.balance_allowance(asset_id),
+            None => account.usdc_balance(),
+        };
+        request.send().await.unwrap();
+        mock.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn create_order_for_a_v2_id_reads_the_tick_size_never_neg_risk_and_signs_for_exchange_v3() {
+    let id = protocol_v2_id("v2_binary");
+    let mut server = Server::new_async().await;
+    // `match_query(Matcher::Any)` makes `expect(0)` real: without it mockito
+    // compares the path and the query, and a bare "/neg-risk" never matches
+    // "/neg-risk?token_id=…".
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = protocol_v2_tick_size(&mut server, &id).await;
+
+    let clob = test_authed_clob(&server);
+    let order = clob
+        .create_order(&protocol_v2_params(&id), None)
+        .await
+        .unwrap();
+
+    assert_eq!(order.token_id, id);
+    assert!(!order.neg_risk, "with no lookup, neg_risk is false");
+    assert_eq!(order.maker_amount, "55000000");
+    assert_eq!(order.taker_amount, "100000000");
+
+    // The signature verifies under py-sdk's ExchangeV3 domain, and not under
+    // the CTF exchange's.
+    let signed = clob.sign_order(&order).await.unwrap();
+    let v3 = protocol_v2_separator("v2_eoa");
+    let v2 = protocol_v2_separator("v1_eoa");
+    assert_ne!(v3, v2, "the fixture's two domains differ");
+    assert_eq!(
+        protocol_v2_digest::signer_of(&signed.signature, protocol_v2_digest::digest(v3, &order)),
+        HARDHAT_0
+    );
+    assert_ne!(
+        protocol_v2_digest::signer_of(&signed.signature, protocol_v2_digest::digest(v2, &order)),
+        HARDHAT_0
+    );
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_for_a_v1_id_still_reads_neg_risk() {
+    let id = protocol_v2_id("v1");
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), id.clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": true}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let tick_size_mock = protocol_v2_tick_size(&mut server, &id).await;
+
+    let clob = test_authed_clob(&server);
+    let order = clob
+        .create_order(&protocol_v2_params(&id), None)
+        .await
+        .unwrap();
+
+    assert!(order.neg_risk, "the V1 market's answer is kept");
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_v2_id_on_an_amoy_client_is_refused_at_signing_and_nothing_is_posted() {
+    let id = protocol_v2_id("v2_binary");
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = protocol_v2_tick_size(&mut server, &id).await;
+    let post_mock = server
+        .mock("POST", "/order")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        Credentials {
+            key: "test-key".into(),
+            secret: "c2VjcmV0".into(), // base64("secret")
+            passphrase: "test-pass".into(),
+        },
+    )
+    .unwrap();
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .chain(polyoxide_polymarket::clob::Chain::PolygonAmoy)
+        .build()
+        .unwrap();
+
+    // `place_order` creates, signs and would post; it stops at the signature.
+    let err = clob
+        .place_order(&protocol_v2_params(&id), None)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.class(), polyoxide_venue::Class::InvalidRequest);
+    assert!(
+        err.to_string()
+            .contains("Protocol V2 orders need ExchangeV3, which is not deployed on chain 80002"),
+        "{err}"
+    );
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    post_mock.assert_async().await;
+}

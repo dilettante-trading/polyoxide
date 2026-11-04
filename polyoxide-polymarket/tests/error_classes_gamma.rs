@@ -63,3 +63,30 @@ async fn a_2xx_body_that_does_not_decode_is_decode() {
     assert_eq!(err.class(), Class::Decode, "{err:?}");
     assert!(err.is_fault(), "{err:?}");
 }
+
+/// Every way the outcome-id selector can refuse is a response that arrived and
+/// carries no ids the client can trade: a `Decode` fault with no wait.
+#[test]
+fn every_outcome_ids_error_is_a_decode_fault_with_no_wait() {
+    use polyoxide_polymarket::gamma::OutcomeIdsError;
+
+    let rows = [
+        OutcomeIdsError::MissingVersion,
+        OutcomeIdsError::UnsupportedVersion("v3".to_owned()),
+        OutcomeIdsError::MissingIds,
+        OutcomeIdsError::MalformedIds,
+        OutcomeIdsError::MalformedOutcomes,
+        OutcomeIdsError::CountMismatch {
+            outcomes: 2,
+            ids: 3,
+        },
+        OutcomeIdsError::InvalidId("abc".to_owned()),
+    ];
+    for err in rows {
+        assert_eq!(err.class(), Class::Decode, "{err:?}");
+        assert!(err.is_fault(), "{err:?}");
+        assert_eq!(err.retry_after(), None, "{err:?}");
+        assert!(!err.is_retriable(), "{err:?}");
+        assert!(!err.to_string().is_empty(), "{err:?}");
+    }
+}
