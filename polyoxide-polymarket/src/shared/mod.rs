@@ -15,6 +15,9 @@
 //!   ([`session_signer`]), which clob and relay share (`clob` or `relay`).
 //! - [`keys`], the constructors of Polymarket's market keys: the clob's
 //!   (`clob`, `gamma` or `data`) and perps' (`perps`).
+//! - `protocol` (`clob` or `relay`; crate-private), the one rule that tells a
+//!   Protocol V2 position id from a CTF token id, which the CLOB's order signing
+//!   and balance reads, the relay and Gamma's `event_group` query all apply.
 //!
 //! Each item is built by the features of the modules that use it.
 

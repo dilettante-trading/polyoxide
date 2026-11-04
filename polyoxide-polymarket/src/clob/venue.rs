@@ -16,7 +16,7 @@
 //! | `quote`, `book` | `/book` |
 //! | `candles` | `/prices-history`, one price per interval, at most 14 days from `start`; an empty answer means none in that span |
 //! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/trades` |
-//! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=&closed=any`, then `/events/{id}` |
+//! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=&closed=any` (`position_ids=` for a Protocol V2 key), then `/events/{id}` |
 //!
 //! With `clob-ws` and `data` as well, [`Clob`] implements the `Trading` trait
 //! of `polyoxide-venue`: orders placed and cancelled, open orders, positions

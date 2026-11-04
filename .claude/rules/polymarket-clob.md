@@ -1,6 +1,7 @@
 ---
 paths:
   - "polyoxide-polymarket/src/clob/**"
+  - "polyoxide-polymarket/src/shared/protocol.rs"
   - "polyoxide-polymarket/tests/*clob*.rs"
   - "polyoxide-polymarket/tests/fixtures/clob/**"
   - "polyoxide-polymarket/examples/{test_order,get_nonce,twap_stream}.rs"

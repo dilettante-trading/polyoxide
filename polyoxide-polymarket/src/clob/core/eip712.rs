@@ -344,6 +344,11 @@ pub(crate) mod deposit_wallet {
     /// `order.signature_type` is 3 or that `order.maker` is `wallet`; only
     /// the `maker == signer` rule is enforced, by the order conversion, and
     /// only for signature type 3. `sign_order_as` applies the other two.
+    ///
+    /// This is the vector-pinned entry point only tests call (it is dead code
+    /// outside them). The shipped envelope takes its exchange and version from
+    /// `order_exchange`, so the caller's `exchange` must be the one
+    /// `order_exchange` returns for `order`.
     #[cfg_attr(
         not(test),
         expect(

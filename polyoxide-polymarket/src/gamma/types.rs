@@ -9,8 +9,9 @@ use super::error::OutcomeIdsError;
 polyoxide_venue::open_enum! {
     /// The protocol a market trades on, from [`Market::version`].
     ///
-    /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration:
-    /// a `V1` market trades on the exchange the `clob` module signs for.
+    /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration. The
+    /// `clob` module signs for both: a `V1` market on the CTF exchanges (domain
+    /// version `"2"`), a `V2` market on ExchangeV3 (version `"3"`).
     pub enum ProtocolVersion {
         /// The CTF/CLOB protocol. Outcome ids are in [`Market::clob_token_ids`].
         V1 => "v1",
