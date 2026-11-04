@@ -145,13 +145,24 @@ impl BuilderConfig {
         path: &str,
         body: Option<&str>,
     ) -> Result<HeaderMap, String> {
+        self.relayer_v2_headers(method, path, body.map(str::as_bytes))
+    }
+
+    /// [`generate_relayer_v2_headers`](Self::generate_relayer_v2_headers) over
+    /// the body's bytes, so a body that is not UTF-8 signs too.
+    pub(crate) fn relayer_v2_headers(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<HeaderMap, String> {
         let mut headers = HeaderMap::new();
         let timestamp = current_timestamp();
 
         // Create signer from base64-encoded secret (Relay v2 uses base64 secrets)
         let signer = Signer::new(&self.secret);
-        let message = Signer::create_message(timestamp, method, path, body);
-        let signature = signer.sign(&message, Base64Format::UrlSafe)?;
+        let signature =
+            signer.sign_request(timestamp, method, path, body, Base64Format::UrlSafe)?;
 
         headers.insert(
             "POLY_BUILDER_API_KEY",
@@ -268,8 +279,19 @@ impl AuthConfig {
         path: &str,
         body: Option<&str>,
     ) -> Result<HeaderMap, String> {
+        self.relayer_v2_headers(method, path, body.map(str::as_bytes))
+    }
+
+    /// [`generate_relayer_v2_headers`](Self::generate_relayer_v2_headers) over
+    /// the body's bytes, so a body that is not UTF-8 signs too.
+    pub(crate) fn relayer_v2_headers(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<HeaderMap, String> {
         match self {
-            AuthConfig::Builder(config) => config.generate_relayer_v2_headers(method, path, body),
+            AuthConfig::Builder(config) => config.relayer_v2_headers(method, path, body),
             AuthConfig::RelayerApiKey(config) => config.generate_headers(),
         }
     }

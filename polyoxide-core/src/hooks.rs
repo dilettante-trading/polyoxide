@@ -159,8 +159,8 @@ pub struct RequestParts {
     pub query: Vec<(String, String)>,
     /// The headers.
     pub headers: HeaderMap,
-    /// The body, sent as given.
-    pub body: Option<String>,
+    /// The body, sent as given: bytes, so it need not be text.
+    pub body: Option<bytes::Bytes>,
     /// How long each attempt may take, in place of the client's timeout.
     /// `None` keeps the client's.
     pub timeout: Option<Duration>,

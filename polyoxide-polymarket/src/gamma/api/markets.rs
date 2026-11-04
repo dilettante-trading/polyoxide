@@ -157,7 +157,11 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     parts
         .headers
         .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    parts.body = Some(serde_json::to_string(body).map_err(|e| GammaError::Api(ApiError::from(e)))?);
+    parts.body = Some(
+        serde_json::to_string(body)
+            .map_err(|e| GammaError::Api(ApiError::from(e)))?
+            .into(),
+    );
     let response = http.send(parts, &[], None).await?;
 
     // Only a policy that is `Done` with a failed response gets here.

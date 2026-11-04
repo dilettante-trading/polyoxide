@@ -19,10 +19,10 @@ mod native {
 
     use mockito::{Matcher, Mock, Server, ServerGuard};
     use polyoxide_wasm_smoke::{
-        CLOSE_CODE, CLOSE_COMMAND, CLOSE_REASON, ECHO_PREFIX, HTTP_ENV, LIMITED_BODY,
-        LIMITED_EXPOSED_PATH, LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH, RETRY_AFTER_SECS, SLOW_DELAY,
-        SLOW_ENV, SLOW_PATH, STALL_BODY_DELAY, STALL_ENV, STALL_FIRST, STALL_PATH, STALL_REST,
-        WS_ENV,
+        CLOSE_CODE, CLOSE_COMMAND, CLOSE_REASON, ECHO_BODY_PATH, ECHO_PREFIX, HTTP_ENV,
+        LIMITED_BODY, LIMITED_EXPOSED_PATH, LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH,
+        RETRY_AFTER_SECS, SLOW_DELAY, SLOW_ENV, SLOW_PATH, STALL_BODY_DELAY, STALL_ENV,
+        STALL_FIRST, STALL_PATH, STALL_REST, WS_ENV,
     };
     use polyoxide_ws::test_server::{Script, ScriptedServer};
     use tokio::{
@@ -161,6 +161,18 @@ mod native {
                 .create_async()
                 .await,
         );
+        // The body as the server read it, so a browser test can compare what it sent with what
+        // arrived.
+        mocks.push(
+            server
+                .mock("POST", ECHO_BODY_PATH)
+                .with_status(200)
+                .with_header("access-control-allow-origin", "*")
+                .with_header("content-type", "application/octet-stream")
+                .with_body_from_request(|request| request.body().cloned().unwrap_or_default())
+                .create_async()
+                .await,
+        );
         // The callback sleeps its server's one thread, so every route on that server waits
         // behind it, a timed-out request's included. The slow route has a server of its own, so
         // no other route's request waits on it.
@@ -279,9 +291,9 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use polyoxide_core::reqwest::{Client, Method, StatusCode};
     use polyoxide_wasm_smoke::{
-        CLOSE_CODE, CLOSE_COMMAND, CLOSE_REASON, HTTP_ENV, LIMITED_EXPOSED_PATH,
-        LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH, RETRY_AFTER_SECS, SLOW_ENV, SLOW_PATH,
-        STALL_BODY_DELAY, STALL_ENV, STALL_FIRST, STALL_PATH, STALL_REST, WS_ENV,
+        BINARY_BODY, CLOSE_CODE, CLOSE_COMMAND, CLOSE_REASON, ECHO_BODY_PATH, HTTP_ENV,
+        LIMITED_EXPOSED_PATH, LIMITED_HIDDEN_PATH, OK_BODY, OK_PATH, RETRY_AFTER_SECS, SLOW_ENV,
+        SLOW_PATH, STALL_BODY_DELAY, STALL_ENV, STALL_FIRST, STALL_PATH, STALL_REST, WS_ENV,
     };
     use tungstenite::Message;
 
@@ -298,6 +310,24 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["access-control-allow-origin"], "*");
         assert_eq!(response.text().await.expect("a body"), OK_BODY);
+    }
+
+    #[tokio::test]
+    async fn the_echo_route_answers_a_post_with_its_body_byte_for_byte() {
+        let running = start().await;
+        let response = Client::new()
+            .post(format!("{}{ECHO_BODY_PATH}", running.http))
+            .header("content-type", "application/gzip")
+            .body(BINARY_BODY)
+            .send()
+            .await
+            .expect("the echo route answers");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["access-control-allow-origin"], "*");
+        assert_eq!(
+            response.bytes().await.expect("a body").as_ref(),
+            BINARY_BODY
+        );
     }
 
     #[tokio::test]

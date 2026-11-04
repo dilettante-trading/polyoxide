@@ -378,7 +378,7 @@ impl polyoxide_core::Authenticator for StampAttempt {
     ) -> Result<(), ApiError> {
         self.0.push(format!(
             "sign {attempt} {}",
-            parts.body.as_deref().unwrap_or("-")
+            String::from_utf8_lossy(parts.body.as_deref().unwrap_or(b"-"))
         ));
         parts.headers.insert("x-attempt", attempt.into());
         Ok(())
@@ -588,6 +588,35 @@ async fn a_request_parts_timeout_bounds_its_attempt() {
         "the attempt ended after {elapsed:?}, not at its own 200ms timeout \
          (the client's is 30s)"
     );
+}
+
+// Why: issue #87. A gzip upload's body is not text, and the send loop carried
+// only text until `RequestParts::body` became bytes.
+#[tokio::test]
+async fn a_body_that_is_not_utf8_reaches_the_server_byte_for_byte() {
+    // A gzip member's magic and method, then bytes no UTF-8 text holds.
+    let body: &'static [u8] = &[0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x00, 0x80];
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/upload")
+        .match_header("content-type", "application/gzip")
+        .match_body(body.to_vec())
+        .with_status(200)
+        .expect(1)
+        .create_async()
+        .await;
+    let http = HttpClientBuilder::new(server.url()).build().unwrap();
+    let mut parts =
+        polyoxide_core::RequestParts::new(polyoxide_core::http::Method::POST, "/upload");
+    parts.headers.insert(
+        polyoxide_core::http::header::CONTENT_TYPE,
+        polyoxide_core::http::HeaderValue::from_static("application/gzip"),
+    );
+    parts.body = Some(bytes::Bytes::from_static(body));
+
+    let response = http.send(parts, &[], None).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    mock.assert_async().await;
 }
 
 #[tokio::test]

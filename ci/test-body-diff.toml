@@ -567,3 +567,10 @@ file = "polyoxide-polymarket/src/sports/update.rs"
 item = "tests::unmodelled_keys_are_kept"
 row = "R25"
 sha256 = "44507505c5fbb0b2c7cd6b3ad7878acdf28bd62afe5dfec09a09de77bde7bcab"
+
+[[drift]]
+file = "polyoxide-core/tests/mock_request.rs"
+item = "<impl polyoxide_core::Authenticator for StampAttempt>::sign"
+kind = "method"
+row = "R26"
+sha256 = "7e6cf8bed2770876ce0656b8138ede28861357b6829f16483d9c99693f1210bf"

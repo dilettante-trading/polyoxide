@@ -238,10 +238,15 @@ mod fetch {
     use std::{sync::Arc, time::Duration};
 
     use polyoxide_core::{
-        http::{header::RETRY_AFTER, StatusCode},
-        ApiError, FetchTransport, HttpClientBuilder, Request, RetryConfig, TransportKind,
+        http::{
+            header::{CONTENT_TYPE, RETRY_AFTER},
+            HeaderValue, Method, StatusCode,
+        },
+        ApiError, FetchTransport, HttpClient, HttpClientBuilder, Request, RequestParts,
+        RetryConfig, TransportKind,
     };
     use polyoxide_rt::{BrowserRuntime, Runtime};
+    use polyoxide_wasm_smoke::{BINARY_BODY, ECHO_BODY_PATH};
     use serde_json::Value;
     use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -253,12 +258,12 @@ mod fetch {
     // cannot send a head and hold the body behind it.
     const STALL_BASE: &str = env!("POLYOXIDE_SMOKE_STALL");
 
-    /// A request through an `HttpClient` on the fetch transport and the browser runtime, with no
-    /// retries, so a 429 is the first answer and a timeout the only wait. `HttpRequest` has no
-    /// public constructor, so the transport is driven the way a venue crate drives it: through a
-    /// client built with `http_transport(..)`.
-    fn request_to(base: &str, path: &str, timeout_ms: u64) -> Request<Value, ApiError> {
-        let client = HttpClientBuilder::new(base)
+    /// An `HttpClient` on the fetch transport and the browser runtime, with no retries, so a 429
+    /// is the first answer and a timeout the only wait. `HttpRequest` has no public constructor,
+    /// so the transport is driven the way a venue crate drives it: through a client built with
+    /// `http_transport(..)`.
+    fn client_to(base: &str, timeout_ms: u64) -> HttpClient {
+        HttpClientBuilder::new(base)
             .runtime(Arc::new(BrowserRuntime))
             .http_transport(Arc::new(FetchTransport::new()))
             .with_retry_config(RetryConfig {
@@ -268,8 +273,12 @@ mod fetch {
             })
             .timeout_ms(timeout_ms)
             .build()
-            .expect("a client on the fetch transport");
-        Request::new(client, path)
+            .expect("a client on the fetch transport")
+    }
+
+    /// A request through [`client_to`]'s client.
+    fn request_to(base: &str, path: &str, timeout_ms: u64) -> Request<Value, ApiError> {
+        Request::new(client_to(base, timeout_ms), path)
     }
 
     fn request(path: &str, timeout_ms: u64) -> Request<Value, ApiError> {
@@ -290,6 +299,26 @@ mod fetch {
     async fn a_200_decodes_as_json() {
         let value = request("/ok", 10_000).send().await.expect("a decoded 200");
         assert_eq!(value["ok"], true);
+    }
+
+    // Why: issue #87. The page's fetch sends a body as given only when the send loop hands it
+    // bytes, so a body that is not UTF-8 comes back from the echo route byte for byte.
+    #[wasm_bindgen_test]
+    async fn a_body_that_is_not_utf8_crosses_fetch_byte_for_byte() {
+        let mut parts = RequestParts::new(Method::POST, ECHO_BODY_PATH);
+        parts
+            .headers
+            .insert(CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
+        parts.body = Some(BINARY_BODY.into());
+        let response = client_to(BASE, 10_000)
+            .send(parts, &[], None)
+            .await
+            .expect("the echo route answers");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.bytes().await.expect("a body").as_ref(),
+            BINARY_BODY
+        );
     }
 
     #[wasm_bindgen_test]

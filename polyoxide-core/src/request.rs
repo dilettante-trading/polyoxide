@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::Method;
 use serde::de::DeserializeOwned;
@@ -80,7 +81,7 @@ pub struct Request<T, E> {
     pub(crate) method: Method,
     pub(crate) path: String,
     pub(crate) query: Vec<(String, String)>,
-    pub(crate) body: Option<String>,
+    pub(crate) body: Option<Bytes>,
     pub(crate) authenticator: Option<Arc<DynAuthenticator<'static>>>,
     pub(crate) costs: Vec<Cost>,
     pub(crate) _marker: PhantomData<(T, E)>,
@@ -134,7 +135,7 @@ impl<T, E: From<ApiError>> Request<T, E> {
     /// [`ApiError::Serialization`] when `body` does not serialise.
     pub fn body<B: Serialize + ?Sized>(mut self, body: &B) -> Result<Self, E> {
         let value = serde_json::to_value(body).map_err(ApiError::from)?;
-        self.body = Some(value.to_string());
+        self.body = Some(Bytes::from(value.to_string()));
         Ok(self)
     }
 }

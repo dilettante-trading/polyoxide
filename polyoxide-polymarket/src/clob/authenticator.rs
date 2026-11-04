@@ -47,13 +47,15 @@ pub(crate) struct L2Auth {
 impl Authenticator for L2Auth {
     async fn sign(&self, parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
         let timestamp = current_timestamp();
-        let message = Signer::create_message(
-            timestamp,
-            parts.method.as_str(),
-            &parts.path,
-            parts.body.as_deref(),
-        );
-        let signature = self.signer.sign(&message).map_err(sign_error)?;
+        let signature = self
+            .signer
+            .sign_request(
+                timestamp,
+                parts.method.as_str(),
+                &parts.path,
+                parts.body.as_deref(),
+            )
+            .map_err(sign_error)?;
         let credentials = self.credentials.expose();
 
         let headers = &mut parts.headers;
@@ -210,6 +212,44 @@ mod tests {
                 "{name} differs"
             );
         }
+    }
+
+    // Why: issue #87. L2 signs the body it sends, and a body need not be text, so the HMAC
+    // reads its bytes. The expected value is the `hmac` crate's over the same bytes, not this
+    // crate's signer.
+    #[tokio::test]
+    async fn l2_signs_a_body_that_is_not_utf8_over_its_bytes() {
+        use base64::{engine::general_purpose::URL_SAFE, Engine};
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        const BODY: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x00, 0x80];
+        let auth = L2Auth {
+            address: Address::ZERO,
+            credentials: Secret::new(Credentials {
+                key: "key".into(),
+                secret: "c2VjcmV0".into(),
+                passphrase: "pass".into(),
+            }),
+            signer: Signer::new("c2VjcmV0"),
+        };
+        let mut parts = RequestParts::new(Method::POST, "/upload");
+        parts.body = Some(BODY.into());
+        auth.sign(&mut parts, 0).await.unwrap();
+
+        let header = |name| parts.headers.get(name).unwrap().to_str().unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"secret").unwrap();
+        mac.update(format!("{}POST/upload", header(POLY_TIMESTAMP)).as_bytes());
+        mac.update(BODY);
+        assert_eq!(
+            header(POLY_SIGNATURE),
+            URL_SAFE.encode(mac.finalize().into_bytes())
+        );
+        assert_eq!(
+            parts.body.as_deref(),
+            Some(BODY),
+            "signing leaves the body as given"
+        );
     }
 
     #[test]

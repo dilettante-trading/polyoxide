@@ -152,7 +152,7 @@ impl HttpClient {
             method: parts.method,
             url,
             headers: parts.headers,
-            body: parts.body.map(Into::into),
+            body: parts.body,
             timeout: parts.timeout.unwrap_or(self.timeout),
         }
     }

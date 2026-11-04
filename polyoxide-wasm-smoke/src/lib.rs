@@ -30,6 +30,12 @@ pub const OK_PATH: &str = "/ok";
 /// The body of [`OK_PATH`].
 pub const OK_BODY: &str = r#"{"ok":true}"#;
 
+/// A route answering a `POST` with 200 and the request's body, byte for byte, as
+/// `application/octet-stream`.
+pub const ECHO_BODY_PATH: &str = "/echo-body";
+/// A body that is not UTF-8: a gzip member's magic and method, then bytes no UTF-8 text holds.
+pub const BINARY_BODY: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x00, 0x80];
+
 /// A route that answers 200 only after [`SLOW_DELAY`], on the server [`SLOW_ENV`] names.
 pub const SLOW_PATH: &str = "/slow";
 /// How long [`SLOW_PATH`] holds its answer back.
