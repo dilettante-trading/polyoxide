@@ -3,14 +3,6 @@
 //! The protocol is a function of the id alone, as in py-sdk 0.12.0
 //! (`_internal/protocol.py`): no lookup is made. Nothing here is public; each
 //! module wraps these in its own types and errors.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Task 2.3 calls is_v2_position_id from the signing path"
-    )
-)]
-
 use alloy::primitives::{FixedBytes, U256};
 
 /// Parses an asset id as py-sdk does: whitespace trimmed, then decimal or a

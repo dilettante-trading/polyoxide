@@ -11,6 +11,7 @@ use crate::clob::{
     error::ClobError,
     types::{Order as ClobOrder, SignatureType},
 };
+use crate::shared::protocol::is_v2_position_id;
 
 /// Sign a digest with the signer.
 ///
@@ -201,14 +202,53 @@ pub(crate) fn exchange_address(chain_id: u64, neg_risk: bool) -> Result<Address,
     })
 }
 
-/// The `Polymarket CTF Exchange` v2 domain for one exchange contract.
-fn exchange_domain(chain_id: u64, exchange: Address) -> protocol::EIP712Domain {
+/// The exchange an order is settled on and the domain version it signs under.
+///
+/// An order whose token id is a Protocol V2 position id
+/// ([`is_v2_position_id`]) settles on ExchangeV3 at version `"3"`, whatever its
+/// `neg_risk` says; a chain with no ExchangeV3 is refused as a validation
+/// error. Any other order settles on the standard or neg-risk CTF exchange
+/// that `neg_risk` picks, at version `"2"`. An unsupported chain is a
+/// [`ClobError::Crypto`] in both cases.
+pub(crate) fn order_exchange(
+    chain_id: u64,
+    order: &ClobOrder,
+) -> Result<(Address, &'static str), ClobError> {
+    if is_v2_position_id(&order.token_id) {
+        let chain = Chain::from_chain_id(chain_id)
+            .ok_or_else(|| ClobError::Crypto(format!("Unsupported chain ID: {}", chain_id)))?;
+        let exchange = chain.exchange_v3().ok_or_else(|| {
+            ClobError::validation(format!(
+                "Protocol V2 orders need ExchangeV3, which is not deployed on chain {chain_id}"
+            ))
+        })?;
+        return Ok((exchange, "3"));
+    }
+    Ok((exchange_address(chain_id, order.neg_risk)?, "2"))
+}
+
+/// The `Polymarket CTF Exchange` domain at `version` for one exchange
+/// contract: `"2"` for the CTF exchanges, `"3"` for ExchangeV3.
+fn order_domain(chain_id: u64, exchange: Address, version: &'static str) -> protocol::EIP712Domain {
     protocol::EIP712Domain {
         name: "Polymarket CTF Exchange".to_string(),
-        version: "2".to_string(),
+        version: version.to_string(),
         chainId: U256::from(chain_id),
         verifyingContract: exchange,
     }
+}
+
+/// The `Polymarket CTF Exchange` version `"2"` domain for one exchange
+/// contract.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the signing paths take order_domain; tests build the version 2 domain by this name"
+    )
+)]
+fn exchange_domain(chain_id: u64, exchange: Address) -> protocol::EIP712Domain {
+    order_domain(chain_id, exchange, "2")
 }
 
 /// `keccak256(0x1901 ‖ domain_separator ‖ struct_hash)`.
@@ -232,22 +272,26 @@ fn compute_order_digest(order: &ClobOrder, chain_id: u64) -> Result<B256, ClobEr
     order_hash(order, chain_id)
 }
 
-/// The EIP-712 hash of an order under its exchange's domain, for every
-/// signature type: the id the exchange gives the order, known before it is
-/// signed.
+/// The EIP-712 hash of an order under its exchange's domain (version `"3"` for
+/// a Protocol V2 position id, else `"2"`), for every signature type: the id the
+/// exchange gives the order, known before it is signed.
 ///
 /// For a plain order (type 0–2) this is the digest [`sign_order`] signs. A
 /// Deposit Wallet's order (type 3) signs an ERC-7739 envelope instead, but the
 /// exchange names it by this same hash. A type-3 order whose maker is not its
 /// signer is refused, as the order conversion refuses it.
 pub(crate) fn order_hash(order: &ClobOrder, chain_id: u64) -> Result<B256, ClobError> {
-    let exchange = exchange_address(chain_id, order.neg_risk)?;
-    let domain = exchange_domain(chain_id, exchange);
+    let (exchange, version) = order_exchange(chain_id, order)?;
+    let domain = order_domain(chain_id, exchange, version);
     let struct_hash = order_to_protocol(order)?.eip712_hash_struct();
     Ok(eip712_digest(domain.eip712_hash_struct(), struct_hash))
 }
 
-/// Sign an order with EIP-712
+/// Sign an order with EIP-712.
+///
+/// The order is signed under the exchange its token id selects: ExchangeV3 at
+/// domain version `"3"` for a Protocol V2 position id (refused on a chain with
+/// no ExchangeV3), else the CTF or neg-risk exchange at version `"2"`.
 pub async fn sign_order<S: AlloySigner + ?Sized>(
     order: &ClobOrder,
     signer: &S,
@@ -278,7 +322,7 @@ pub(crate) mod deposit_wallet {
         sol_types::{SolStruct, SolValue},
     };
 
-    use super::{eip712_digest, exchange_domain, order_to_protocol, protocol};
+    use super::{eip712_digest, is_v2_position_id, order_domain, order_to_protocol, protocol};
     use crate::clob::{error::ClobError, types::Order as ClobOrder};
 
     /// EIP-712 domain name of every Deposit Wallet.
@@ -293,7 +337,9 @@ pub(crate) mod deposit_wallet {
     /// The digest a Deposit Wallet key signs for `order`.
     ///
     /// `exchange` is the verifying contract of the outer (app) domain and
-    /// `wallet` the Deposit Wallet named inside the envelope. This computes
+    /// `wallet` the Deposit Wallet named inside the envelope. The app domain's
+    /// version comes from `order.token_id`, as `order_exchange` picks it:
+    /// `"3"` for a Protocol V2 position id (pass ExchangeV3), else `"2"`. This computes
     /// the digest for whatever it is given: it does not check that
     /// `order.signature_type` is 3 or that `order.maker` is `wallet`; only
     /// the `maker == signer` rule is enforced, by the order conversion, and
@@ -312,7 +358,12 @@ pub(crate) mod deposit_wallet {
         wallet: Address,
     ) -> Result<B256, ClobError> {
         let contents = order_to_protocol(order)?;
-        let app_domain_separator = exchange_domain(chain_id, exchange).eip712_hash_struct();
+        let version = if is_v2_position_id(&order.token_id) {
+            "3"
+        } else {
+            "2"
+        };
+        let app_domain_separator = order_domain(chain_id, exchange, version).eip712_hash_struct();
         Ok(envelope_digest_from(
             contents,
             chain_id,
@@ -405,10 +456,10 @@ pub async fn sign_order_as<S: AlloySigner + ?Sized>(
         )));
     }
 
-    let exchange = exchange_address(chain_id, order.neg_risk)?;
+    let (exchange, version) = order_exchange(chain_id, order)?;
     let contents = order_to_protocol(order)?;
     let contents_hash = contents.eip712_hash_struct();
-    let app_domain_separator = exchange_domain(chain_id, exchange).eip712_hash_struct();
+    let app_domain_separator = order_domain(chain_id, exchange, version).eip712_hash_struct();
     let digest =
         deposit_wallet::envelope_digest_from(contents, chain_id, app_domain_separator, wallet);
     let inner = sign_digest(signer, &digest).await?;
@@ -1526,5 +1577,298 @@ mod order_hash_vectors {
 
         assert_ne!(order_hash(&order, 137).unwrap(), plain);
         assert!(order_hash(&order, 1).is_err());
+    }
+}
+
+/// Protocol V2 order signing, pinned to
+/// `tests/fixtures/clob/protocol_v2/order_vectors.json`, which
+/// `scripts/capture_polymarket_protocol_v2.py` takes from py-sdk 0.12.0: the
+/// exchange, domain version, domain separator, struct hash, digest and
+/// signature of each case are py-sdk's own choices and results. The V1 cases
+/// are the control: they must still sign at version `"2"`.
+#[cfg(test)]
+mod protocol_v2_vectors {
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::clob::core::chain::Contracts;
+    use crate::clob::types::OrderSide;
+    use alloy::signers::local::PrivateKeySigner;
+    use polyoxide_venue::{Class, Classify};
+
+    const VECTORS: &str =
+        include_str!("../../../tests/fixtures/clob/protocol_v2/order_vectors.json");
+    const ANVIL_KEY_0: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    #[derive(serde::Deserialize)]
+    struct File {
+        chain_id: u64,
+        signer_address: Address,
+        session_signer: Address,
+        deposit_wallet: Address,
+        cases: BTreeMap<String, Case>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Case {
+        neg_risk: bool,
+        order: Wire,
+        exchange: Address,
+        version: String,
+        domain_separator: B256,
+        struct_hash: B256,
+        digest: B256,
+        signature: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Wire {
+        salt: String,
+        maker: Address,
+        signer: Address,
+        token_id: String,
+        maker_amount: String,
+        taker_amount: String,
+        side: String,
+        signature_type: u8,
+        timestamp: String,
+        expiration: String,
+        metadata: B256,
+        builder: B256,
+    }
+
+    fn file() -> File {
+        serde_json::from_str(VECTORS).unwrap()
+    }
+
+    /// The vector's order as the native type, `neg_risk` as py-sdk was asked.
+    fn native(case: &Case) -> ClobOrder {
+        let wire = &case.order;
+        ClobOrder {
+            salt: wire.salt.clone(),
+            maker: wire.maker,
+            signer: wire.signer,
+            token_id: wire.token_id.clone(),
+            maker_amount: wire.maker_amount.clone(),
+            taker_amount: wire.taker_amount.clone(),
+            side: match wire.side.as_str() {
+                "BUY" => OrderSide::Buy,
+                "SELL" => OrderSide::Sell,
+                other => panic!("unknown side {other}"),
+            },
+            expiration: wire.expiration.clone(),
+            signature_type: match wire.signature_type {
+                0 => SignatureType::Eoa,
+                1 => SignatureType::PolyProxy,
+                2 => SignatureType::PolyGnosisSafe,
+                3 => SignatureType::Poly1271,
+                other => panic!("unknown signature type {other}"),
+            },
+            timestamp: wire.timestamp.clone(),
+            metadata: wire.metadata,
+            builder: wire.builder,
+            neg_risk: case.neg_risk,
+        }
+    }
+
+    fn named(name: &str) -> ClobOrder {
+        native(&file().cases[name])
+    }
+
+    #[test]
+    fn the_vectors_hold_the_six_cases_the_contract_names() {
+        let file = file();
+        let mut names: Vec<&str> = file.cases.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        let mut expected = vec![
+            "v1_eoa",
+            "v1_neg_risk_eoa",
+            "v2_deposit_wallet_owner",
+            "v2_deposit_wallet_session",
+            "v2_eoa",
+            "v2_neg_risk_eoa",
+        ];
+        expected.sort_unstable();
+        assert_eq!(names, expected);
+        assert_eq!(file.chain_id, 137);
+        // The case that proves `neg_risk` is ignored for a V2 id is only that
+        // if the script really passed `true`.
+        assert!(file.cases["v2_neg_risk_eoa"].neg_risk);
+        assert!(!file.cases["v2_eoa"].neg_risk);
+    }
+
+    #[test]
+    fn each_case_signs_at_the_version_and_exchange_py_sdk_chose() {
+        let file = file();
+        for (name, case) in &file.cases {
+            let (exchange, version) = order_exchange(file.chain_id, &native(case)).unwrap();
+            assert_eq!(exchange, case.exchange, "{name} exchange");
+            assert_eq!(version, case.version, "{name} version");
+        }
+        let cases = &file.cases;
+        // A V2 id settles on ExchangeV3 whatever `neg_risk` says; a V1 id
+        // follows `neg_risk` between the two CTF exchanges.
+        assert_eq!(cases["v2_eoa"].exchange, cases["v2_neg_risk_eoa"].exchange);
+        assert_eq!(cases["v2_eoa"].version, "3");
+        assert_ne!(cases["v1_eoa"].exchange, cases["v1_neg_risk_eoa"].exchange);
+        assert_eq!(cases["v1_eoa"].version, "2");
+        assert_eq!(cases["v1_neg_risk_eoa"].version, "2");
+    }
+
+    #[test]
+    fn the_domain_separator_and_struct_hash_match_py_sdk() {
+        let file = file();
+        for (name, case) in &file.cases {
+            let order = native(case);
+            let (exchange, version) = order_exchange(file.chain_id, &order).unwrap();
+            assert_eq!(
+                order_domain(file.chain_id, exchange, version).eip712_hash_struct(),
+                case.domain_separator,
+                "{name} domain separator"
+            );
+            assert_eq!(
+                order_to_protocol(&order).unwrap().eip712_hash_struct(),
+                case.struct_hash,
+                "{name} struct hash"
+            );
+        }
+    }
+
+    #[test]
+    fn the_digest_is_what_py_sdk_signs_and_the_order_hash_is_its_id() {
+        let file = file();
+        for (name, case) in &file.cases {
+            let order = native(case);
+            if order.signature_type == SignatureType::Poly1271 {
+                // The envelope digest, with ExchangeV3 as the app domain.
+                let digest = deposit_wallet::envelope_digest(
+                    &order,
+                    file.chain_id,
+                    case.exchange,
+                    file.deposit_wallet,
+                )
+                .unwrap();
+                assert_eq!(digest, case.digest, "{name} envelope digest");
+            } else {
+                assert_eq!(
+                    compute_order_digest(&order, file.chain_id).unwrap(),
+                    case.digest,
+                    "{name} order digest"
+                );
+            }
+            // The exchange names every order, type 3 included, by the hash of
+            // its struct under the exchange domain.
+            assert_eq!(
+                order_hash(&order, file.chain_id).unwrap(),
+                eip712_digest(case.domain_separator, case.struct_hash),
+                "{name} order hash"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn plain_cases_reproduce_py_sdks_signatures() {
+        let file = file();
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+        assert_eq!(signer.address(), file.signer_address);
+        for name in ["v2_eoa", "v2_neg_risk_eoa", "v1_eoa", "v1_neg_risk_eoa"] {
+            let case = &file.cases[name];
+            let signature = sign_order(&native(case), &signer, file.chain_id)
+                .await
+                .unwrap();
+            assert_eq!(signature, case.signature.to_lowercase(), "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_v2_deposit_wallet_owner_reproduces_py_sdks_signature() {
+        let file = file();
+        let case = &file.cases["v2_deposit_wallet_owner"];
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+        let target = SigningTarget::DepositWallet {
+            wallet: file.deposit_wallet,
+            role: DepositWalletRole::Owner,
+        };
+        let signature = sign_order_as(&native(case), &signer, file.chain_id, &target)
+            .await
+            .unwrap();
+        assert_eq!(signature, case.signature.to_lowercase());
+    }
+
+    #[tokio::test]
+    async fn a_v2_deposit_wallet_session_key_reproduces_py_sdks_signature() {
+        // Anvil key #0 signs while the vector's envelope names the session
+        // signer (Anvil #1), so the envelope differs from the vector only in
+        // the 32-byte signer id, as in `deposit_wallet_vectors`.
+        let file = file();
+        let case = &file.cases["v2_deposit_wallet_session"];
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+        let target = SigningTarget::DepositWallet {
+            wallet: file.deposit_wallet,
+            role: DepositWalletRole::SessionKey,
+        };
+        let signature = sign_order_as(&native(case), &signer, file.chain_id, &target)
+            .await
+            .unwrap();
+        let bytes = hex::decode(signature.trim_start_matches("0x")).unwrap();
+        let expected = hex::decode(case.signature.trim_start_matches("0x")).unwrap();
+        assert_eq!(bytes.len(), expected.len());
+        assert_eq!(&bytes[..12], &expected[..12]);
+        assert_eq!(&expected[12..32], file.session_signer.as_slice());
+        assert_eq!(&bytes[12..32], signer.address().as_slice());
+        assert_eq!(&bytes[32..], &expected[32..]);
+    }
+
+    #[test]
+    fn a_v2_id_is_refused_where_exchange_v3_is_not_deployed() {
+        let order = named("v2_eoa");
+        let results = [
+            order_exchange(80002, &order).map(|_| ()),
+            order_hash(&order, 80002).map(|_| ()),
+        ];
+        for result in results {
+            let err = result.unwrap_err();
+            assert!(
+                err.to_string().contains(
+                    "Protocol V2 orders need ExchangeV3, which is not deployed on chain 80002"
+                ),
+                "{err}"
+            );
+            assert_eq!(err.class(), Class::InvalidRequest);
+        }
+    }
+
+    #[tokio::test]
+    async fn signing_a_v2_id_on_amoy_is_refused_before_any_signature() {
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+        let err = sign_order(&named("v2_eoa"), &signer, 80002)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains(
+                "Protocol V2 orders need ExchangeV3, which is not deployed on chain 80002"
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_unsupported_chain_stays_a_crypto_error_for_both_protocols() {
+        for name in ["v2_eoa", "v1_eoa"] {
+            let err = order_exchange(1, &named(name)).unwrap_err();
+            assert!(matches!(err, ClobError::Crypto(_)), "{name}: {err:?}");
+        }
+    }
+
+    #[test]
+    fn a_v1_id_on_amoy_still_picks_a_ctf_exchange_at_version_2() {
+        assert_eq!(
+            order_exchange(80002, &named("v1_eoa")).unwrap(),
+            (Contracts::POLYGON_AMOY.exchange, "2")
+        );
+        assert_eq!(
+            order_exchange(80002, &named("v1_neg_risk_eoa")).unwrap(),
+            (Contracts::POLYGON_AMOY.neg_risk_exchange, "2")
+        );
     }
 }
