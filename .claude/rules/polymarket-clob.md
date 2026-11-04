@@ -77,8 +77,8 @@ runs under, so every order that key has resting is cancelled some 10 to 15 secon
 - `candles` read `/prices-history`, one price per interval as `close`, the `CandleInterval` sent as
   `fidelity` minutes, from `start` rounded up to the second and no further than 14 days on, since a
   longer window is a `400` (`docs/specs/clob/OBSERVED.md`).
-- `trades` read the Data API's taker-only `/trades` for the token's market and keep the token's
-  rows, oldest first, with no trade id (the Data API gives none).
+- `trades` read the Data API's taker-only `/v2/trades` (one page of 100) for the token's market
+  and keep the token's rows, oldest first, with no trade id (the Data API gives none).
 - `event_group` reads the event id from Gamma's `/markets?clob_token_ids=` (a private decode,
   since Gamma's `Market` does not model its `events`) with `closed=any`, since Gamma leaves closed
   markets out unless asked (DRIFT R13), then `/events/{id}`, keeping only `v1` markets' outcomes.
@@ -122,8 +122,10 @@ crate list shows it.
 - `cancel` is `Ok` only for an id among `canceled`. `cancel_all(Some(key))` resolves the token's
   condition through `/markets-by-token` and sends both it and the token, which the route requires.
 - `open_orders` pages `/data/orders` to the `LTE=` sentinel and refuses a repeated cursor.
-  `positions` is Data v1 `/positions` for the maker address with `sizeThreshold=0`, in pages of
-  500 up to Data's offset of 10,000, past which it is a `VenueRefusal`. `balances` is one pUSD
+  `positions` is Data v2 `/v2/positions` for the maker address, `status=OPEN` (which includes
+  redeemable rows) with no dust filter (`filter_type=TOKENS`, `filter_amount=0`), walked by cursor
+  in pages of 500; `PositionExt` carries v2's `entry_cost` and `unrealized_pnl`, and an end date
+  of `1970-01-01`, v2's "none", as `None`. `balances` is one pUSD
   balance with six decimals and each allowance in `BalanceExt`, an unlimited approval being
   `Decimal::MAX`.
 

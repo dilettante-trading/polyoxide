@@ -16,8 +16,9 @@ use std::collections::HashSet;
 
 use super::{decimal, decode};
 use crate::clob::OpenOrder;
-use crate::data::types::Position as DataPosition;
+use crate::data::v2::types::{FilterType, Position as DataPosition, PositionStatus};
 use crate::shared::keys::TokenId;
+use futures_util::StreamExt;
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -115,10 +116,11 @@ pub struct PositionExt {
     pub current_price: Option<Decimal>,
     /// The position's current value.
     pub current_value: Option<Decimal>,
-    /// The position's initial value.
-    pub initial_value: Option<Decimal>,
-    /// The cash profit and loss.
-    pub cash_pnl: Option<Decimal>,
+    /// The fee-exclusive cost of the position's entry, in USDC (the Data
+    /// API's `entry_cost_usdc`).
+    pub entry_cost: Option<Decimal>,
+    /// The unrealized profit and loss, in USDC.
+    pub unrealized_pnl: Option<Decimal>,
     /// The realized profit and loss.
     pub realized_pnl: Option<Decimal>,
     /// Whether the position can be redeemed.
@@ -129,7 +131,8 @@ pub struct PositionExt {
     pub negative_risk: Option<bool>,
     /// The market's title.
     pub title: Option<String>,
-    /// When the market ends, as the Data API writes it.
+    /// When the market ends, `YYYY-MM-DD` as the Data API writes it; `None`
+    /// when it has none.
     pub end_date: Option<String>,
 }
 
@@ -729,32 +732,24 @@ impl Trading for Clob {
         let maker = self
             .resolve_maker_address(None, self.signature_type, account)
             .await?;
-        let user = self.data.user(maker.to_string());
+        // `OPEN` also returns redeemable rows. No dust filter: v2's default
+        // floor of 0.1 shares hides small positions.
+        let mut pages = self
+            .data
+            .v2()
+            .positions(maker.to_string())
+            .status(PositionStatus::Open)
+            .filter_type(FilterType::Tokens)
+            .filter_amount(0.0)
+            .limit(POSITIONS_PAGE)
+            .pages();
         let mut positions = Vec::new();
-        let mut offset = 0;
-        loop {
-            // No dust filter: the default threshold of one share hides small
-            // positions.
-            let rows = user
-                .list_positions()
-                .size_threshold(0.0)
-                .limit(POSITIONS_PAGE)
-                .offset(offset)
-                .send()
-                .await?;
-            for row in &rows {
+        while let Some(page) = pages.next().await {
+            for row in &page?.data {
                 positions.push(position(row)?);
             }
-            if rows.len() < POSITIONS_PAGE as usize {
-                return Ok(positions);
-            }
-            if offset >= POSITIONS_LAST_OFFSET {
-                return Err(refusal(
-                    "the wallet holds more positions than /positions can list",
-                ));
-            }
-            offset += POSITIONS_PAGE;
         }
+        Ok(positions)
     }
 
     async fn balances(&self) -> Result<Vec<Balance>, ClassifiedError> {
@@ -777,11 +772,11 @@ impl Trading for Clob {
     }
 }
 
-/// The rows of a `/positions` page, the most it serves.
+/// The rows of a `/v2/positions` page.
 const POSITIONS_PAGE: u32 = 500;
 
-/// The last offset `/positions` accepts.
-const POSITIONS_LAST_OFFSET: u32 = 10_000;
+/// The end date the Data API writes for a market that has none.
+const NO_END_DATE: &str = "1970-01-01";
 
 /// The cursor `/data/orders` ends on.
 const PAGES_END: &str = "LTE=";
@@ -882,23 +877,25 @@ fn open_order(row: &OpenOrder, ids: &Mutex<ClientIds>) -> Result<Order, Classifi
 
 /// A Data API position, as the trait's [`Position`].
 fn position(row: &DataPosition) -> Result<Position, ClassifiedError> {
-    let size = decimal(row.size).ok_or_else(|| decode("a position size that is not a decimal"))?;
-    let mut position = Position::new(key_of(&row.asset)?, size);
+    let size =
+        decimal(row.current_size).ok_or_else(|| decode("a position size that is not a decimal"))?;
+    let mut position = Position::new(key_of(&row.token_id)?, size);
     position.average_price = decimal(row.avg_price);
+    let end_date = &row.end_date;
     position.extensions = Extensions::of(PositionExt {
         condition_id: Some(row.condition_id.clone()),
         outcome: Some(row.outcome.clone()),
-        outcome_index: Some(row.outcome_index),
-        current_price: decimal(row.cur_price),
+        outcome_index: row.outcome_index.get(),
+        current_price: decimal(row.current_price),
         current_value: decimal(row.current_value),
-        initial_value: decimal(row.initial_value),
-        cash_pnl: decimal(row.cash_pnl),
+        entry_cost: decimal(row.entry_cost_usdc),
+        unrealized_pnl: decimal(row.unrealized_pnl),
         realized_pnl: decimal(row.realized_pnl),
         redeemable: Some(row.redeemable),
         mergeable: Some(row.mergeable),
         negative_risk: Some(row.negative_risk),
         title: Some(row.title.clone()),
-        end_date: row.end_date.clone(),
+        end_date: (!end_date.is_empty() && end_date != NO_END_DATE).then(|| end_date.clone()),
     });
     Ok(position)
 }

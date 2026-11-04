@@ -15,7 +15,7 @@
 //! | `instrument` | `/markets-by-token/{token}`, then `/markets/{condition}` |
 //! | `quote`, `book` | `/book` |
 //! | `candles` | `/prices-history`, one price per interval, at most 14 days from `start`; an empty answer means none in that span |
-//! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/trades` |
+//! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/v2/trades` |
 //! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=&closed=any`, then `/events/{id}` |
 //!
 //! With `clob-ws` and `data` as well, [`Clob`] implements the `Trading` trait
@@ -307,8 +307,11 @@ mod trades {
 
     use super::{decimal, decode};
     use crate::clob::Clob;
-    use crate::data::types::TradeSide;
+    use crate::data::v2::types::TradeSide;
     use crate::shared::keys;
+
+    /// The rows one call reads: v1's default page, which the call relied on.
+    const TRADES_PAGE: u32 = 100;
 
     /// The CLOB's facts about a public trade, beside [`Trade`]'s fields.
     #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -330,18 +333,20 @@ mod trades {
                 .market_by_token(token.as_str())
                 .send()
                 .await?;
-            let rows = self
+            let page = self
                 .data
+                .v2()
                 .trades()
-                .list()
-                .market([found.condition_id])
+                .conditions([found.condition_id])
                 .taker_only(true)
+                .limit(TRADES_PAGE)
                 .send()
                 .await?;
             // The Data API sends the newest first, and both outcomes' trades.
-            rows.iter()
+            page.data
+                .iter()
                 .rev()
-                .filter(|row| row.asset == token.as_str())
+                .filter(|row| row.token_id == token.as_str())
                 .map(|row| {
                     let price = decimal(row.price)
                         .ok_or_else(|| decode("a price that is not a decimal"))?;
@@ -359,10 +364,10 @@ mod trades {
                     trade.taker_side = match row.side {
                         TradeSide::Buy => Some(Side::Buy),
                         TradeSide::Sell => Some(Side::Sell),
-                        TradeSide::Unknown => None,
+                        _ => None,
                     };
                     trade.extensions = Extensions::of(TradeExt {
-                        transaction_hash: row.transaction_hash.clone(),
+                        transaction_hash: Some(row.transaction_hash.clone()),
                         proxy_wallet: Some(row.proxy_wallet.clone()),
                         outcome: Some(row.outcome.clone()),
                     });
