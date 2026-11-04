@@ -21,7 +21,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.45", default-features = false, features = ["clob", "gamma"] }
+polyoxide-polymarket = { version = "0.46", default-features = false, features = ["clob", "gamma"] }
 ```
 
 `gamma` lets a proxy signature type find its proxy wallet through Gamma when an order names no

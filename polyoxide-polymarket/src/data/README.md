@@ -17,7 +17,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.45", default-features = false, features = ["data"] }
+polyoxide-polymarket = { version = "0.46", default-features = false, features = ["data"] }
 ```
 
 Or use the `polyoxide` umbrella, whose default `polymarket` feature includes the Data API, at
@@ -25,7 +25,7 @@ Or use the `polyoxide` umbrella, whose default `polymarket` feature includes the
 
 ```toml
 [dependencies]
-polyoxide = "0.45"
+polyoxide = "0.46"
 ```
 
 ## Data API v2

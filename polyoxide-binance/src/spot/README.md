@@ -18,7 +18,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-binance = "0.45"
+polyoxide-binance = "0.46"
 ```
 
 `spot` is on by default, and builds without `usdm`.

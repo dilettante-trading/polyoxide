@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [0.46.0] - 2026-11-04
+
+Binary request bodies through the send loop (#87), the Kalshi AsyncAPI mirror (#86), and the
+browser smoke job's data check moved to `/v2/status` (#84), since Data API v1 now answers 410.
+`RequestParts::body` is re-typed, a breaking change to a public field, so the 0.x minor rises;
+its migration is in [`docs/s3-removals.md`](docs/s3-removals.md). No build gains a crate.
+
 - **Binary request bodies (#87).** `RequestParts::body` is `Option<bytes::Bytes>` where it was
   `Option<String>`, so `HttpClient::send` carries a body that is not UTF-8, such as a gzip
   upload's, on the client's own transport, runtime, throttle and hooks, natively and in the
@@ -14,6 +21,18 @@
   created since September 2024 (the REST `Market` field was deprecated in #85, and its doc now
   says so), and rewords two RFQ descriptions: `quote_accepted`'s `quote_id` can differ from the
   quote the RFQ creator named. The client implements neither channel.
+
+### 🚀 Features
+
+- *(core)* [**breaking**] RequestParts::body is bytes, so a binary body crosses the send loop ([#87](https://github.com/dilettante-trading/polyoxide/issues/87))
+
+### 📚 Documentation
+
+- *(spec)* Adopt Kalshi's AsyncAPI drift, no_sub_title deprecated ([#86](https://github.com/dilettante-trading/polyoxide/issues/86))
+
+### 🧪 Testing
+
+- *(wasm)* The browser data check reads /v2/status ([#84](https://github.com/dilettante-trading/polyoxide/issues/84))
 
 ## [0.45.0] - 2026-11-03
 
