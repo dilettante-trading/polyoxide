@@ -1,18 +1,18 @@
 //! # Data
 //!
-//! Client for Polymarket's Data API, v1 and v2, behind the `data` feature.
+//! Client for Polymarket's Data API, behind the `data` feature. Polymarket
+//! retired Data API v1 on 2026-11-02, so every route is v2's, through
+//! [`DataApi::v2`].
 //!
 //! ## Features
 //!
-//! - User data: open/closed positions, position value, trades, activity, and markets-traded counts
-//! - Market positions (`/v1/market-positions`) and token holders
-//! - Combinatorial (multi-market) positions and their lifecycle activity
-//! - Trade history across users
-//! - Leaderboards, builder stats, open interest, and live volume
-//! - Accounting snapshots (returned as ZIP bytes)
-//! - Data API v2 (`/v2/*`) via [`DataApi::v2`], with cursor paging and structured errors
-//! - Type-safe API with idiomatic Rust patterns
-//! - Request builder pattern for flexible, composable queries
+//! - Wallet data: positions across their lifecycle, combo positions, PnL,
+//!   stats, volume, portfolio value and approvals
+//! - The trade and activity feeds, and combo activity
+//! - Market data: holders, live volume, open interest, price history,
+//!   resolutions and tokens
+//! - Ranked boards: the leaderboard, builders and biggest winners
+//! - Cursor paging and structured errors
 //!
 //! ## Example
 //!
@@ -21,28 +21,25 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create a new Data API client
 //!     let data = DataApi::new()?;
 //!
-//!     // Get positions for a user with fluent builder pattern
-//!     let positions = data.user("0x1234567890123456789012345678901234567890")
-//!         .list_positions()
+//!     let page = data
+//!         .v2()
+//!         .positions("0x1234567890123456789012345678901234567890")
 //!         .limit(10)
 //!         .send()
 //!         .await?;
 //!
-//!     for position in positions {
-//!         println!("Position: {} - size: {}", position.title, position.size);
+//!     for position in page.data {
+//!         println!("Position: {} - size: {}", position.title, position.current_size);
 //!     }
 //!
 //!     Ok(())
 //! }
 //! ```
 
-pub mod api;
 pub mod client;
 pub mod error;
-pub mod types;
 pub mod v2;
 
 pub use client::{DataApi, DataApiBuilder};

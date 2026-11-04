@@ -181,33 +181,22 @@ pub fn gamma_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
     table.build()
 }
 
-/// Data API rate limits.
+/// Data API rate limits, as Polymarket publishes them for v2 (it retired v1 on
+/// 2026-11-02): <https://docs.polymarket.com/api-reference/rate-limits>.
 ///
-/// - General: 1,000/10s
-/// - /trades: 200/10s
-/// - /positions and /closed-positions: 150/10s
-/// - `/` (health): 100/10s
-/// - Data API v2: measured per route, since upstream publishes no figures;
-///   see `docs/specs/data-v2/OBSERVED.md`
+/// - General (every `/v2` route): 800/10s
+/// - `/v2/trades`: 300/10s
+/// - `/v2/positions` and `/v2/positions/combos`: 200/10s each
+/// - `/v2/activity` and `/v2/activity/combos`: 200/10s each
+/// - `/v2/prices-history`: 200/10s
+/// - `/v2/status`: 100/10s
 ///
-/// The published table spells the health row `/ok`, but that path answers
-/// **404** on `data-api.polymarket.com` — `/` answers 200 `{"data":"OK"}`,
-/// and is the route this crate requests. `/ok` is boilerplate repeated into
-/// every surface's table; only the CLOB host serves it.
+/// Two routes the table does not list keep the rates measured on them before
+/// it was published, which sit under the general allowance: `/v2/user-pnl` and
+/// `/v2/holders`, 400/10s each (`docs/specs/data-v2/OBSERVED.md`).
 ///
-/// Matching `/` is safe despite entries being prefix-matched: the
-/// segment-boundary rule means `strip_prefix("/")` on `/positions` leaves
-/// `positions`, which starts with neither `/` nor `?`, so the entry matches
-/// only the bare root and the root with a query string.
-///
-/// This limiter is shared with the two sibling hosts, so it also carries
-/// their rules:
-///
-/// - `/user-pnl`: 200/10s, published as the *host-wide* allowance for
-///   `user-pnl-api.polymarket.com`. Modelled per-path because it is the
-///   only route polyoxide calls there and matching has no host dimension.
-/// - `lb-api.polymarket.com` (`/volume`, `/profit`) has no published limit,
-///   so those fall to the general bucket.
+/// A row is a prefix, matched at a segment boundary, and the first row that
+/// matches wins, so each `/combos` row precedes its parent's.
 #[cfg(feature = "data")]
 pub fn data_limits() -> RateLimiter {
     data_limits_on(polyoxide_rt::default_runtime())
@@ -216,24 +205,19 @@ pub fn data_limits() -> RateLimiter {
 /// [`data_limits`], keeping time on `runtime`.
 #[cfg(feature = "data")]
 pub fn data_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
-    let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+    let mut table = WindowQuotaTable::new(800, TEN_SECONDS);
     table.with_runtime(runtime);
     table
-        .prefix("/closed-positions", None, 150, TEN_SECONDS)
-        .prefix("/positions", None, 150, TEN_SECONDS)
-        .prefix("/trades", None, 200, TEN_SECONDS)
-        .prefix("/user-pnl", None, 200, TEN_SECONDS)
-        // Data API v2. Upstream publishes no v2 figures; each count is the
-        // highest clean rate from the ramps in docs/specs/data-v2/OBSERVED.md,
-        // and the table reserves a tenth. `/v2/positions/combos` must precede
-        // `/v2/positions`: prefix matching takes the first row that matches.
-        .prefix("/v2/positions/combos", None, 400, TEN_SECONDS)
+        .prefix("/v2/trades", None, 300, TEN_SECONDS)
+        .prefix("/v2/positions/combos", None, 200, TEN_SECONDS)
         .prefix("/v2/positions", None, 200, TEN_SECONDS)
-        .prefix("/v2/trades", None, 200, TEN_SECONDS)
-        .prefix("/v2/activity", None, 400, TEN_SECONDS)
+        .prefix("/v2/activity/combos", None, 200, TEN_SECONDS)
+        .prefix("/v2/activity", None, 200, TEN_SECONDS)
+        .prefix("/v2/prices-history", None, 200, TEN_SECONDS)
+        .prefix("/v2/status", None, 100, TEN_SECONDS)
+        // Not in the published table: measured, `docs/specs/data-v2/OBSERVED.md`.
         .prefix("/v2/user-pnl", None, 400, TEN_SECONDS)
-        .prefix("/v2/holders", None, 400, TEN_SECONDS)
-        .prefix("/", None, 100, TEN_SECONDS);
+        .prefix("/v2/holders", None, 400, TEN_SECONDS);
     table.build()
 }
 

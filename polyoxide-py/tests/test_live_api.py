@@ -341,116 +341,6 @@ class TestClobAsync:
 
 
 # ══════════════════════════════════════════════════════════════════
-# Data API — Sync
-# ══════════════════════════════════════════════════════════════════
-
-TEST_USER = "0x0000000000000000000000000000000000000001"
-
-# Upstream retired every v1 route on 2026-11-02: each answers 410
-# `{"error":"Data API v1 has been retired"}`. The v2 tests below still run.
-v1_retired = pytest.mark.skip(reason="Data API v1 retired upstream (410)")
-
-
-@v1_retired
-class TestDataSyncHealth:
-    def test_ping(self):
-        data = polyoxide.DataApiSync()
-        latency = data.health().ping()
-        assert isinstance(latency, float)
-        assert 0 < latency < 10
-
-
-@v1_retired
-class TestDataSyncTrades:
-    def test_list(self):
-        data = polyoxide.DataApiSync()
-        trades = data.trades().list(limit=3)
-        assert len(trades) > 0
-        t = trades[0]
-        d = t.to_dict()
-        assert isinstance(d, dict)
-
-
-@v1_retired
-class TestDataSyncOpenInterest:
-    def test_get(self):
-        data = polyoxide.DataApiSync()
-        oi = data.open_interest().get()
-        assert len(oi) > 0
-
-
-@v1_retired
-class TestDataSyncLeaderboard:
-    def test_get(self):
-        data = polyoxide.DataApiSync()
-        rankings = data.leaderboard().get(limit=3)
-        assert len(rankings) > 0
-        r = rankings[0]
-        d = r.to_dict()
-        assert isinstance(d, dict)
-
-
-@v1_retired
-class TestDataSyncBuilders:
-    def test_leaderboard(self):
-        data = polyoxide.DataApiSync()
-        rankings = data.builders().leaderboard(limit=3)
-        assert len(rankings) > 0
-
-
-@v1_retired
-class TestDataSyncUser:
-    def test_list_positions(self):
-        """Positions for a dummy address should return empty list, not error."""
-        async def go():
-            data = polyoxide.DataApi()
-            positions = await data.user(TEST_USER).list_positions()
-            assert isinstance(positions, list)
-
-        run_async(go())
-
-    def test_trades(self):
-        async def go():
-            data = polyoxide.DataApi()
-            trades = await data.user(TEST_USER).trades()
-            assert isinstance(trades, list)
-
-        run_async(go())
-
-
-# ══════════════════════════════════════════════════════════════════
-# Data API — Async
-# ══════════════════════════════════════════════════════════════════
-
-
-@v1_retired
-class TestDataAsync:
-    def test_list_trades(self):
-        async def go():
-            data = polyoxide.DataApi()
-            trades = await data.trades().list(limit=2)
-            assert len(trades) > 0
-
-        run_async(go())
-
-    def test_ping(self):
-        async def go():
-            data = polyoxide.DataApi()
-            latency = await data.health().ping()
-            assert isinstance(latency, float)
-
-        run_async(go())
-
-    def test_open_interest(self):
-        async def go():
-            data = polyoxide.DataApi()
-            oi = await data.open_interest().get()
-            assert len(oi) > 0
-
-        run_async(go())
-
-
-# ══════════════════════════════════════════════════════════════════
 # Data API v2
 # ══════════════════════════════════════════════════════════════════
 #
@@ -459,8 +349,13 @@ class TestDataAsync:
 
 
 def _recent_trade():
-    """(wallet, condition_id, token_id) of the newest trade on the bare feed."""
-    trade = polyoxide.DataApiSync().v2().trades(limit=1).data[0]
+    """(wallet, condition_id, token_id) of the newest market trade on the bare feed.
+
+    The feed also carries combo trades, whose 62-digit condition id the market
+    routes refuse with a 400 (docs/specs/data-v2/OBSERVED.md), so they are skipped.
+    """
+    trades = polyoxide.DataApiSync().v2().trades(limit=50).data
+    trade = next(t for t in trades if len(t.condition_id) == 66)
     return trade.proxy_wallet, trade.condition_id, trade.token_id
 
 

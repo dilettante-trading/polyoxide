@@ -4,7 +4,7 @@
 use polyoxide_core::{csv, QueryBuilder, Request};
 
 use crate::data::{
-    types::SortDirection,
+    v2::types::SortDirection,
     v2::{
         envelope::{Envelope, Paged},
         types::{
@@ -59,9 +59,9 @@ impl DataV2 {
 
     /// `GET /v2/user-pnl`: a wallet's cumulative PnL series.
     ///
-    /// Upstream describes `trade_pnl` as the series behind
-    /// [`DataApi::pnl`](crate::data::DataApi::pnl), but the two were measured apart;
-    /// see that method before swapping one for the other.
+    /// Upstream describes `trade_pnl` as the series behind `user-pnl-api`'s,
+    /// retired on 2026-11-02, but the two were measured apart
+    /// (`docs/specs/data-v2/OBSERVED.md`).
     pub fn user_pnl(&self, user: impl Into<String>) -> GetUserPnl {
         GetUserPnl {
             request: Request::new(self.http_client.clone(), "/v2/user-pnl")

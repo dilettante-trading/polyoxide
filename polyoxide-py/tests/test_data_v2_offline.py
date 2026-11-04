@@ -626,12 +626,3 @@ def test_an_error_without_a_v2_body_has_none_fields(server) -> None:
 
     e = raised.value
     assert (e.status, e.code, e.retryable, e.trace_id, e.parameter, e.retry_after) == (None,) * 6
-
-
-def test_v1_errors_also_carry_the_attributes(server) -> None:
-    server.reply("/", "nope", status=500)
-
-    with pytest.raises(polyoxide.PolyoxideError) as raised:
-        polyoxide.DataApiSync(base_url=server.url).health().ping()
-
-    assert raised.value.code is None

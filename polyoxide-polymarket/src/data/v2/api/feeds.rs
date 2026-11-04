@@ -3,7 +3,7 @@
 use polyoxide_core::Request;
 
 use crate::data::{
-    types::SortDirection,
+    v2::types::SortDirection,
     v2::{
         envelope::Paged,
         types::{

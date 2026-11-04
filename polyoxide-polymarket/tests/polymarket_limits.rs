@@ -175,19 +175,9 @@ mod documented_data_limits {
     //! Agreement tests for the Data API's published table.
     //!
     //! Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
-    //! as fetched on 2026-08-05.
-    //!
-    //! Two rows need interpreting, both verified against the live hosts:
-    //!
-    //! - The health row is published as `/ok`, but `data-api.polymarket.com/ok`
-    //!   answers **404** while `/` answers 200 `{"data":"OK"}`. The `/ok`
-    //!   spelling is boilerplate repeated into every surface's table; only
-    //!   `clob.polymarket.com` actually serves it. The cap is therefore
-    //!   attached to `/`, the route this crate requests and the host answers.
-    //! - "User PNL API 200 req/10s" is published as a *host-wide* allowance for
-    //!   `user-pnl-api.polymarket.com`. It is modelled as a path rule on
-    //!   `/user-pnl` because that is the only route polyoxide calls there and
-    //!   the limiter matches on path alone, with no host dimension.
+    //! as fetched on 2026-11-04, its v2 section: Polymarket retired v1 on
+    //! 2026-11-02. The published health row of the v1 table read `/ok`, which
+    //! `data-api.polymarket.com` answers 404; v2's is `/v2/status`.
 
     use super::agreement::*;
     use super::*;
@@ -195,27 +185,25 @@ mod documented_data_limits {
     /// The published table, transcribed by hand. This is the golden vector.
     fn documented() -> Vec<DocumentedRule> {
         vec![
-            ("/trades", Some(Method::GET), vec![(200, 10)]),
-            ("/positions", Some(Method::GET), vec![(150, 10)]),
-            ("/closed-positions", Some(Method::GET), vec![(150, 10)]),
-            ("/", Some(Method::GET), vec![(100, 10)]),
-            ("/user-pnl", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/trades", Some(Method::GET), vec![(300, 10)]),
+            ("/v2/positions", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/positions/combos", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/activity", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/activity/combos", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/prices-history", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/status", Some(Method::GET), vec![(100, 10)]),
         ]
     }
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        assert_matches_published(&shared::data_limits(), documented(), 1_000);
+        assert_matches_published(&shared::data_limits(), documented(), 800);
     }
 
-    /// Data API v2 rows. Upstream publishes no v2 figures; each count is the
-    /// highest clean ramp rate recorded in `docs/specs/data-v2/OBSERVED.md`.
+    /// Routes the published table does not list: each count is the highest
+    /// clean ramp rate recorded in `docs/specs/data-v2/OBSERVED.md`.
     fn measured_v2() -> Vec<DocumentedRule> {
         vec![
-            ("/v2/positions", Some(Method::GET), vec![(200, 10)]),
-            ("/v2/positions/combos", Some(Method::GET), vec![(400, 10)]),
-            ("/v2/trades", Some(Method::GET), vec![(200, 10)]),
-            ("/v2/activity", Some(Method::GET), vec![(400, 10)]),
             ("/v2/user-pnl", Some(Method::GET), vec![(400, 10)]),
             ("/v2/holders", Some(Method::GET), vec![(400, 10)]),
         ]
@@ -223,66 +211,47 @@ mod documented_data_limits {
 
     #[test]
     fn every_v2_route_resolves_to_its_measured_quota() {
-        assert_matches_published(&shared::data_limits(), measured_v2(), 1_000);
+        assert_matches_published(&shared::data_limits(), measured_v2(), 800);
     }
 
     #[test]
     fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
-        // `/ok` is a 404 on data-api. An entry there caps nothing and leaves
-        // the real health route — `/` — on the 10x-looser general bucket.
+        // `/ok` is a 404 on data-api, and v2's health route is `/v2/status`,
+        // which has its own row. An entry at `/ok` would cap nothing.
         assert_unconfigured(&shared::data_limits(), "/ok");
     }
 
-    #[test]
-    fn the_root_health_rule_does_not_swallow_every_other_route() {
-        // `/` under prefix matching could plausibly match everything. The
-        // segment-boundary rule saves it: `strip_prefix("/")` on `/positions`
-        // leaves `positions`, which starts with neither `/` nor `?`.
-        let rl = shared::data_limits();
-        for (path, expected) in [
-            ("/positions", 150),
-            ("/closed-positions", 150),
-            ("/trades", 200),
-            ("/", 100),
-        ] {
-            let specs = rl.resolve_specs(path, Some(&Method::GET));
-            assert_eq!(
-                specs[0].count, expected,
-                "{path} resolved through the wrong rule — the `/` entry is over-matching"
-            );
-        }
-    }
-
     #[tokio::test]
-    async fn the_closed_positions_cap_actually_throttles() {
-        // 150/10s paces one request every ~67ms.
+    async fn the_positions_cap_actually_throttles() {
+        // 200/10s paces one request every 50ms.
         assert_paced_by_its_own_quota(
             &shared::data_limits(),
-            "/closed-positions",
-            150,
+            "/v2/positions",
+            200,
             Duration::from_secs(10),
         )
         .await;
     }
 
     #[tokio::test]
-    async fn closed_positions_and_positions_do_not_share_an_allowance() {
-        // Upstream publishes 150/10s for each, not 150/10s combined. Emptying
-        // one must leave the other untouched — the inverse of the CLOB ledger
-        // group, where sharing *is* the published behaviour.
+    async fn positions_and_combo_positions_do_not_share_an_allowance() {
+        // Upstream publishes 200/10s for each of `/v2/positions` and its
+        // `/combos`, not 200/10s combined. Emptying one must leave the other
+        // untouched — the inverse of the CLOB ledger group, where sharing *is*
+        // the published behaviour.
         //
-        // The margin here is ~67ms (shared) against ~10ms (separate, and only
+        // The margin here is ~50ms (shared) against ~13ms (separate, and only
         // that much because the request still passes the surface's general
-        // 1,000/10s bucket). Both sides of that gap are load-bearing, so the
+        // 800/10s bucket). Both sides of that gap are load-bearing, so the
         // threshold sits between them rather than at zero.
         let rl = shared::data_limits();
-        rl.acquire("/closed-positions", Some(&Method::GET)).await;
+        rl.acquire("/v2/positions/combos", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
-        rl.acquire("/positions", Some(&Method::GET)).await;
+        rl.acquire("/v2/positions", Some(&Method::GET)).await;
         assert!(
             start.elapsed() < Duration::from_millis(25),
-            "/positions was throttled by /closed-positions emptying its own bucket"
+            "/v2/positions was throttled by /v2/positions/combos emptying its own bucket"
         );
     }
 }
@@ -652,7 +621,6 @@ mod documented_limits {
 }
 
 mod tests {
-    use super::agreement::ResolveSpecs;
     use super::*;
 
     // ── Factory methods ──────────────────────────────────────────
@@ -673,7 +641,7 @@ mod tests {
     #[test]
     fn test_data_default_construction() {
         let rl = shared::data_limits();
-        assert_eq!(rl.rows().len(), 11);
+        assert_eq!(rl.rows().len(), 9);
     }
 
     #[test]
@@ -812,31 +780,6 @@ mod tests {
                 "/prices-history must not match /price pattern, rest = '{rest}'"
             );
         }
-    }
-
-    #[test]
-    fn test_data_positions_and_closed_positions_are_distinct() {
-        // This previously asserted `!"/closed-positions".starts_with("/positions")`
-        // — a tautology about two string literals that never touched the
-        // limiter, and so held even with `/closed-positions` set to 66x its
-        // published cap. Ask the limiter instead.
-        let rl = shared::data_limits();
-
-        let closed = rl.resolve_specs("/closed-positions", Some(&Method::GET));
-        let positions = rl.resolve_specs("/positions", Some(&Method::GET));
-        assert_eq!(closed, positions, "both are published at 150/10s");
-
-        let bucket_for = |path: &str| {
-            rl.effective_quota(&Method::GET, path)
-                .get(1)
-                .unwrap_or_else(|| panic!("{path} should match a rule"))
-                .bucket
-        };
-        assert!(
-            bucket_for("/closed-positions") != bucket_for("/positions"),
-            "equal quotas must still be separate buckets — upstream publishes \
-             150/10s each, not 150/10s combined"
-        );
     }
 
     #[test]

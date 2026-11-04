@@ -505,6 +505,23 @@ async fn positions_value_scopes_to_conditions() {
 }
 
 #[tokio::test]
+async fn health_prints_the_status_route() {
+    // `/` answers 410 since v1 was retired, so `data health` reads `/v2/status`.
+    let (query, run) = sent("/v2/status", &fixture("status"), &["health"]).await;
+    assert_eq!(query, pairs(&[]));
+    let printed: Value = serde_json::from_str(&run.out).unwrap();
+    let served: Value = serde_json::from_str(&fixture("status")).unwrap();
+    let decoded: polyoxide_polymarket::data::v2::types::ServiceStatus =
+        serde_json::from_value(served["data"].clone()).unwrap();
+    assert_eq!(
+        printed,
+        serde_json::to_value(decoded).unwrap(),
+        "health prints the status object"
+    );
+    assert_eq!(printed["computed_at"], served["data"]["computed_at"]);
+}
+
+#[tokio::test]
 async fn positions_closed_names_its_replacement() {
     let server = Server::new_async().await;
     let run = run(&server, &["positions", "--user", "0xu", "closed"]).await;

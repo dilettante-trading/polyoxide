@@ -4,7 +4,6 @@
 use serde::{Deserialize, Serialize};
 
 use super::{OutcomeIndex, PositionStatus};
-use crate::data::types::Allowance;
 
 /// One trusted approval contract in the public response.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -451,4 +450,79 @@ pub struct UserVolume {
     pub volume: f64,
     /// Both-sides cash volume over the window, in USD.
     pub volume_usdc: f64,
+}
+
+/// An ERC20 allowance as reported by `/v2/approvals`.
+///
+/// Upstream sends a string that is either the sentinel `"max"` or a decimal
+/// amount in the token's base units. `ERC1155` entries carry no amount at all,
+/// which is represented by `Option::None` on the containing field rather than
+/// by a variant here.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum Allowance {
+    /// The unlimited-allowance sentinel (`"max"`).
+    Max,
+    /// A concrete allowance, in the token's base units.
+    Amount(rust_decimal::Decimal),
+    /// A value that is neither `"max"` nor a decimal `rust_decimal` can hold,
+    /// preserved verbatim.
+    ///
+    /// `rust_decimal` tops out near 7.9e28 while a uint256 allowance can reach
+    /// 1.2e77, so an unusually large approval lands here instead of failing
+    /// deserialization of the entire response.
+    Unknown(String),
+}
+
+impl<'de> Deserialize<'de> for Allowance {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        if raw == "max" {
+            return Ok(Allowance::Max);
+        }
+        Ok(match raw.parse::<rust_decimal::Decimal>() {
+            Ok(amount) => Allowance::Amount(amount),
+            Err(_) => Allowance::Unknown(raw),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_allowance_max_sentinel() {
+        let v: Allowance = serde_json::from_str(r#""max""#).unwrap();
+        assert_eq!(v, Allowance::Max);
+    }
+
+    #[test]
+    fn deserialize_allowance_decimal_amount() {
+        let v: Allowance = serde_json::from_str(r#""1000000""#).unwrap();
+        assert_eq!(
+            v,
+            Allowance::Amount(rust_decimal::Decimal::new(1_000_000, 0))
+        );
+    }
+
+    #[test]
+    fn deserialize_allowance_beyond_decimal_range_is_unknown() {
+        // rust_decimal tops out near 7.9e28; a uint256 allowance can reach
+        // 1.2e77. Without the Unknown arm this would fail the whole response.
+        let huge = "1".repeat(40);
+        let json = format!(r#""{huge}""#);
+        let v: Allowance = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, Allowance::Unknown(huge));
+    }
+
+    #[test]
+    fn deserialize_allowance_unrecognized_sentinel_is_unknown() {
+        let v: Allowance = serde_json::from_str(r#""unlimited""#).unwrap();
+        assert_eq!(v, Allowance::Unknown("unlimited".to_string()));
+    }
 }

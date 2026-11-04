@@ -46,8 +46,9 @@ impl DataV2 {
     /// `GET /v2/leaderboard`: a page of the trader board.
     ///
     /// `volume` on these rows is in shares, not USDC, and the windows are
-    /// `day`/`week`/`month`/`all`, so this board does not line up with
-    /// [`DataApi::rankings`](crate::data::DataApi::rankings).
+    /// `day`/`week`/`month`/`all`, so this board does not line up with the
+    /// rankings of `lb-api`, retired on 2026-11-02
+    /// (`docs/specs/data-v2/OBSERVED.md`).
     pub fn leaderboard(&self) -> ListLeaderboard {
         ListLeaderboard {
             inner: Paged::new(Request::new(self.http_client.clone(), "/v2/leaderboard")),

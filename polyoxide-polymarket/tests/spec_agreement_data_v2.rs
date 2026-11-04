@@ -33,7 +33,6 @@ use std::{
 };
 
 use polyoxide_polymarket::data::{
-    types::SortDirection,
     v2::{types::*, Page, Pagination},
     DataApi, DataError,
 };

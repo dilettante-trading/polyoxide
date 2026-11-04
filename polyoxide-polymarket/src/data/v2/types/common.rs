@@ -409,3 +409,49 @@ pub enum TokenKey {
     /// of it). Upstream lower-cases them and collapses duplicates.
     Conditions(Vec<String>),
 }
+
+/// Sort direction for queries
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum SortDirection {
+    /// Ascending order
+    Asc,
+    /// Descending order (default)
+    #[default]
+    Desc,
+}
+
+impl std::fmt::Display for SortDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Asc => write!(f, "ASC"),
+            Self::Desc => write!(f, "DESC"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sort_direction_display_matches_serde() {
+        let variants = [SortDirection::Asc, SortDirection::Desc];
+        for variant in variants {
+            let serialized = serde_json::to_value(variant).unwrap();
+            let display = variant.to_string();
+            assert_eq!(
+                format!("\"{}\"", display),
+                serialized.to_string(),
+                "Display mismatch for {:?}",
+                variant
+            );
+        }
+    }
+
+    #[test]
+    fn sort_direction_default_is_desc() {
+        assert_eq!(SortDirection::default(), SortDirection::Desc);
+    }
+}

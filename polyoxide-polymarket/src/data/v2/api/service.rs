@@ -10,8 +10,8 @@ use crate::data::{
 impl DataV2 {
     /// `GET /v2/status`: how fresh the served data is.
     ///
-    /// This reports freshness, not liveness. For a liveness check use
-    /// [`DataApi::health`](crate::data::DataApi::health).
+    /// With v1 retired (2026-11-02) and its `/` gone, a 200 here is also the
+    /// host's liveness signal.
     pub fn status(&self) -> GetStatus {
         GetStatus {
             request: Request::new(self.http_client.clone(), "/v2/status"),

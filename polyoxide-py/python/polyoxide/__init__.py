@@ -55,22 +55,6 @@ from ._polyoxide import (
     LastTradePriceResponse,
     CalculatePriceResponse,
     ServerTimeResponse,
-    # Data types
-    Position,
-    ClosedPosition,
-    Trade,
-    Activity,
-    UserValue,
-    OpenInterest,
-    UserTraded,
-    MarketHolders,
-    Holder,
-    TraderRanking,
-    BuilderRanking,
-    BuilderVolume,
-    LiveVolume,
-    MarketVolume,
-    HealthResponse,
 )
 from . import v2
 
@@ -131,22 +115,6 @@ __all__ = [
     "LastTradePriceResponse",
     "CalculatePriceResponse",
     "ServerTimeResponse",
-    # Data types
-    "Position",
-    "ClosedPosition",
-    "Trade",
-    "Activity",
-    "UserValue",
-    "OpenInterest",
-    "UserTraded",
-    "MarketHolders",
-    "Holder",
-    "TraderRanking",
-    "BuilderRanking",
-    "BuilderVolume",
-    "LiveVolume",
-    "MarketVolume",
-    "HealthResponse",
     # Data API v2 routes and types
     "v2",
 ]

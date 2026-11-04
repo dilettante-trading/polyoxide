@@ -10,7 +10,7 @@ use std::{convert::Infallible, fmt::Display, pin::Pin, str::FromStr, sync::Arc};
 
 use futures_util::{lock::Mutex, Stream, StreamExt};
 use polyoxide_polymarket::data::{
-    types::SortDirection,
+    v2::types::SortDirection,
     v2::{
         self,
         types::{PositionAnchor, ResolutionKey, TokenKey},

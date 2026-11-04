@@ -46,9 +46,8 @@ Two layers count different things, and a request must satisfy both:
 
   A one-shot 150 in 0.70 s is accepted, so the table does not overstate the cap: Cloudflare's
   sliding-window estimator does not count the way an interval count does, and nothing outside
-  the server can observe the difference. Reproduce with
-  `polyoxide-polymarket/examples/closed_positions_soak.rs` (`--rate` drives a chosen rate; omit it
-  to exercise the shipped limiter).
+  the server can observe the difference. The soak that measured it, `closed_positions_soak.rs`,
+  went with Data API v1 (retired upstream on 2026-11-02); it is in git history.
 - **Agreement tests assert the effective quota a request resolves to**
   (`RateLimiter::effective_quota`: the general bucket first, then the matched row's buckets), not
   merely that an entry exists. Both tables are pinned this way; the IP tables'
@@ -56,12 +55,12 @@ Two layers count different things, and a request must satisfy both:
   API only. Tests that only checked presence and ordering are how `/balance-allowance` went
   missing and `/closed-positions` sat at 66x its cap, both undetected.
 - **Published tables name routes that 404.** Upstream lists `Health check (/ok)` under every
-  surface, but only `clob.polymarket.com` serves it (data's health route is `/`, gamma's
+  surface, but only `clob.polymarket.com` serves it (data's health route is `/v2/status`, gamma's
   `/status`). Probe the path on its host before pinning a row.
 - **Where the rows come from.** A surface Polymarket publishes figures for has its rows transcribed
   from https://docs.polymarket.com/api-reference/rate-limits and pinned row for row by the
   `documented_*_limits` tests; `quota()` aims a tenth under each. Where a host publishes no figures
-  (Data v2) or sits behind CloudFront (perps), the rows were measured against the live host over
+  (two Data v2 routes) or sits behind CloudFront (perps), the rows were measured against the live host over
   distinct URLs and recorded in its `OBSERVED.md` (below): several v2 routes are CDN-cached, and a
   repeated URL is answered by CloudFront without reaching the origin, so a soak that repeats URLs
   reports a clean run at any rate.
@@ -149,8 +148,12 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
   portfolio 30 and bbo 50 per 10 s, a `/v1/info` catch-all at 10 for the routes not soaked, and a
   client-wide general bucket of 30 set by two mixed validation runs (`docs/specs/perps/OBSERVED.md`,
   `## Rate limits`).
-- **Data v2** (`shared::data_limits`), measured with `polyoxide-polymarket/examples/v2_soak`, which
-  sends raw requests over distinct URLs; the runs are in `docs/specs/data-v2/OBSERVED.md`.
+- **Data v2** (`shared::data_limits`): the published v2 table (fetched 2026-11-04: 800/10 s
+  general, `/v2/trades` 300, `/v2/positions`, `/v2/positions/combos`, `/v2/activity`,
+  `/v2/activity/combos` and `/v2/prices-history` 200 each, `/v2/status` 100), pinned by
+  `documented_data_limits`. `/v2/user-pnl` and `/v2/holders`, which it does not list, keep 400 each,
+  measured with `polyoxide-polymarket/examples/v2_soak` over distinct URLs
+  (`docs/specs/data-v2/OBSERVED.md`).
 - **Binance**: `usdm::WeightBudget` and `spot::WeightBudget` (`binance.md`), each of whose `new_on`
   keeps its hold and its minute waits (and `usdm`'s funding pace) on a given runtime.
 - **Kalshi**: the unsigned client's Read bucket is depth 600 refilling 180 tokens a second (20

@@ -197,10 +197,14 @@ whose similarity falls under 30%, and `[fixtures]`/`[literals]` cover the fixtur
 - `tests/fixtures/data/v2/` → `tests/fixtures/data/`
 - `polyoxide-cli/tests/data_v2.rs` → `polyoxide-cli/tests/data.rs`
 
-**D13. Rate limits.** `shared::limits::data_limits_on` drops the v1 rows (`/closed-positions`,
-`/positions`, `/trades`) and the user-pnl host's `/user-pnl`. It keeps every `/v2/*` row and
-the `/` catch-all, whose comment is re-justified, since the published v1 figure behind it is
-gone. Its tests and `rate-limits.md`'s tables follow.
+**D13. Rate limits.** `shared::data_limits_on` drops the v1 rows (`/closed-positions`,
+`/positions`, `/trades`), the user-pnl host's `/user-pnl` and the bare `/`, which matched only
+the root that `health()` read. Polymarket now publishes v2's figures (fetched 2026-11-04: 800/10s
+general; `/v2/trades` 300; `/v2/positions`, `/v2/positions/combos`, `/v2/activity`,
+`/v2/activity/combos` and `/v2/prices-history` 200 each; `/v2/status` 100), so, as
+`rate-limits.md` requires of a published surface, the table transcribes them, each path its own
+row. `/v2/user-pnl` and `/v2/holders`, which it does not list, keep their measured 400. The
+`documented_data_limits` tests pin both sets, and `rate-limits.md` records them.
 
 **D14. Spec mirrors and the nightly.**
 

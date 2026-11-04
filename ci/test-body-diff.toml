@@ -593,3 +593,1183 @@ file = "polyoxide-polymarket/tests/mock_data.rs"
 item = "retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop"
 row = "R27"
 sha256 = "dd3a9776dff4b4e3e527eda7419df241b066eac65e7d65c38d0e59cea966a8cf"
+
+# R27: Data API v1 is retired upstream (2026-11-02). The tests below changed with it:
+# their v1 rows went, a route they drove became its v2 one, or, for the two
+# SortDirection tests, only the `#[macro_use]` gate of the file they moved to.
+
+[[drift]]
+file = "polyoxide-polymarket/tests/error_classes_data.rs"
+item = "fail"
+row = "R27"
+sha256 = "8a045d12993d8330c9af089b8d7c9bbe7ecf568e179594e4b456fdf32d79a826"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/headers_data.rs"
+item = "a_positions_list_sends_exactly_the_default_headers"
+row = "R27"
+sha256 = "a906d538edf364b4505b90290f945f66fd49de35b511d22b8e92e60de9953622"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried"
+row = "R27"
+sha256 = "f9c91dd62b4a1fb7bbd01637e3758f84dd5e9c0424ce97db4b4204e9e39df7f7"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::documented"
+row = "R27"
+sha256 = "e2e01a2dd50acc0a011e118470b9b297f9ad4fda47c0f5be9c4ea73a0a9715ab"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::every_documented_endpoint_resolves_to_its_published_quota"
+row = "R27"
+sha256 = "19f26e14294110dec53b8d21abfef01228348ec7a136c87aa351b5a8a5990f01"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::every_v2_route_resolves_to_its_measured_quota"
+row = "R27"
+sha256 = "a08199a0a769a840047135434889f7e035b4d41225579216b57a5edba3e39e56"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::measured_v2"
+row = "R27"
+sha256 = "dafdbca8b087ac035f89b30a4b13e8c9ed9be85949338781f137d0999b161446"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "tests::test_data_default_construction"
+row = "R27"
+sha256 = "da99c0e7b78ea3edcf4f612dbcb908184170db334e9046da536a2d3340d7f2be"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/query_setters_data.rs"
+item = "CASES"
+kind = "const"
+row = "R27"
+sha256 = "13cddf67308d3ea569dacbc55c938c169a18430804e8092c57b3a1cfae4da07b"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/query_setters_data.rs"
+item = "client"
+row = "R27"
+sha256 = "a06e6a026f02e7932e0654c96fd7f72e0cff095da614b595486ca26af9ac1ab4"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::sort_direction_default_is_desc"
+row = "R27"
+sha256 = "363da0391bb541dfd080a15668e1c2106daa365f1a0dd2e05222051c75ab6467"
+
+[[drift]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::sort_direction_display_matches_serde"
+row = "R27"
+sha256 = "195e1a57270a11b7f4e5fa8dfac0c363e66c04feb68e131c41d2a335631d1b84"
+
+# R27: tests of Data API v1 alone, retired with their subject. Each cites the
+# docs/s3-removals.md key of what it tested.
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "CLIENT_BURST_ALLOWANCE"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "DEFAULT_CONCURRENCY"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "DEFAULT_USER"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "MAX_PAGE_LIMIT"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "USAGE"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "main"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "report"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "run_trial"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "search"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "wait"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Bracket::is_consistent"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Bracket::observe"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Config::build_client"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Config::from_args"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Config::validate"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Trial::throttled"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Bracket"
+kind = "struct"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Config"
+kind = "struct"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "Trial"
+kind = "struct"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "[[example]]"
+kind = "target"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::bracket_flags_a_clean_run_above_a_throttled_one"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::bracket_narrows_from_both_sides"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::bracket_with_one_sided_evidence_is_not_contradictory"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::defaults_search_the_interval_the_soak_left_open"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::help_short_circuits"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::high_above_the_client_burst_allowance_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::inverted_range_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::limit_above_the_server_ceiling_is_rejected_locally"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::parse"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::trial"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::unknown_flag_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "tests::zero_tolerance_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "CLIENT_SUSTAINED_RATE"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "DEFAULT_CONCURRENCY"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "DEFAULT_DURATION_SECS"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "DEFAULT_USER"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "MAX_PAGE_LIMIT"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "MAX_REQUESTS_PER_SEC"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "USAGE"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "StopReason"
+kind = "enum"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "distinct_errors"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "drain"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "main"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "per_second_histogram"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "render_histogram"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "report"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "soak"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "Config::from_args"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "Sample::is_ok"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "StopReason::as_str"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "Config"
+kind = "struct"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "Sample"
+kind = "struct"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "[[example]]"
+kind = "target"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::a_non_positive_rate_is_refused"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::a_rate_at_or_above_the_clients_own_is_refused"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::a_rate_below_the_clients_own_is_accepted"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::defaults_match_the_shipped_client_configuration"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::distinct_errors_counts_and_orders_by_frequency"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::drain_empties_the_buffer"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::drain_recovers_samples_while_another_arc_clone_is_alive"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::explicit_request_cap_survives_a_duration_flag"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::help_short_circuits"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::histogram_bins_by_completion_second_and_fills_idle_seconds"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::histogram_of_empty_has_no_buckets"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::histogram_shows_the_burst_cliff"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::limit_above_the_server_ceiling_is_rejected_locally"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::missing_value_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::parse"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::rate_is_stored_as_the_interval_between_sends"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::render_marks_nonempty_seconds_even_when_dwarfed_by_the_peak"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::request_cap_scales_with_a_caller_supplied_duration"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::sample_at"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::unknown_flag_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::zero_concurrency_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "tests::zero_duration_is_rejected"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::deserialize_builder_ranking"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::deserialize_builder_ranking_list"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::deserialize_builder_ranking_null_logo"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::deserialize_builder_volume"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::time_period_default_is_day"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::time_period_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::time_period_serde_roundtrip"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/builders.rs"
+item = "tests::time_period_specific_values"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::builders (src/data/api/builders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/health.rs"
+item = "tests::deserialize_health_response"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::health (src/data/api/health.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/health.rs"
+item = "tests::health_response_roundtrip"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::health (src/data/api/health.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/holders.rs"
+item = "tests::deserialize_empty_holders_list"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::holders (src/data/api/holders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/holders.rs"
+item = "tests::deserialize_market_holders"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::holders (src/data/api/holders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/holders.rs"
+item = "tests::holder_without_verified_field"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::holders (src/data/api/holders.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::UPSTREAM_CATEGORIES"
+kind = "const"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::category_covers_every_value_upstream_accepts"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::category_has_no_variant_upstream_rejects"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::client"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::deserialize_trader_ranking"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::deserialize_trader_ranking_list"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::deserialize_trader_ranking_minimal"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::leaderboard_category_default_is_overall"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::leaderboard_category_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::leaderboard_order_by_default_is_pnl"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::leaderboard_order_by_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/leaderboard.rs"
+item = "tests::test_get_leaderboard_full_chain"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::leaderboard (src/data/api/leaderboard.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/live_volume.rs"
+item = "tests::deserialize_live_volume"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::live_volume (src/data/api/live_volume.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/live_volume.rs"
+item = "tests::deserialize_live_volume_empty_markets"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::live_volume (src/data/api/live_volume.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/live_volume.rs"
+item = "tests::deserialize_market_volume"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::live_volume (src/data/api/live_volume.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/users.rs"
+item = "tests::deserialize_user_traded"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::users (src/data/api/users.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/users.rs"
+item = "tests::deserialize_user_traded_zero"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::users (src/data/api/users.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/api/users.rs"
+item = "tests::user_traded_roundtrip"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::api::users (src/data/api/users.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::activity_sort_by_default_is_timestamp"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::activity_sort_by_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::activity_type_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::activity_type_falls_back_to_unknown_for_future_types"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::activity_type_roundtrip_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::closed_position_sort_by_default_is_realized_pnl"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::closed_position_sort_by_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_activity_from_json"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_activity_merge_type"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_approval_enums_tolerate_unknown_variants"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_approvals_response"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_closed_position_from_json"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_market_position_v1"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_meta_market_position_v1"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_open_interest"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_position_fee_basis"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_position_from_json"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_position_with_null_optionals"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_position_without_fee_basis_is_none"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_trade_from_json"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_trade_sell_side"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::deserialize_user_value"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::market_position_sort_by_default_is_total_pnl"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::market_position_sort_by_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::market_position_status_default_is_all"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::market_position_status_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::market_position_v1_roundtrip"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::position_sort_by_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::position_sort_by_serde_roundtrip"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::trade_filter_type_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::trade_side_display_matches_serde"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/src/data/types.rs"
+item = "tests::trade_side_falls_back_to_unknown_for_future_values"
+removal = "polyoxide-polymarket module_missing: mod polyoxide_polymarket::data::types (src/data/types.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/common/mod.rs"
+item = "is_hash64"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/holders_shape_data.rs"
+item = "hash64_shape_matches_what_holders_accepts"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/holders_shape_data.rs"
+item = "[[test]]"
+kind = "target"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "HOLDERS_PROBE_LIMIT"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "TEST_USER"
+kind = "const"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "assert_retired"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::pnl (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "holders_market"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_accounting_snapshot"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::accounting (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_builder_leaderboard"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::builders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_builder_volume"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::builders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_health_check"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_holders"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_holders_limit_bounds"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_list_trades"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::trades (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_live_volume"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::live_volume (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_market_positions"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::market_positions (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_open_interest"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::open_interest (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_ping"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_rankings_volume_and_profit"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::rankings (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_trader_leaderboard"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::leaderboard (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_activity"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_closed_positions"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_pnl_series"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::pnl (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_positions"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_positions_value"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_traded"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/live_data.rs"
+item = "live_user_trades"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "a_429_on_ping_holds_the_next_request"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "a_429_on_the_pnl_host_holds_the_data_host"
+removal = "polyoxide-polymarket inherent_method_missing: DataApiBuilder::pnl_base_url (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "a_v1_503_is_core_s_response_and_retriable"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "accounting_snapshot_returns_zip_bytes"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::accounting (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "activity_omits_exclude_deposits_withdrawals_when_unset"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "activity_response_with_future_type_does_not_poison_page"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "activity_sends_exclude_deposits_withdrawals_when_set"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "activity_type_covers_deposit_withdrawal_yield"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "activity_type_filter_drops_unknown_variant"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "an_accounting_snapshot_decodes_a_v2_error_body"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::accounting (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "an_accounting_snapshot_keeps_another_body_as_core_s_response"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::accounting (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "approvals_returns_contracts"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::approvals (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "builders_leaderboard"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::builders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "closed_positions_sort_and_pagination"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "combo_activity_list"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::combos (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "combo_positions_status_drops_unknown_variant"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::combos (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "combo_positions_unknown_status_does_not_poison_page"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::combos (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "combo_positions_with_filters_and_cursor"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::combos (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "each_namespace_targets_its_own_host"
+removal = "polyoxide-polymarket inherent_method_missing: DataApiBuilder::pnl_base_url (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "error_404_returns_api_error"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "holders_list_with_nested_types"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "holders_non_array_body_is_still_an_error"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "holders_null_body_is_an_empty_list"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::holders (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "leaderboard_get_with_params"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::leaderboard (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "list_positions_redeemable_filter"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "list_positions_with_query_params"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "live_volume_get"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::live_volume (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "market_positions_list_with_filters"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::market_positions (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "misc_other_size_and_revisions"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::misc (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "open_interest_get"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::open_interest (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "overriding_one_host_leaves_the_others_alone"
+removal = "polyoxide-polymarket inherent_method_missing: DataApiBuilder::pnl_base_url (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "ping_propagates_3xx_as_error"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "ping_propagates_5xx_as_error"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "ping_returns_latency_on_200"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "rankings_volume_and_profit_parse"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::rankings (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "test_data"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "trades_list_global"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::trades (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "trades_list_with_time_window"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::trades (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "user_activity_type_rename"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "user_pnl_series_parses"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::pnl (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/mock_data.rs"
+item = "user_trades_with_side_filter"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::closed_positions_and_positions_do_not_share_an_allowance"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::the_closed_positions_cap_actually_throttles"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "documented_data_limits::the_root_health_rule_does_not_swallow_every_other_route"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::health (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/polymarket_limits.rs"
+item = "tests::test_data_positions_and_closed_positions_are_distinct"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/tests/query_setters_data.rs"
+item = "a_v1_csv_setter_omits_an_empty_value"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::trades (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_burst_probe.rs"
+item = "<impl Default for Config>::default"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"
+
+[[retired]]
+file = "polyoxide-polymarket/examples/closed_positions_soak.rs"
+item = "<impl Default for Config>::default"
+kind = "method"
+removal = "polyoxide-polymarket inherent_method_missing: DataApi::user (src/data/client.rs)"

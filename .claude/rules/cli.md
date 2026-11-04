@@ -83,8 +83,9 @@ A bulk, resumable, rate-limited downloader for CLOB historical price data
 
 ## `polymarket data`
 
-The group reads Data API v2, except `data health`, which stays on v1's `/` because `/v2/status`
-reports data freshness, not liveness.
+The group reads Data API v2. `data health` prints `/v2/status`, since `/` answers 410 with v1
+retired (2026-11-02): a 200 there is the liveness signal left, and its body reports how fresh the
+data is.
 
 - Listing commands print the v2 `{data, pagination}` envelope and page with `--cursor`, `--all`
   (JSONL, flushed per page) and `--max-pages`; the cursor to resume from goes to stderr when a walk

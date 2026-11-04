@@ -273,10 +273,6 @@ name = "headers_data"
 required-features = ["data"]
 
 [[test]]
-name = "holders_shape_data"
-required-features = ["data"]
-
-[[test]]
 name = "live_data"
 required-features = ["data"]
 
@@ -480,18 +476,6 @@ required-features = ["rtds"]
 [[example]]
 name = "v2_soak"
 path = "examples/v2_soak/main.rs"
-test = true
-required-features = ["data"]
-
-[[example]]
-name = "closed_positions_soak"
-path = "examples/closed_positions_soak.rs"
-test = true
-required-features = ["data"]
-
-[[example]]
-name = "closed_positions_burst_probe"
-path = "examples/closed_positions_burst_probe.rs"
 test = true
 required-features = ["data"]
 
