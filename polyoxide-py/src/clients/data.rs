@@ -1,1102 +1,945 @@
-use pyo3::prelude::*;
-use pyo3::types::PyModuleMethods;
-use std::sync::Arc;
+//! The Data API client: `DataApi` and `DataApiSync`, whose methods are its
+//! routes, registered on `polyoxide` with the row classes in `types::data`.
+//! Polymarket retired Data API v1 on 2026-11-02, so every route is v2's.
+//!
+//! Every route is declared once, in the `v2_namespaces!` invocation at the end
+//! of this file, which emits both the async and the sync class. Arguments are
+//! parsed before any request is made, so a bad value raises `ValueError` at
+//! the call rather than when the coroutine is awaited.
 
-use crate::error::data_err;
-use crate::types::*;
+use std::{convert::Infallible, fmt::Display, pin::Pin, str::FromStr, sync::Arc};
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Enum parsing helpers
-// ═══════════════════════════════════════════════════════════════════════════════
+use futures_util::{lock::Mutex, Stream, StreamExt};
+use polyoxide_polymarket::data::{
+    self,
+    types::SortDirection,
+    types::{PositionAnchor, ResolutionKey, TokenKey},
+    DataApi, DataError,
+};
+use pyo3::{
+    exceptions::{PyStopAsyncIteration, PyValueError},
+    prelude::*,
+    types::PyModuleMethods,
+    PyClass, PyClassInitializer,
+};
 
-fn parse_position_sort_by(s: &str) -> PyResult<polyoxide_polymarket::data::types::PositionSortBy> {
-    use polyoxide_polymarket::data::types::PositionSortBy;
-    parse_enum!(s, PositionSortBy,
-        Current => "CURRENT", Initial => "INITIAL", Tokens => "TOKENS",
-        CashPnl => "CASH_PNL", PercentPnl => "PERCENT_PNL", Title => "TITLE",
-        Resolving => "RESOLVING", Price => "PRICE", AvgPrice => "AVG_PRICE",
-    )
+use crate::{error::data_err, runtime::runtime, types::data::*};
+
+/// The Data API client a constructor's keyword arguments build.
+fn build_client(
+    base_url: Option<String>,
+    timeout_ms: Option<u64>,
+    pool_size: Option<usize>,
+) -> PyResult<DataApi> {
+    let mut builder = DataApi::builder();
+    if let Some(v) = base_url {
+        builder = builder.base_url(v);
+    }
+    if let Some(v) = timeout_ms {
+        builder = builder.timeout_ms(v);
+    }
+    if let Some(v) = pool_size {
+        builder = builder.pool_size(v);
+    }
+    builder.build().map_err(data_err)
 }
 
-fn parse_sort_direction(s: &str) -> PyResult<polyoxide_polymarket::data::types::SortDirection> {
-    use polyoxide_polymarket::data::types::SortDirection;
-    parse_enum!(s, SortDirection, Asc => "ASC", Desc => "DESC")
+/// Parses a request-only enum from its wire spelling, listing every accepted
+/// value when it is not one of them.
+fn choice<T: FromStr + Display>(param: &str, value: &str, all: &[T]) -> PyResult<T> {
+    value.parse().map_err(|_| {
+        let accepted = all
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        PyValueError::new_err(format!(
+            "invalid {param} {value:?}, expected one of: {accepted}"
+        ))
+    })
 }
 
-fn parse_closed_position_sort_by(
-    s: &str,
-) -> PyResult<polyoxide_polymarket::data::types::ClosedPositionSortBy> {
-    use polyoxide_polymarket::data::types::ClosedPositionSortBy;
-    parse_enum!(s, ClosedPositionSortBy,
-        RealizedPnl => "REALIZED_PNL", Title => "TITLE", Price => "PRICE",
-        AvgPrice => "AVG_PRICE", Timestamp => "TIMESTAMP",
-    )
+/// Parses an enum that also appears in responses. A value this SDK does not
+/// know is sent verbatim, so a value upstream adds later still works.
+fn open<T: FromStr<Err = Infallible>>(value: &str) -> T {
+    let Ok(parsed) = value.parse();
+    parsed
 }
 
-fn parse_trade_side(s: &str) -> PyResult<polyoxide_polymarket::data::types::TradeSide> {
-    use polyoxide_polymarket::data::types::TradeSide;
-    parse_enum!(s, TradeSide, Buy => "BUY", Sell => "SELL")
+/// `sort_direction`, spelled exactly as on the wire like every other enum here.
+fn direction(value: &str) -> PyResult<SortDirection> {
+    match value {
+        "ASC" => Ok(SortDirection::Asc),
+        "DESC" => Ok(SortDirection::Desc),
+        _ => Err(PyValueError::new_err(format!(
+            "invalid sort_direction {value:?}, expected one of: ASC, DESC"
+        ))),
+    }
 }
 
-fn parse_trade_filter_type(
-    s: &str,
-) -> PyResult<polyoxide_polymarket::data::types::TradeFilterType> {
-    use polyoxide_polymarket::data::types::TradeFilterType;
-    parse_enum!(s, TradeFilterType, Cash => "CASH", Tokens => "TOKENS")
+/// `positions` takes a wallet, one market, or a wallet narrowed to markets.
+fn position_anchor(
+    user: Option<String>,
+    conditions: Option<Vec<String>>,
+) -> PyResult<PositionAnchor> {
+    match (user, conditions) {
+        (Some(user), None) => Ok(PositionAnchor::User(user)),
+        (Some(user), Some(conditions)) => Ok(PositionAnchor::UserInConditions { user, conditions }),
+        (None, Some(mut conditions)) if conditions.len() == 1 => {
+            Ok(PositionAnchor::Condition(conditions.remove(0)))
+        }
+        (None, Some(conditions)) => Err(PyValueError::new_err(format!(
+            "positions without user takes exactly one condition, got {}",
+            conditions.len()
+        ))),
+        (None, None) => Err(PyValueError::new_err(
+            "positions needs user, conditions, or both",
+        )),
+    }
 }
 
-fn parse_activity_type(s: &str) -> PyResult<polyoxide_polymarket::data::types::ActivityType> {
-    use polyoxide_polymarket::data::types::ActivityType;
-    parse_enum!(s, ActivityType,
-        Trade => "TRADE", Split => "SPLIT", Merge => "MERGE",
-        Redeem => "REDEEM", Reward => "REWARD", Conversion => "CONVERSION",
-        MakerRebate => "MAKER_REBATE", ReferralReward => "REFERRAL_REWARD",
-        TakerRebate => "TAKER_REBATE",
-    )
+/// `resolutions` takes exactly one selector family.
+fn resolution_key(
+    question_id: Option<String>,
+    conditions: Option<Vec<String>>,
+    event_ids: Option<Vec<String>>,
+) -> PyResult<ResolutionKey> {
+    match (question_id, conditions, event_ids) {
+        (Some(id), None, None) => Ok(ResolutionKey::Question(id)),
+        (None, Some(ids), None) => Ok(ResolutionKey::Conditions(ids)),
+        (None, None, Some(ids)) => Ok(ResolutionKey::Events(ids)),
+        _ => Err(PyValueError::new_err(
+            "resolutions takes exactly one of question_id, conditions or event_ids",
+        )),
+    }
 }
 
-fn parse_activity_sort_by(s: &str) -> PyResult<polyoxide_polymarket::data::types::ActivitySortBy> {
-    use polyoxide_polymarket::data::types::ActivitySortBy;
-    parse_enum!(s, ActivitySortBy, Timestamp => "TIMESTAMP", Tokens => "TOKENS", Cash => "CASH")
+/// `tokens` takes exactly one selector family.
+fn token_key(
+    token_ids: Option<Vec<String>>,
+    conditions: Option<Vec<String>>,
+) -> PyResult<TokenKey> {
+    match (token_ids, conditions) {
+        (Some(ids), None) => Ok(TokenKey::TokenIds(ids)),
+        (None, Some(ids)) => Ok(TokenKey::Conditions(ids)),
+        _ => Err(PyValueError::new_err(
+            "tokens takes exactly one of token_ids or conditions",
+        )),
+    }
 }
 
-fn parse_time_period(s: &str) -> PyResult<polyoxide_polymarket::data::types::TimePeriod> {
-    use polyoxide_polymarket::data::types::TimePeriod;
-    parse_enum!(s, TimePeriod, Day => "DAY", Week => "WEEK", Month => "MONTH", All => "ALL")
+/// One page of a paged route: its rows, already wrapped, and its pagination.
+#[pyclass(name = "Page", skip_from_py_object)]
+pub struct PyPage {
+    data: Vec<Py<PyAny>>,
+    pagination: PyV2Pagination,
 }
 
-fn parse_leaderboard_category(
-    s: &str,
-) -> PyResult<polyoxide_polymarket::data::api::leaderboard::LeaderboardCategory> {
-    use polyoxide_polymarket::data::api::leaderboard::LeaderboardCategory;
-    // Keep in step with `LeaderboardCategory::ALL`.
-    parse_enum!(s, LeaderboardCategory,
-        Overall => "OVERALL", Politics => "POLITICS", Sports => "SPORTS",
-        Esports => "ESPORTS", Crypto => "CRYPTO", Culture => "CULTURE",
-        Mentions => "MENTIONS", Weather => "WEATHER", Economics => "ECONOMICS",
-        Tech => "TECH", Finance => "FINANCE",
-    )
-}
-
-fn parse_leaderboard_order_by(
-    s: &str,
-) -> PyResult<polyoxide_polymarket::data::api::leaderboard::LeaderboardOrderBy> {
-    use polyoxide_polymarket::data::api::leaderboard::LeaderboardOrderBy;
-    parse_enum!(s, LeaderboardOrderBy, Pnl => "PNL", Vol => "VOL")
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: User (manual — holds address state)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-#[pyclass(name = "DataApiUser", skip_from_py_object)]
-pub struct PyDataApiUser {
-    client: Arc<polyoxide_polymarket::data::DataApi>,
-    address: String,
+impl PyPage {
+    /// Wraps each row as `W`. The rows become Python objects here, once, rather
+    /// than on every `data` access.
+    fn new<T, W>(py: Python<'_>, page: data::Page<T>) -> PyResult<Self>
+    where
+        W: From<T> + PyClass + Into<PyClassInitializer<W>>,
+    {
+        let data = page
+            .data
+            .into_iter()
+            .map(|row| Py::new(py, W::from(row)).map(Py::into_any))
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(Self {
+            data,
+            pagination: PyV2Pagination::from(page.pagination),
+        })
+    }
 }
 
 #[pymethods]
-impl PyDataApiUser {
-    #[pyo3(signature = (*, market=None, event_id=None, size_threshold=None, redeemable=None, mergeable=None, limit=None, offset=None, sort_by=None, sort_direction=None, title=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn list_positions<'py>(
-        &self,
-        py: Python<'py>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        size_threshold: Option<f64>,
-        redeemable: Option<bool>,
-        mergeable: Option<bool>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        sort_by: Option<String>,
-        sort_direction: Option<String>,
-        title: Option<String>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let sort_by = sort_by.map(|s| parse_position_sort_by(&s)).transpose()?;
-        let sort_direction = sort_direction
-            .map(|s| parse_sort_direction(&s))
-            .transpose()?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut req = client.user(&address).list_positions();
-            if let Some(v) = market {
-                req = req.market(v);
-            }
-            if let Some(v) = event_id {
-                req = req.event_id(v);
-            }
-            if let Some(v) = size_threshold {
-                req = req.size_threshold(v);
-            }
-            if let Some(v) = redeemable {
-                req = req.redeemable(v);
-            }
-            if let Some(v) = mergeable {
-                req = req.mergeable(v);
-            }
-            if let Some(v) = limit {
-                req = req.limit(v);
-            }
-            if let Some(v) = offset {
-                req = req.offset(v);
-            }
-            if let Some(v) = sort_by {
-                req = req.sort_by(v);
-            }
-            if let Some(v) = sort_direction {
-                req = req.sort_direction(v);
-            }
-            if let Some(v) = title {
-                req = req.title(v);
-            }
-            let result = req.send().await.map_err(data_err)?;
-            Ok(result.into_iter().map(PyPosition::from).collect::<Vec<_>>())
-        })
+impl PyPage {
+    /// The page's rows.
+    #[getter]
+    fn data(&self, py: Python<'_>) -> Vec<Py<PyAny>> {
+        self.data.iter().map(|row| row.clone_ref(py)).collect()
     }
 
-    #[pyo3(signature = (*, market=None))]
-    fn positions_value<'py>(
-        &self,
-        py: Python<'py>,
-        market: Option<Vec<String>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut req = client.user(&address).positions_value();
-            if let Some(v) = market {
-                req = req.market(v);
-            }
-            let result = req.send().await.map_err(data_err)?;
-            Ok(result
-                .into_iter()
-                .map(PyUserValue::from)
-                .collect::<Vec<_>>())
-        })
+    /// Paging state; follow `next_cursor` until it is `None`.
+    #[getter]
+    fn pagination(&self) -> PyV2Pagination {
+        self.pagination.clone()
     }
 
-    #[pyo3(signature = (*, market=None, event_id=None, title=None, limit=None, offset=None, sort_by=None, sort_direction=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn closed_positions<'py>(
-        &self,
-        py: Python<'py>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        title: Option<String>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        sort_by: Option<String>,
-        sort_direction: Option<String>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let sort_by = sort_by
-            .map(|s| parse_closed_position_sort_by(&s))
-            .transpose()?;
-        let sort_direction = sort_direction
-            .map(|s| parse_sort_direction(&s))
-            .transpose()?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut req = client.user(&address).closed_positions();
-            if let Some(v) = market {
-                req = req.market(v);
-            }
-            if let Some(v) = event_id {
-                req = req.event_id(v);
-            }
-            if let Some(v) = title {
-                req = req.title(v);
-            }
-            if let Some(v) = limit {
-                req = req.limit(v);
-            }
-            if let Some(v) = offset {
-                req = req.offset(v);
-            }
-            if let Some(v) = sort_by {
-                req = req.sort_by(v);
-            }
-            if let Some(v) = sort_direction {
-                req = req.sort_direction(v);
-            }
-            let result = req.send().await.map_err(data_err)?;
-            Ok(result
-                .into_iter()
-                .map(PyClosedPosition::from)
-                .collect::<Vec<_>>())
-        })
+    fn __len__(&self) -> usize {
+        self.data.len()
     }
 
-    #[pyo3(signature = (*, market=None, event_id=None, side=None, taker_only=None, filter_type=None, filter_amount=None, limit=None, offset=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn trades<'py>(
-        &self,
-        py: Python<'py>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        side: Option<String>,
-        taker_only: Option<bool>,
-        filter_type: Option<String>,
-        filter_amount: Option<f64>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let side = side.map(|s| parse_trade_side(&s)).transpose()?;
-        let filter_type = filter_type
-            .map(|s| parse_trade_filter_type(&s))
-            .transpose()?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut req = client.user(&address).trades();
-            if let Some(v) = market {
-                req = req.market(v);
-            }
-            if let Some(v) = event_id {
-                req = req.event_id(v);
-            }
-            if let Some(v) = side {
-                req = req.side(v);
-            }
-            if let Some(v) = taker_only {
-                req = req.taker_only(v);
-            }
-            if let Some(v) = filter_type {
-                req = req.filter_type(v);
-            }
-            if let Some(v) = filter_amount {
-                req = req.filter_amount(v);
-            }
-            if let Some(v) = limit {
-                req = req.limit(v);
-            }
-            if let Some(v) = offset {
-                req = req.offset(v);
-            }
-            let result = req.send().await.map_err(data_err)?;
-            Ok(result.into_iter().map(PyTrade::from).collect::<Vec<_>>())
+    fn __repr__(&self) -> String {
+        format!(
+            "Page(rows={}, pagination={})",
+            self.data.len(),
+            self.pagination.inner()
+        )
+    }
+}
+
+/// Builds a `Page` once the GIL is held. Boxing it erases the row type, so one
+/// iterator class serves every paged route.
+type PageBuilder = Box<dyn for<'py> FnOnce(Python<'py>) -> PyResult<PyPage> + Send>;
+type Pages = Arc<Mutex<Pin<Box<dyn Stream<Item = Result<PageBuilder, DataError>> + Send>>>>;
+
+fn erase<T, W>(pages: data::PageStream<T>) -> Pages
+where
+    T: Send + 'static,
+    W: From<T> + PyClass + Into<PyClassInitializer<W>>,
+{
+    let pages = pages.map(|page| {
+        page.map(|page| {
+            Box::new(move |py: Python<'_>| PyPage::new::<T, W>(py, page)) as PageBuilder
         })
+    });
+    Arc::new(Mutex::new(Box::pin(pages)))
+}
+
+/// Async iterator over every page of a route, from `DataApi.iter_*`. Each page
+/// re-sends the filters the walk started with.
+#[pyclass(name = "PageIterator", skip_from_py_object)]
+pub struct PyPageIterator {
+    pages: Pages,
+}
+
+#[pymethods]
+impl PyPageIterator {
+    fn __aiter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
     }
 
-    #[pyo3(signature = (*, market=None, event_id=None, activity_type=None, side=None, start=None, end=None, limit=None, offset=None, sort_by=None, sort_direction=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn activity<'py>(
-        &self,
-        py: Python<'py>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        activity_type: Option<Vec<String>>,
-        side: Option<String>,
-        start: Option<i64>,
-        end: Option<i64>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        sort_by: Option<String>,
-        sort_direction: Option<String>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let activity_type = activity_type
-            .map(|v| {
-                v.iter()
-                    .map(|s| parse_activity_type(s))
-                    .collect::<PyResult<Vec<_>>>()
-            })
-            .transpose()?;
-        let side = side.map(|s| parse_trade_side(&s)).transpose()?;
-        let sort_by = sort_by.map(|s| parse_activity_sort_by(&s)).transpose()?;
-        let sort_direction = sort_direction
-            .map(|s| parse_sort_direction(&s))
-            .transpose()?;
+    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let pages = self.pages.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut req = client.user(&address).activity();
-            if let Some(v) = market {
-                req = req.market(v);
+            let next = pages.lock().await.next().await;
+            match next {
+                Some(Ok(build)) => Python::attach(build),
+                Some(Err(e)) => Err(data_err(e)),
+                None => Err(PyStopAsyncIteration::new_err(())),
             }
-            if let Some(v) = event_id {
-                req = req.event_id(v);
+        })
+    }
+}
+
+/// Iterator over every page of a route, from `DataApiSync.iter_*`.
+#[pyclass(name = "PageIteratorSync", skip_from_py_object)]
+pub struct PyPageIteratorSync {
+    pages: Pages,
+}
+
+#[pymethods]
+impl PyPageIteratorSync {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<PyPage>> {
+        let pages = self.pages.clone();
+        let next = py.detach(|| runtime().block_on(async move { pages.lock().await.next().await }));
+        match next {
+            Some(Ok(build)) => build(py).map(Some),
+            Some(Err(e)) => Err(data_err(e)),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Emits `DataApi` and `DataApiSync` from one list of routes.
+///
+/// Each entry names its parameters, the row class it returns, and an
+/// expression that builds the request from `v2` (the `DataApi`). `plain` routes
+/// return the row, `optional` routes the row or `None`, `list` routes a list,
+/// and `paged` routes a `Page` plus an `iter_*` method that walks every page.
+macro_rules! v2_namespaces {
+    (
+        plain { $(
+            #[doc = $p_doc:literal]
+            #[pyo3(signature = $p_sig:tt)]
+            fn $p_name:ident($($p_arg:ident: $p_ty:ty),* $(,)?) -> $p_row:ident
+                => |$p_v2:ident| $p_build:expr;
+        )* }
+        optional { $(
+            #[doc = $o_doc:literal]
+            #[pyo3(signature = $o_sig:tt)]
+            fn $o_name:ident($($o_arg:ident: $o_ty:ty),* $(,)?) -> $o_row:ident
+                => |$o_v2:ident| $o_build:expr;
+        )* }
+        list { $(
+            #[doc = $l_doc:literal]
+            #[pyo3(signature = $l_sig:tt)]
+            fn $l_name:ident($($l_arg:ident: $l_ty:ty),* $(,)?) -> $l_row:ident
+                => |$l_v2:ident| $l_build:expr;
+        )* }
+        paged { $(
+            #[doc = $g_doc:literal]
+            #[pyo3(signature = $g_sig:tt)]
+            fn $g_name:ident / $g_iter:ident($($g_arg:ident: $g_ty:ty),* $(,)?) -> $g_row:ident
+                => |$g_v2:ident| $g_build:expr;
+        )* }
+    ) => {
+        /// Async client for the Polymarket Data API; each method is a route.
+        #[pyclass(name = "DataApi", skip_from_py_object)]
+        pub struct PyDataApi {
+            pub(crate) client: Arc<DataApi>,
+        }
+
+        #[pymethods]
+        impl PyDataApi {
+            #[new]
+            #[pyo3(signature = (*, base_url=None, timeout_ms=None, pool_size=None))]
+            fn new(
+                base_url: Option<String>,
+                timeout_ms: Option<u64>,
+                pool_size: Option<usize>,
+            ) -> PyResult<Self> {
+                Ok(Self {
+                    client: Arc::new(build_client(base_url, timeout_ms, pool_size)?),
+                })
             }
-            if let Some(v) = activity_type {
-                req = req.activity_type(v);
+            $(
+                #[doc = $p_doc]
+                #[pyo3(signature = $p_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $p_name<'py>(&self, py: Python<'py>, $($p_arg: $p_ty),*) -> PyResult<Bound<'py, PyAny>> {
+                    let $p_v2 = &*self.client;
+                    let request = $p_build;
+                    pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                        Ok($p_row::from(request.send().await.map_err(data_err)?))
+                    })
+                }
+            )*
+            $(
+                #[doc = $o_doc]
+                #[pyo3(signature = $o_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $o_name<'py>(&self, py: Python<'py>, $($o_arg: $o_ty),*) -> PyResult<Bound<'py, PyAny>> {
+                    let $o_v2 = &*self.client;
+                    let request = $o_build;
+                    pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                        Ok(request.send().await.map_err(data_err)?.map($o_row::from))
+                    })
+                }
+            )*
+            $(
+                #[doc = $l_doc]
+                #[pyo3(signature = $l_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $l_name<'py>(&self, py: Python<'py>, $($l_arg: $l_ty),*) -> PyResult<Bound<'py, PyAny>> {
+                    let $l_v2 = &*self.client;
+                    let request = $l_build;
+                    pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                        let rows = request.send().await.map_err(data_err)?;
+                        Ok(rows.into_iter().map($l_row::from).collect::<Vec<_>>())
+                    })
+                }
+            )*
+            $(
+                #[doc = $g_doc]
+                #[pyo3(signature = $g_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $g_name<'py>(&self, py: Python<'py>, $($g_arg: $g_ty),*) -> PyResult<Bound<'py, PyAny>> {
+                    let $g_v2 = &*self.client;
+                    let request = $g_build;
+                    pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                        let page = request.send().await.map_err(data_err)?;
+                        Python::attach(|py| PyPage::new::<_, $g_row>(py, page))
+                    })
+                }
+
+                #[doc = concat!("Walks every page of `", stringify!($g_name), "`, re-sending these filters on each one.")]
+                #[pyo3(signature = $g_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $g_iter(&self, $($g_arg: $g_ty),*) -> PyResult<PyPageIterator> {
+                    let $g_v2 = &*self.client;
+                    let request = $g_build;
+                    Ok(PyPageIterator { pages: erase::<_, $g_row>(request.pages()) })
+                }
+            )*
+        }
+
+        /// Sync client for the Polymarket Data API; each method is a route.
+        #[pyclass(name = "DataApiSync", skip_from_py_object)]
+        pub struct PyDataApiSync {
+            pub(crate) client: Arc<DataApi>,
+        }
+
+        #[pymethods]
+        impl PyDataApiSync {
+            #[new]
+            #[pyo3(signature = (*, base_url=None, timeout_ms=None, pool_size=None))]
+            fn new(
+                base_url: Option<String>,
+                timeout_ms: Option<u64>,
+                pool_size: Option<usize>,
+            ) -> PyResult<Self> {
+                Ok(Self {
+                    client: Arc::new(build_client(base_url, timeout_ms, pool_size)?),
+                })
             }
-            if let Some(v) = side {
-                req = req.side(v);
+            $(
+                #[doc = $p_doc]
+                #[pyo3(signature = $p_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $p_name(&self, py: Python<'_>, $($p_arg: $p_ty),*) -> PyResult<$p_row> {
+                    let $p_v2 = &*self.client;
+                    let request = $p_build;
+                    let row = py.detach(|| runtime().block_on(request.send())).map_err(data_err)?;
+                    Ok($p_row::from(row))
+                }
+            )*
+            $(
+                #[doc = $o_doc]
+                #[pyo3(signature = $o_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $o_name(&self, py: Python<'_>, $($o_arg: $o_ty),*) -> PyResult<Option<$o_row>> {
+                    let $o_v2 = &*self.client;
+                    let request = $o_build;
+                    let row = py.detach(|| runtime().block_on(request.send())).map_err(data_err)?;
+                    Ok(row.map($o_row::from))
+                }
+            )*
+            $(
+                #[doc = $l_doc]
+                #[pyo3(signature = $l_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $l_name(&self, py: Python<'_>, $($l_arg: $l_ty),*) -> PyResult<Vec<$l_row>> {
+                    let $l_v2 = &*self.client;
+                    let request = $l_build;
+                    let rows = py.detach(|| runtime().block_on(request.send())).map_err(data_err)?;
+                    Ok(rows.into_iter().map($l_row::from).collect())
+                }
+            )*
+            $(
+                #[doc = $g_doc]
+                #[pyo3(signature = $g_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $g_name(&self, py: Python<'_>, $($g_arg: $g_ty),*) -> PyResult<PyPage> {
+                    let $g_v2 = &*self.client;
+                    let request = $g_build;
+                    let page = py.detach(|| runtime().block_on(request.send())).map_err(data_err)?;
+                    PyPage::new::<_, $g_row>(py, page)
+                }
+
+                #[doc = concat!("Walks every page of `", stringify!($g_name), "`, re-sending these filters on each one.")]
+                #[pyo3(signature = $g_sig)]
+                #[allow(clippy::too_many_arguments)]
+                fn $g_iter(&self, $($g_arg: $g_ty),*) -> PyResult<PyPageIteratorSync> {
+                    let $g_v2 = &*self.client;
+                    let request = $g_build;
+                    Ok(PyPageIteratorSync { pages: erase::<_, $g_row>(request.pages()) })
+                }
+            )*
+        }
+    };
+}
+
+v2_namespaces! {
+    plain {
+        /// `GET /v2/approvals`: a wallet's Polygon token and operator approvals.
+        #[pyo3(signature = (user))]
+        fn approvals(
+            user: String,
+        ) -> PyV2Approvals => |client| client.approvals(user);
+
+        /// `GET /v2/user-pnl`: a wallet's cumulative PnL series. Not the series the retired `user-pnl-api` host served.
+        #[pyo3(signature = (user, *, interval=None, fidelity=None))]
+        fn user_pnl(
+            user: String,
+            interval: Option<String>,
+            fidelity: Option<String>,
+        ) -> PyV2UserPnlSeries => |client| {
+            let mut request = client.user_pnl(user);
+            if let Some(v) = interval {
+                request = request.interval(choice("interval", &v, data::types::PnlInterval::ALL)?);
             }
+            if let Some(v) = fidelity {
+                request = request.fidelity(choice("fidelity", &v, data::types::PnlFidelity::ALL)?);
+            }
+            request
+        };
+
+        /// `GET /v2/user-volume`: a wallet's traded volume over a whole-day window.
+        #[pyo3(signature = (user, *, start=None, end=None))]
+        fn user_volume(
+            user: String,
+            start: Option<i64>,
+            end: Option<i64>,
+        ) -> PyV2UserVolume => |client| {
+            let mut request = client.user_volume(user);
             if let Some(v) = start {
-                req = req.start(v);
+                request = request.start(v);
             }
             if let Some(v) = end {
-                req = req.end(v);
+                request = request.end(v);
+            }
+            request
+        };
+
+        /// `GET /v2/value`: a wallet's portfolio value in USDC.
+        #[pyo3(signature = (user, *, conditions=None))]
+        fn value(
+            user: String,
+            conditions: Option<Vec<String>>,
+        ) -> PyV2PortfolioValue => |client| {
+            let mut request = client.value(user);
+            if let Some(v) = conditions {
+                request = request.conditions(v);
+            }
+            request
+        };
+
+        /// `GET /v2/live-volume`: taker volume per market under these Gamma events.
+        #[pyo3(signature = (event_ids))]
+        fn live_volume(
+            event_ids: Vec<String>,
+        ) -> PyV2LiveVolume => |client| client.live_volume(event_ids);
+
+        /// `GET /v2/status`: how fresh the served data is. This is not a liveness check.
+        #[pyo3(signature = ())]
+        fn status() -> PyV2ServiceStatus => |client| client.status();
+    }
+
+    optional {
+        /// `GET /v2/user-stats`: a wallet's profile card, or None for a wallet the API does not know.
+        #[pyo3(signature = (user))]
+        fn user_stats(
+            user: String,
+        ) -> PyV2UserStats => |client| client.user_stats(user);
+
+        /// `GET /v2/leaderboard`: one wallet's standing on both boards, or None for a wallet the API does not know.
+        #[pyo3(signature = (user, *, time_period=None, category=None))]
+        fn leaderboard_user(
+            user: String,
+            time_period: Option<String>,
+            category: Option<String>,
+        ) -> PyV2LeaderboardUserEntry => |client| {
+            let mut request = client.leaderboard_user(user);
+            if let Some(v) = time_period {
+                request = request.time_period(choice("time_period", &v, data::types::TimePeriod::ALL)?);
+            }
+            if let Some(v) = category {
+                request = request.category(v);
+            }
+            request
+        };
+    }
+
+    list {
+        /// `GET /v2/oi`: open interest per market; one GLOBAL row without `conditions`.
+        #[pyo3(signature = (*, conditions=None))]
+        fn open_interest(
+            conditions: Option<Vec<String>>,
+        ) -> PyV2OpenInterest => |client| {
+            let mut request = client.open_interest();
+            if let Some(v) = conditions {
+                request = request.conditions(v);
+            }
+            request
+        };
+
+        /// `GET /v2/resolutions`: resolution state, by exactly one of `question_id`, `conditions` or `event_ids`.
+        #[pyo3(signature = (*, question_id=None, conditions=None, event_ids=None))]
+        fn resolutions(
+            question_id: Option<String>,
+            conditions: Option<Vec<String>>,
+            event_ids: Option<Vec<String>>,
+        ) -> PyV2Resolution => |client| client.resolutions(resolution_key(question_id, conditions, event_ids)?);
+
+        /// `GET /v2/tokens`: token ids, or the tokens of conditions, resolved to their condition, module, outcome, market and event; by exactly one of `token_ids` or `conditions`.
+        #[pyo3(signature = (*, token_ids=None, conditions=None))]
+        fn tokens(
+            token_ids: Option<Vec<String>>,
+            conditions: Option<Vec<String>>,
+        ) -> PyV2TokenRef => |client| client.tokens(token_key(token_ids, conditions)?);
+
+        /// `GET /v2/builders/volume`: builder volume per time bucket.
+        #[pyo3(signature = (*, interval=None, limit=None))]
+        fn builder_volume(
+            interval: Option<String>,
+            limit: Option<u32>,
+        ) -> PyV2BuilderVolumePoint => |client| {
+            let mut request = client.builder_volume();
+            if let Some(v) = interval {
+                request = request.interval(choice("interval", &v, data::types::TimePeriod::ALL)?);
             }
             if let Some(v) = limit {
-                req = req.limit(v);
+                request = request.limit(v);
             }
-            if let Some(v) = offset {
-                req = req.offset(v);
+            request
+        };
+    }
+
+    paged {
+        /// `GET /v2/positions`: positions for a wallet (`user`), one market (`conditions` of one id), or a wallet in some markets (both).
+        #[pyo3(signature = (*, user=None, conditions=None, status=None, event_ids=None, title=None, filter_type=None, filter_amount=None, include_archived=None, sort_by=None, sort_direction=None, start=None, end=None, limit=None, cursor=None))]
+        fn positions / iter_positions(
+            user: Option<String>,
+            conditions: Option<Vec<String>>,
+            status: Option<String>,
+            event_ids: Option<Vec<String>>,
+            title: Option<String>,
+            filter_type: Option<String>,
+            filter_amount: Option<f64>,
+            include_archived: Option<bool>,
+            sort_by: Option<String>,
+            sort_direction: Option<String>,
+            start: Option<i64>,
+            end: Option<i64>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2Position => |client| {
+            let mut request = client.positions(position_anchor(user, conditions)?);
+            if let Some(v) = status {
+                request = request.status(open(&v));
+            }
+            if let Some(v) = event_ids {
+                request = request.event_ids(v);
+            }
+            if let Some(v) = title {
+                request = request.title(v);
+            }
+            if let Some(v) = filter_type {
+                request = request.filter_type(choice("filter_type", &v, data::types::FilterType::ALL)?);
+            }
+            if let Some(v) = filter_amount {
+                request = request.filter_amount(v);
+            }
+            if let Some(v) = include_archived {
+                request = request.include_archived(v);
             }
             if let Some(v) = sort_by {
-                req = req.sort_by(v);
+                request = request.sort_by(choice("sort_by", &v, data::types::PositionSortBy::ALL)?);
             }
             if let Some(v) = sort_direction {
-                req = req.sort_direction(v);
+                request = request.sort_direction(direction(&v)?);
             }
-            let result = req.send().await.map_err(data_err)?;
-            Ok(result.into_iter().map(PyActivity::from).collect::<Vec<_>>())
-        })
-    }
+            if let Some(v) = start {
+                request = request.start(v);
+            }
+            if let Some(v) = end {
+                request = request.end(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-    #[pyo3(signature = ())]
-    fn traded<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            Ok(PyUserTraded::from(
-                client.user(&address).traded().await.map_err(data_err)?,
-            ))
-        })
-    }
-}
+        /// `GET /v2/positions/combos`: a wallet's combo positions.
+        #[pyo3(signature = (user, *, conditions=None, statuses=None, sort_by=None, sort_direction=None, updated_after=None, updated_before=None, limit=None, cursor=None))]
+        fn combo_positions / iter_combo_positions(
+            user: String,
+            conditions: Option<Vec<String>>,
+            statuses: Option<Vec<String>>,
+            sort_by: Option<String>,
+            sort_direction: Option<String>,
+            updated_after: Option<i64>,
+            updated_before: Option<i64>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2ComboPosition => |client| {
+            let mut request = client.combo_positions(user);
+            if let Some(v) = conditions {
+                request = request.conditions(v);
+            }
+            if let Some(v) = statuses {
+                request = request.statuses(v.iter().map(|s| choice("statuses", s, data::types::ComboPositionStatus::ALL)).collect::<PyResult<Vec<_>>>()?);
+            }
+            if let Some(v) = sort_by {
+                request = request.sort_by(choice("sort_by", &v, data::types::ComboPositionSortBy::ALL)?);
+            }
+            if let Some(v) = sort_direction {
+                request = request.sort_direction(direction(&v)?);
+            }
+            if let Some(v) = updated_after {
+                request = request.updated_after(v);
+            }
+            if let Some(v) = updated_before {
+                request = request.updated_before(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-// Sync variant
-#[pyclass(name = "DataApiUserSync", skip_from_py_object)]
-pub struct PyDataApiUserSync {
-    client: Arc<polyoxide_polymarket::data::DataApi>,
-    address: String,
-}
+        /// `GET /v2/activity`: a wallet's activity feed.
+        #[pyo3(signature = (user, *, types=None, conditions=None, event_ids=None, side=None, start=None, end=None, sort_by=None, sort_direction=None, exclude_deposits_withdrawals=None, limit=None, cursor=None))]
+        fn activity / iter_activity(
+            user: String,
+            types: Option<Vec<String>>,
+            conditions: Option<Vec<String>>,
+            event_ids: Option<Vec<String>>,
+            side: Option<String>,
+            start: Option<i64>,
+            end: Option<i64>,
+            sort_by: Option<String>,
+            sort_direction: Option<String>,
+            exclude_deposits_withdrawals: Option<bool>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2Activity => |client| {
+            let mut request = client.activity(user);
+            if let Some(v) = types {
+                request = request.types(v.iter().map(|s| open::<data::types::ActivityType>(s)).collect::<Vec<_>>());
+            }
+            if let Some(v) = conditions {
+                request = request.conditions(v);
+            }
+            if let Some(v) = event_ids {
+                request = request.event_ids(v);
+            }
+            if let Some(v) = side {
+                request = request.side(open(&v));
+            }
+            if let Some(v) = start {
+                request = request.start(v);
+            }
+            if let Some(v) = end {
+                request = request.end(v);
+            }
+            if let Some(v) = sort_by {
+                request = request.sort_by(choice("sort_by", &v, data::types::ActivitySortBy::ALL)?);
+            }
+            if let Some(v) = sort_direction {
+                request = request.sort_direction(direction(&v)?);
+            }
+            if let Some(v) = exclude_deposits_withdrawals {
+                request = request.exclude_deposits_withdrawals(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-#[pymethods]
-impl PyDataApiUserSync {
-    #[pyo3(signature = (*, market=None, event_id=None, size_threshold=None, redeemable=None, mergeable=None, limit=None, offset=None, sort_by=None, sort_direction=None, title=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn list_positions(
-        &self,
-        py: Python<'_>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        size_threshold: Option<f64>,
-        redeemable: Option<bool>,
-        mergeable: Option<bool>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        sort_by: Option<String>,
-        sort_direction: Option<String>,
-        title: Option<String>,
-    ) -> PyResult<Vec<PyPosition>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let sort_by = sort_by.map(|s| parse_position_sort_by(&s)).transpose()?;
-        let sort_direction = sort_direction
-            .map(|s| parse_sort_direction(&s))
-            .transpose()?;
-        py.detach(|| {
-            crate::runtime::runtime().block_on(async move {
-                let mut req = client.user(&address).list_positions();
-                if let Some(v) = market {
-                    req = req.market(v);
-                }
-                if let Some(v) = event_id {
-                    req = req.event_id(v);
-                }
-                if let Some(v) = size_threshold {
-                    req = req.size_threshold(v);
-                }
-                if let Some(v) = redeemable {
-                    req = req.redeemable(v);
-                }
-                if let Some(v) = mergeable {
-                    req = req.mergeable(v);
-                }
-                if let Some(v) = limit {
-                    req = req.limit(v);
-                }
-                if let Some(v) = offset {
-                    req = req.offset(v);
-                }
-                if let Some(v) = sort_by {
-                    req = req.sort_by(v);
-                }
-                if let Some(v) = sort_direction {
-                    req = req.sort_direction(v);
-                }
-                if let Some(v) = title {
-                    req = req.title(v);
-                }
-                let result = req.send().await.map_err(data_err)?;
-                Ok(result.into_iter().map(PyPosition::from).collect::<Vec<_>>())
-            })
-        })
-    }
+        /// `GET /v2/activity/combos`: a wallet's combo lifecycle events.
+        #[pyo3(signature = (user, *, conditions=None, limit=None, cursor=None))]
+        fn combo_activity / iter_combo_activity(
+            user: String,
+            conditions: Option<Vec<String>>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2ComboActivity => |client| {
+            let mut request = client.combo_activity(user);
+            if let Some(v) = conditions {
+                request = request.conditions(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-    #[pyo3(signature = (*, market=None))]
-    fn positions_value(
-        &self,
-        py: Python<'_>,
-        market: Option<Vec<String>>,
-    ) -> PyResult<Vec<PyUserValue>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        py.detach(|| {
-            crate::runtime::runtime().block_on(async move {
-                let mut req = client.user(&address).positions_value();
-                if let Some(v) = market {
-                    req = req.market(v);
-                }
-                let result = req.send().await.map_err(data_err)?;
-                Ok(result
-                    .into_iter()
-                    .map(PyUserValue::from)
-                    .collect::<Vec<_>>())
-            })
-        })
-    }
+        /// `GET /v2/trades`: the trade feed, newest first.
+        #[pyo3(signature = (*, user=None, conditions=None, event_ids=None, side=None, taker_only=None, filter_type=None, filter_amount=None, start=None, end=None, limit=None, cursor=None))]
+        fn trades / iter_trades(
+            user: Option<String>,
+            conditions: Option<Vec<String>>,
+            event_ids: Option<Vec<String>>,
+            side: Option<String>,
+            taker_only: Option<bool>,
+            filter_type: Option<String>,
+            filter_amount: Option<f64>,
+            start: Option<i64>,
+            end: Option<i64>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2Trade => |client| {
+            let mut request = client.trades();
+            if let Some(v) = user {
+                request = request.user(v);
+            }
+            if let Some(v) = conditions {
+                request = request.conditions(v);
+            }
+            if let Some(v) = event_ids {
+                request = request.event_ids(v);
+            }
+            if let Some(v) = side {
+                request = request.side(open(&v));
+            }
+            if let Some(v) = taker_only {
+                request = request.taker_only(v);
+            }
+            if let Some(v) = filter_type {
+                request = request.filter_type(choice("filter_type", &v, data::types::FilterType::ALL)?);
+            }
+            if let Some(v) = filter_amount {
+                request = request.filter_amount(v);
+            }
+            if let Some(v) = start {
+                request = request.start(v);
+            }
+            if let Some(v) = end {
+                request = request.end(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-    #[pyo3(signature = (*, market=None, event_id=None, title=None, limit=None, offset=None, sort_by=None, sort_direction=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn closed_positions(
-        &self,
-        py: Python<'_>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        title: Option<String>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        sort_by: Option<String>,
-        sort_direction: Option<String>,
-    ) -> PyResult<Vec<PyClosedPosition>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let sort_by = sort_by
-            .map(|s| parse_closed_position_sort_by(&s))
-            .transpose()?;
-        let sort_direction = sort_direction
-            .map(|s| parse_sort_direction(&s))
-            .transpose()?;
-        py.detach(|| {
-            crate::runtime::runtime().block_on(async move {
-                let mut req = client.user(&address).closed_positions();
-                if let Some(v) = market {
-                    req = req.market(v);
-                }
-                if let Some(v) = event_id {
-                    req = req.event_id(v);
-                }
-                if let Some(v) = title {
-                    req = req.title(v);
-                }
-                if let Some(v) = limit {
-                    req = req.limit(v);
-                }
-                if let Some(v) = offset {
-                    req = req.offset(v);
-                }
-                if let Some(v) = sort_by {
-                    req = req.sort_by(v);
-                }
-                if let Some(v) = sort_direction {
-                    req = req.sort_direction(v);
-                }
-                let result = req.send().await.map_err(data_err)?;
-                Ok(result
-                    .into_iter()
-                    .map(PyClosedPosition::from)
-                    .collect::<Vec<_>>())
-            })
-        })
-    }
+        /// `GET /v2/holders`: top holders per outcome token, for these markets (at most 20).
+        #[pyo3(signature = (conditions, *, min_balance=None, include_pnl=None, limit=None, cursor=None))]
+        fn holders / iter_holders(
+            conditions: Vec<String>,
+            min_balance: Option<f64>,
+            include_pnl: Option<bool>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2MetaHolder => |client| {
+            let mut request = client.holders(conditions);
+            if let Some(v) = min_balance {
+                request = request.min_balance(v);
+            }
+            if let Some(v) = include_pnl {
+                request = request.include_pnl(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-    #[pyo3(signature = (*, market=None, event_id=None, side=None, taker_only=None, filter_type=None, filter_amount=None, limit=None, offset=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn trades(
-        &self,
-        py: Python<'_>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        side: Option<String>,
-        taker_only: Option<bool>,
-        filter_type: Option<String>,
-        filter_amount: Option<f64>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> PyResult<Vec<PyTrade>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let side = side.map(|s| parse_trade_side(&s)).transpose()?;
-        let filter_type = filter_type
-            .map(|s| parse_trade_filter_type(&s))
-            .transpose()?;
-        py.detach(|| {
-            crate::runtime::runtime().block_on(async move {
-                let mut req = client.user(&address).trades();
-                if let Some(v) = market {
-                    req = req.market(v);
-                }
-                if let Some(v) = event_id {
-                    req = req.event_id(v);
-                }
-                if let Some(v) = side {
-                    req = req.side(v);
-                }
-                if let Some(v) = taker_only {
-                    req = req.taker_only(v);
-                }
-                if let Some(v) = filter_type {
-                    req = req.filter_type(v);
-                }
-                if let Some(v) = filter_amount {
-                    req = req.filter_amount(v);
-                }
-                if let Some(v) = limit {
-                    req = req.limit(v);
-                }
-                if let Some(v) = offset {
-                    req = req.offset(v);
-                }
-                let result = req.send().await.map_err(data_err)?;
-                Ok(result.into_iter().map(PyTrade::from).collect::<Vec<_>>())
-            })
-        })
-    }
+        /// `GET /v2/prices-history`: an outcome token's price series.
+        #[pyo3(signature = (token_id, *, start=None, end=None, interval=None, bucket_seconds=None, as_of=None, limit=None, cursor=None))]
+        fn prices_history / iter_prices_history(
+            token_id: String,
+            start: Option<i64>,
+            end: Option<i64>,
+            interval: Option<String>,
+            bucket_seconds: Option<u32>,
+            as_of: Option<i64>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2PricePoint => |client| {
+            let mut request = client.prices_history(token_id);
+            if let Some(v) = start {
+                request = request.start(v);
+            }
+            if let Some(v) = end {
+                request = request.end(v);
+            }
+            if let Some(v) = interval {
+                request = request.interval(choice("interval", &v, data::types::PricesInterval::ALL)?);
+            }
+            if let Some(v) = bucket_seconds {
+                request = request.bucket_seconds(v);
+            }
+            if let Some(v) = as_of {
+                request = request.as_of(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-    #[pyo3(signature = (*, market=None, event_id=None, activity_type=None, side=None, start=None, end=None, limit=None, offset=None, sort_by=None, sort_direction=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn activity(
-        &self,
-        py: Python<'_>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        activity_type: Option<Vec<String>>,
-        side: Option<String>,
-        start: Option<i64>,
-        end: Option<i64>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        sort_by: Option<String>,
-        sort_direction: Option<String>,
-    ) -> PyResult<Vec<PyActivity>> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        let activity_type = activity_type
-            .map(|v| {
-                v.iter()
-                    .map(|s| parse_activity_type(s))
-                    .collect::<PyResult<Vec<_>>>()
-            })
-            .transpose()?;
-        let side = side.map(|s| parse_trade_side(&s)).transpose()?;
-        let sort_by = sort_by.map(|s| parse_activity_sort_by(&s)).transpose()?;
-        let sort_direction = sort_direction
-            .map(|s| parse_sort_direction(&s))
-            .transpose()?;
-        py.detach(|| {
-            crate::runtime::runtime().block_on(async move {
-                let mut req = client.user(&address).activity();
-                if let Some(v) = market {
-                    req = req.market(v);
-                }
-                if let Some(v) = event_id {
-                    req = req.event_id(v);
-                }
-                if let Some(v) = activity_type {
-                    req = req.activity_type(v);
-                }
-                if let Some(v) = side {
-                    req = req.side(v);
-                }
-                if let Some(v) = start {
-                    req = req.start(v);
-                }
-                if let Some(v) = end {
-                    req = req.end(v);
-                }
-                if let Some(v) = limit {
-                    req = req.limit(v);
-                }
-                if let Some(v) = offset {
-                    req = req.offset(v);
-                }
-                if let Some(v) = sort_by {
-                    req = req.sort_by(v);
-                }
-                if let Some(v) = sort_direction {
-                    req = req.sort_direction(v);
-                }
-                let result = req.send().await.map_err(data_err)?;
-                Ok(result.into_iter().map(PyActivity::from).collect::<Vec<_>>())
-            })
-        })
-    }
+        /// `GET /v2/biggest-winners`: the largest single winning positions in a window.
+        #[pyo3(signature = (*, time_period=None, category=None, limit=None, cursor=None))]
+        fn biggest_winners / iter_biggest_winners(
+            time_period: Option<String>,
+            category: Option<String>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2BiggestWinner => |client| {
+            let mut request = client.biggest_winners();
+            if let Some(v) = time_period {
+                request = request.time_period(choice("time_period", &v, data::types::TimePeriod::ALL)?);
+            }
+            if let Some(v) = category {
+                request = request.category(v);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-    #[pyo3(signature = ())]
-    fn traded(&self, py: Python<'_>) -> PyResult<PyUserTraded> {
-        let client = self.client.clone();
-        let address = self.address.clone();
-        py.detach(|| {
-            crate::runtime::runtime().block_on(async move {
-                Ok(PyUserTraded::from(
-                    client.user(&address).traded().await.map_err(data_err)?,
-                ))
-            })
-        })
-    }
-}
+        /// `GET /v2/builders/leaderboard`: builders ranked by volume for a window.
+        #[pyo3(signature = (*, time_period=None, limit=None, cursor=None))]
+        fn builders_leaderboard / iter_builders_leaderboard(
+            time_period: Option<String>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2BuilderStanding => |client| {
+            let mut request = client.builders_leaderboard();
+            if let Some(v) = time_period {
+                request = request.time_period(choice("time_period", &v, data::types::TimePeriod::ALL)?);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Trades
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiTrades,
-    sync_name = PyDataApiTradesSync,
-    py_async_name = "DataApiTrades",
-    py_sync_name = "DataApiTradesSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = (*, user=None, market=None, event_id=None, side=None, taker_only=None, filter_type=None, filter_amount=None, limit=None, offset=None))]
-    #[allow(clippy::too_many_arguments)]
-    fn list(
-        user: Option<String>,
-        market: Option<Vec<String>>,
-        event_id: Option<Vec<String>>,
-        side: Option<String>,
-        taker_only: Option<bool>,
-        filter_type: Option<String>,
-        filter_amount: Option<f64>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> Vec<PyTrade> {
-        let mut req = client.trades().list();
-        if let Some(v) = user {
-            req = req.user(v);
-        }
-        if let Some(v) = market {
-            req = req.market(v);
-        }
-        if let Some(v) = event_id {
-            req = req.event_id(v);
-        }
-        if let Some(v) = side {
-            req = req.side(parse_trade_side(&v)?);
-        }
-        if let Some(v) = taker_only {
-            req = req.taker_only(v);
-        }
-        if let Some(v) = filter_type {
-            req = req.filter_type(parse_trade_filter_type(&v)?);
-        }
-        if let Some(v) = filter_amount {
-            req = req.filter_amount(v);
-        }
-        if let Some(v) = limit {
-            req = req.limit(v);
-        }
-        if let Some(v) = offset {
-            req = req.offset(v);
-        }
-        let result = req.send().await.map_err(data_err)?;
-        Ok(result.into_iter().map(PyTrade::from).collect::<Vec<_>>())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Holders
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiHolders,
-    sync_name = PyDataApiHoldersSync,
-    py_async_name = "DataApiHolders",
-    py_sync_name = "DataApiHoldersSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = (markets, *, limit=None, min_balance=None))]
-    fn list(
-        markets: Vec<String>,
-        limit: Option<u32>,
-        min_balance: Option<u32>,
-    ) -> Vec<PyMarketHolders> {
-        let mut req = client.holders().list(markets);
-        if let Some(v) = limit {
-            req = req.limit(v);
-        }
-        if let Some(v) = min_balance {
-            req = req.min_balance(v);
-        }
-        let result = req.send().await.map_err(data_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyMarketHolders::from)
-            .collect::<Vec<_>>())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Open Interest
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiOpenInterest,
-    sync_name = PyDataApiOpenInterestSync,
-    py_async_name = "DataApiOpenInterest",
-    py_sync_name = "DataApiOpenInterestSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = (*, market=None))]
-    fn get(market: Option<Vec<String>>) -> Vec<PyOpenInterest> {
-        let mut req = client.open_interest().get();
-        if let Some(v) = market {
-            req = req.market(v);
-        }
-        let result = req.send().await.map_err(data_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyOpenInterest::from)
-            .collect::<Vec<_>>())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Live Volume
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiLiveVolume,
-    sync_name = PyDataApiLiveVolumeSync,
-    py_async_name = "DataApiLiveVolume",
-    py_sync_name = "DataApiLiveVolumeSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = (event_id,))]
-    fn get(event_id: u64) -> Vec<PyLiveVolume> {
-        let result = client.live_volume().get(event_id).await.map_err(data_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyLiveVolume::from)
-            .collect::<Vec<_>>())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Leaderboard
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiLeaderboard,
-    sync_name = PyDataApiLeaderboardSync,
-    py_async_name = "DataApiLeaderboard",
-    py_sync_name = "DataApiLeaderboardSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = (*, category=None, time_period=None, order_by=None, limit=None, offset=None, user=None, user_name=None))]
-    fn get(
-        category: Option<String>,
-        time_period: Option<String>,
-        order_by: Option<String>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        user: Option<String>,
-        user_name: Option<String>,
-    ) -> Vec<PyTraderRanking> {
-        let mut req = client.leaderboard().get();
-        if let Some(v) = category {
-            req = req.category(parse_leaderboard_category(&v)?);
-        }
-        if let Some(v) = time_period {
-            req = req.time_period(parse_time_period(&v)?);
-        }
-        if let Some(v) = order_by {
-            req = req.order_by(parse_leaderboard_order_by(&v)?);
-        }
-        if let Some(v) = limit {
-            req = req.limit(v);
-        }
-        if let Some(v) = offset {
-            req = req.offset(v);
-        }
-        if let Some(v) = user {
-            req = req.user(v);
-        }
-        if let Some(v) = user_name {
-            req = req.user_name(v);
-        }
-        let result = req.send().await.map_err(data_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyTraderRanking::from)
-            .collect::<Vec<_>>())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Builders
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiBuilders,
-    sync_name = PyDataApiBuildersSync,
-    py_async_name = "DataApiBuilders",
-    py_sync_name = "DataApiBuildersSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = (*, time_period=None, limit=None, offset=None))]
-    fn leaderboard(
-        time_period: Option<String>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> Vec<PyBuilderRanking> {
-        let mut req = client.builders().leaderboard();
-        if let Some(v) = time_period {
-            req = req.time_period(parse_time_period(&v)?);
-        }
-        if let Some(v) = limit {
-            req = req.limit(v);
-        }
-        if let Some(v) = offset {
-            req = req.offset(v);
-        }
-        let result = req.send().await.map_err(data_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyBuilderRanking::from)
-            .collect::<Vec<_>>())
-    },
-    #[pyo3(signature = (*, time_period=None))]
-    fn volume(time_period: Option<String>) -> Vec<PyBuilderVolume> {
-        let mut req = client.builders().volume();
-        if let Some(v) = time_period {
-            req = req.time_period(parse_time_period(&v)?);
-        }
-        let result = req.send().await.map_err(data_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyBuilderVolume::from)
-            .collect::<Vec<_>>())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Namespace: Health
-// ═══════════════════════════════════════════════════════════════════════════════
-
-client_ns!(
-    async_name = PyDataApiHealth,
-    sync_name = PyDataApiHealthSync,
-    py_async_name = "DataApiHealth",
-    py_sync_name = "DataApiHealthSync",
-    client_type = polyoxide_polymarket::data::DataApi,
-    client_var = client,
-    #[pyo3(signature = ())]
-    fn ping() -> f64 {
-        let duration = client.health().ping().await.map_err(data_err)?;
-        Ok(duration.as_secs_f64())
-    }
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Async Client
-// ═══════════════════════════════════════════════════════════════════════════════
-
-#[pyclass(name = "DataApi", skip_from_py_object)]
-pub struct PyDataApi {
-    client: Arc<polyoxide_polymarket::data::DataApi>,
-}
-
-#[pymethods]
-impl PyDataApi {
-    #[new]
-    #[pyo3(signature = (*, base_url=None, timeout_ms=None, pool_size=None))]
-    fn new(
-        base_url: Option<String>,
-        timeout_ms: Option<u64>,
-        pool_size: Option<usize>,
-    ) -> PyResult<Self> {
-        let mut builder = polyoxide_polymarket::data::DataApi::builder();
-        if let Some(v) = base_url {
-            builder = builder.base_url(v);
-        }
-        if let Some(v) = timeout_ms {
-            builder = builder.timeout_ms(v);
-        }
-        if let Some(v) = pool_size {
-            builder = builder.pool_size(v);
-        }
-        let client = builder.build().map_err(data_err)?;
-        Ok(Self {
-            client: Arc::new(client),
-        })
-    }
-
-    fn user(&self, address: String) -> PyDataApiUser {
-        PyDataApiUser {
-            client: self.client.clone(),
-            address,
-        }
-    }
-
-    fn trades(&self) -> PyDataApiTrades {
-        PyDataApiTrades {
-            client: self.client.clone(),
-        }
-    }
-
-    fn holders(&self) -> PyDataApiHolders {
-        PyDataApiHolders {
-            client: self.client.clone(),
-        }
-    }
-
-    fn open_interest(&self) -> PyDataApiOpenInterest {
-        PyDataApiOpenInterest {
-            client: self.client.clone(),
-        }
-    }
-
-    fn live_volume(&self) -> PyDataApiLiveVolume {
-        PyDataApiLiveVolume {
-            client: self.client.clone(),
-        }
-    }
-
-    fn leaderboard(&self) -> PyDataApiLeaderboard {
-        PyDataApiLeaderboard {
-            client: self.client.clone(),
-        }
-    }
-
-    fn builders(&self) -> PyDataApiBuilders {
-        PyDataApiBuilders {
-            client: self.client.clone(),
-        }
-    }
-
-    fn health(&self) -> PyDataApiHealth {
-        PyDataApiHealth {
-            client: self.client.clone(),
-        }
-    }
-
-    /// The Data API v2 routes, sharing this client's connection pool and rate limiter.
-    fn v2(&self) -> super::data_v2::PyDataV2 {
-        super::data_v2::PyDataV2 {
-            v2: self.client.v2(),
-        }
+        /// `GET /v2/leaderboard`: the trader board. `board` picks PNL or VOLUME; volume is in shares, not USDC.
+        #[pyo3(signature = (*, time_period=None, category=None, board=None, limit=None, cursor=None))]
+        fn leaderboard / iter_leaderboard(
+            time_period: Option<String>,
+            category: Option<String>,
+            board: Option<String>,
+            limit: Option<u32>,
+            cursor: Option<String>,
+        ) -> PyV2LeaderboardEntry => |client| {
+            let mut request = client.leaderboard();
+            if let Some(v) = time_period {
+                request = request.time_period(choice("time_period", &v, data::types::TimePeriod::ALL)?);
+            }
+            if let Some(v) = category {
+                request = request.category(v);
+            }
+            if let Some(v) = board {
+                request = request.board(choice("board", &v, data::types::LeaderboardBoard::ALL)?);
+            }
+            if let Some(v) = limit {
+                request = request.limit(v);
+            }
+            if let Some(v) = cursor {
+                request = request.cursor(v);
+            }
+            request
+        };
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Sync Client
-// ═══════════════════════════════════════════════════════════════════════════════
-
-#[pyclass(name = "DataApiSync", skip_from_py_object)]
-pub struct PyDataApiSync {
-    client: Arc<polyoxide_polymarket::data::DataApi>,
-}
-
-#[pymethods]
-impl PyDataApiSync {
-    #[new]
-    #[pyo3(signature = (*, base_url=None, timeout_ms=None, pool_size=None))]
-    fn new(
-        base_url: Option<String>,
-        timeout_ms: Option<u64>,
-        pool_size: Option<usize>,
-    ) -> PyResult<Self> {
-        let mut builder = polyoxide_polymarket::data::DataApi::builder();
-        if let Some(v) = base_url {
-            builder = builder.base_url(v);
-        }
-        if let Some(v) = timeout_ms {
-            builder = builder.timeout_ms(v);
-        }
-        if let Some(v) = pool_size {
-            builder = builder.pool_size(v);
-        }
-        let client = builder.build().map_err(data_err)?;
-        Ok(Self {
-            client: Arc::new(client),
-        })
-    }
-
-    fn user(&self, address: String) -> PyDataApiUserSync {
-        PyDataApiUserSync {
-            client: self.client.clone(),
-            address,
-        }
-    }
-
-    fn trades(&self) -> PyDataApiTradesSync {
-        PyDataApiTradesSync {
-            client: self.client.clone(),
-        }
-    }
-
-    fn holders(&self) -> PyDataApiHoldersSync {
-        PyDataApiHoldersSync {
-            client: self.client.clone(),
-        }
-    }
-
-    fn open_interest(&self) -> PyDataApiOpenInterestSync {
-        PyDataApiOpenInterestSync {
-            client: self.client.clone(),
-        }
-    }
-
-    fn live_volume(&self) -> PyDataApiLiveVolumeSync {
-        PyDataApiLiveVolumeSync {
-            client: self.client.clone(),
-        }
-    }
-
-    fn leaderboard(&self) -> PyDataApiLeaderboardSync {
-        PyDataApiLeaderboardSync {
-            client: self.client.clone(),
-        }
-    }
-
-    fn builders(&self) -> PyDataApiBuildersSync {
-        PyDataApiBuildersSync {
-            client: self.client.clone(),
-        }
-    }
-
-    fn health(&self) -> PyDataApiHealthSync {
-        PyDataApiHealthSync {
-            client: self.client.clone(),
-        }
-    }
-
-    /// The Data API v2 routes, sharing this client's connection pool and rate limiter.
-    fn v2(&self) -> super::data_v2::PyDataV2Sync {
-        super::data_v2::PyDataV2Sync {
-            v2: self.client.v2(),
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Registration
-// ═══════════════════════════════════════════════════════════════════════════════
-
-pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
+pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDataApi>()?;
     m.add_class::<PyDataApiSync>()?;
-    m.add_class::<PyDataApiUser>()?;
-    m.add_class::<PyDataApiUserSync>()?;
-    m.add_class::<PyDataApiTrades>()?;
-    m.add_class::<PyDataApiTradesSync>()?;
-    m.add_class::<PyDataApiHolders>()?;
-    m.add_class::<PyDataApiHoldersSync>()?;
-    m.add_class::<PyDataApiOpenInterest>()?;
-    m.add_class::<PyDataApiOpenInterestSync>()?;
-    m.add_class::<PyDataApiLiveVolume>()?;
-    m.add_class::<PyDataApiLiveVolumeSync>()?;
-    m.add_class::<PyDataApiLeaderboard>()?;
-    m.add_class::<PyDataApiLeaderboardSync>()?;
-    m.add_class::<PyDataApiBuilders>()?;
-    m.add_class::<PyDataApiBuildersSync>()?;
-    m.add_class::<PyDataApiHealth>()?;
-    m.add_class::<PyDataApiHealthSync>()?;
+    m.add_class::<PyPage>()?;
+    m.add_class::<PyPageIterator>()?;
+    m.add_class::<PyPageIteratorSync>()?;
     Ok(())
 }

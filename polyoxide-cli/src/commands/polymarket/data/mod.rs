@@ -21,7 +21,7 @@ use crate::commands::polymarket::data::{
 
 #[derive(Subcommand)]
 pub enum DataCommand {
-    /// Check API health status
+    /// Check the Data API's status (`/v2/status`)
     Health,
     /// Query user activity
     Activity(UserActivityCommand),
@@ -67,8 +67,8 @@ impl DataCommand {
     ) -> Result<()> {
         match self {
             Self::Health => {
-                let health = data.health().check().await?;
-                paging::print_pretty(&health, out)
+                let status = data.status().send().await?;
+                paging::print_pretty(&status, out)
             }
             Self::Activity(cmd) => cmd.run(data, out, err).await,
             Self::Builders { command } => command.run(data, out, err).await,

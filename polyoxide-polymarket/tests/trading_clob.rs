@@ -1008,74 +1008,112 @@ async fn open_orders_stops_on_a_cursor_it_has_already_followed() {
     list.assert_async().await;
 }
 
-/// A `/positions` row with the asset `asset`.
-fn position_row(asset: String) -> Value {
+/// A `/v2/positions` row with the token `token`.
+fn position_row(token: String) -> Value {
     json!({
-        "proxyWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-        "asset": asset,
-        "conditionId": MARKET,
-        "size": 12.5,
-        "avgPrice": 0.4,
-        "initialValue": 5.0,
-        "currentValue": 6.25,
-        "cashPnl": 1.25,
-        "percentPnl": 25.0,
-        "totalBought": 12.5,
-        "realizedPnl": 0.0,
-        "percentRealizedPnl": 0.0,
-        "curPrice": 0.5,
-        "redeemable": false,
+        "archived": false,
+        "avg_price": 0.4,
+        "condition_id": MARKET,
+        "current_price": 0.5,
+        "current_size": 12.5,
+        "current_value": 6.25,
+        "end_date": "1970-01-01",
+        "entry_cost_usdc": 5.0,
+        "entry_fees_usdc": 0.0,
+        "event_id": "1",
+        "event_slug": "an-event",
+        "first_entry_at": 1_792_000_000_i64,
+        "icon": "",
+        "last_event_at": 1_792_000_000_i64,
         "mergeable": false,
-        "title": "A market",
-        "slug": "a-market",
-        "icon": null,
-        "eventSlug": null,
+        "name": "",
+        "negative_risk": false,
+        "opposite_outcome": "No",
+        "opposite_token_id": "101",
         "outcome": "Yes",
-        "outcomeIndex": 0,
-        "oppositeOutcome": "No",
-        "oppositeAsset": "101",
-        "endDate": null,
-        "negativeRisk": false
+        "outcome_index": 0,
+        "percent_pnl": 25.0,
+        "percent_realized_pnl": 0.0,
+        "profile_image": "",
+        "proxy_wallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "realized_pnl": 0.0,
+        "redeemable": false,
+        "slug": "a-market",
+        "status": "OPEN",
+        "title": "A market",
+        "token_id": token,
+        "total_cost_usdc": 9.0,
+        "total_pnl": 3.5,
+        "total_size": 20.0,
+        "unrealized_pnl": 1.25,
+        "verified": false
     })
 }
 
-/// The query of one `/positions` page: the maker, no dust filter, 500 rows.
-fn positions_query(user: &str, offset: &str) -> Matcher {
-    Matcher::AllOf(vec![
+/// The query of one `/v2/positions` page: the maker, every open (and so
+/// redeemable) row, 500 rows, and the cursor after the first.
+fn positions_query(user: &str, cursor: Option<&str>) -> Matcher {
+    let mut matchers = vec![
         Matcher::UrlEncoded("user".into(), user.into()),
-        Matcher::UrlEncoded("sizeThreshold".into(), "0".into()),
+        Matcher::UrlEncoded("status".into(), "OPEN".into()),
         Matcher::UrlEncoded("limit".into(), "500".into()),
-        Matcher::UrlEncoded("offset".into(), offset.into()),
-    ])
+    ];
+    if let Some(cursor) = cursor {
+        matchers.push(Matcher::UrlEncoded("cursor".into(), cursor.into()));
+    }
+    Matcher::AllOf(matchers)
 }
 
-fn position_rows(count: usize) -> String {
-    let rows: Vec<Value> = (0..count)
-        .map(|n| position_row((1_000 + n).to_string()))
+/// One `/v2/positions` page of `count` rows from row `first`, pointing at
+/// `next` when given. Row 500 ends on a date, row 501 sends an empty end date
+/// and the unlabeled outcome index, and every other row v2's "no end date".
+fn position_page(first: usize, count: usize, next: Option<&str>) -> String {
+    let rows: Vec<Value> = (first..first + count)
+        .map(|n| {
+            let mut row = position_row((1_000 + n).to_string());
+            match n {
+                500 => row["end_date"] = json!("2026-12-31"),
+                501 => {
+                    row["end_date"] = json!("");
+                    row["outcome_index"] = json!(999);
+                }
+                _ => {}
+            }
+            row
+        })
         .collect();
-    Value::Array(rows).to_string()
+    json!({
+        "data": rows,
+        "pagination": {
+            "limit": 500,
+            "offset": first,
+            "has_more": next.is_some(),
+            "next_cursor": next
+        }
+    })
+    .to_string()
 }
 
 #[tokio::test]
-async fn positions_pages_by_offset_with_no_dust_filter_for_the_maker_address() {
+async fn positions_walk_every_cursor_page_with_no_dust_filter_for_the_maker_address() {
     let mut server = Server::new_async().await;
     let clob = client(&server);
     let user = clob.account().unwrap().address().to_string();
     let first = server
-        .mock("GET", "/positions")
-        .match_query(positions_query(&user, "0"))
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(&user, None))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(position_rows(500))
+        .with_body(position_page(0, 500, Some("c1")))
         .expect(1)
         .create_async()
         .await;
     let second = server
-        .mock("GET", "/positions")
-        .match_query(positions_query(&user, "500"))
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(&user, Some("c1")))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(position_rows(3))
+        .with_body(position_page(500, 3, None))
         .expect(1)
         .create_async()
         .await;
@@ -1084,13 +1122,59 @@ async fn positions_pages_by_offset_with_no_dust_filter_for_the_maker_address() {
 
     assert_eq!(positions.len(), 503);
     assert_eq!(positions[0].key, keys::clob(&TokenId::new("1000").unwrap()));
+    assert_eq!(
+        positions[502].key,
+        keys::clob(&TokenId::new("1502").unwrap())
+    );
     assert_eq!(positions[0].size, d("12.5"));
     assert_eq!(positions[0].average_price, Some(d("0.4")));
     let ext = positions[0].extensions.get::<PositionExt>().unwrap();
     assert_eq!(ext.condition_id.as_deref(), Some(MARKET));
     assert_eq!(ext.current_price, Some(d("0.5")));
+    assert_eq!(ext.entry_cost, Some(d("5")));
+    assert_eq!(ext.unrealized_pnl, Some(d("1.25")));
     assert_eq!(ext.outcome_index, Some(0));
+    assert_eq!(ext.end_date, None, "v2 writes 1970-01-01 for no end date");
     assert_eq!(ext.negative_risk, Some(false));
+    let dated = positions[500].extensions.get::<PositionExt>().unwrap();
+    assert_eq!(dated.end_date.as_deref(), Some("2026-12-31"));
+    assert_eq!(dated.outcome_index, Some(0));
+    let unlabeled = positions[501].extensions.get::<PositionExt>().unwrap();
+    assert_eq!(unlabeled.end_date, None, "an empty end date is none");
+    assert_eq!(
+        unlabeled.outcome_index, None,
+        "999 is the unlabeled outcome"
+    );
+    first.assert_async().await;
+    second.assert_async().await;
+}
+
+#[tokio::test]
+async fn positions_fail_when_a_later_page_fails() {
+    let mut server = Server::new_async().await;
+    let clob = client(&server);
+    let user = clob.account().unwrap().address().to_string();
+    let first = server
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(&user, None))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(position_page(0, 2, Some("c1")))
+        .expect(1)
+        .create_async()
+        .await;
+    let second = server
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(&user, Some("c1")))
+        .with_status(503)
+        .with_body("unavailable")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = clob.positions().await.unwrap_err();
+
+    assert!(matches!(err.class, Class::Unavailable { .. }), "{err}");
     first.assert_async().await;
     second.assert_async().await;
 }
@@ -1124,11 +1208,11 @@ async fn a_proxy_client_lists_the_positions_of_its_proxy_wallet() {
     let mut server = Server::new_async().await;
     let profile = proxy_profile(&mut server).await;
     let list = server
-        .mock("GET", "/positions")
-        .match_query(positions_query(PROXY, "0"))
+        .mock("GET", "/v2/positions")
+        .match_query(positions_query(PROXY, None))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(position_rows(2))
+        .with_body(position_page(0, 2, None))
         .expect(1)
         .create_async()
         .await;
@@ -1138,28 +1222,6 @@ async fn a_proxy_client_lists_the_positions_of_its_proxy_wallet() {
     assert_eq!(positions.len(), 2);
     profile.assert_async().await;
     list.assert_async().await;
-}
-
-#[tokio::test]
-async fn positions_refuse_a_wallet_with_more_rows_than_the_offset_reaches() {
-    let mut server = Server::new_async().await;
-    // Every page is full: offsets 0 to 10000 are 21 pages, and a 22nd would
-    // need offset 10500.
-    let pages = server
-        .mock("GET", "/positions")
-        .match_query(Matcher::Any)
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(position_rows(500))
-        .expect(21)
-        .create_async()
-        .await;
-
-    let err = client(&server).positions().await.unwrap_err();
-
-    assert!(matches!(err.class, Class::VenueRefusal { .. }), "{err}");
-    assert!(err.to_string().contains("more positions"), "{err}");
-    pages.assert_async().await;
 }
 
 #[tokio::test]

@@ -2,13 +2,13 @@
 
 Base URL: `https://data-api.polymarket.com` (routes under `/v2`)
 
-The second contract for the Data API: the same host and data as
-[../data/INDEX.md](../data/INDEX.md), behind one shared set of conventions
-instead of per-route ones.
+The Data API's contract, one shared set of conventions instead of v1's per-route
+ones. Polymarket retired v1 on 2026-11-02 (every v1 route answers `410`), so this is
+the whole API; v1's mirror is in git history.
 
-> **Implemented by `polyoxide-polymarket`'s `data` module** as `data.v2()`, alongside the v1 routes,
-> which upstream says keep working. Where the live host disagrees with or goes
-> beyond this spec, see [OBSERVED.md](OBSERVED.md).
+> **Implemented by `polyoxide-polymarket`'s `data` module**, each route a method of
+> `DataApi` (`data.trades()`). Where the live host disagrees with or goes beyond this
+> spec, see [OBSERVED.md](OBSERVED.md).
 
 Machine-readable schema: [openapi.json](openapi.json) (OpenAPI 3.1, mirror of
 `https://data-api.polymarket.com/v2/openapi.json`).
@@ -48,8 +48,9 @@ once for every route:
   `Retry-After` when worth retrying.
 - **Rate limiting.** A heavy query may be queued for a capacity slot before a
   `429`, and a per-client allowance also answers bursts with `429` +
-  `Retry-After`. No figures are published, and `data/rate-limits.md` covers
-  only v1 routes. Measured figures: [OBSERVED.md](OBSERVED.md#measured-rate-limits).
+  `Retry-After`. The published figures are in [rate-limits.md](rate-limits.md), and
+  what the client pins, with the measurements behind it, in
+  [OBSERVED.md](OBSERVED.md#measured-rate-limits).
 - **Auth.** None.
 
 ## Endpoints
@@ -88,14 +89,14 @@ spec and have no `/v2` path; `/v2/status` reports data freshness, not liveness. 
 `user-volume`, `biggest-winners`, `prices-history`, `resolutions` and `status`. `tokens`
 came later, first seen by the drift check on 2026-10-08.
 
-## Overlap with what polyoxide already calls
+## Overlap with what polyoxide called before v1 was retired
 
-The first two are compared in [OBSERVED.md](OBSERVED.md): neither v2 route is a
-drop-in replacement for the undocumented host.
+The first two are compared in [OBSERVED.md](OBSERVED.md): neither v2 route was a
+drop-in replacement for the retired host.
 
 | v2 route | polyoxide today |
 |----------|-----------------|
-| `/v2/user-pnl` | `data.pnl()` on the undocumented `user-pnl-api` host ([../undocumented/INDEX.md](../undocumented/INDEX.md)) |
-| `/v2/leaderboard` | `data.leaderboard()` (v1), and `data.rankings()` on the undocumented `lb-api` host |
+| `/v2/user-pnl` | `data.pnl()` on the retired `user-pnl-api` host |
+| `/v2/leaderboard` | `data.leaderboard()` (v1), and `data.rankings()` on the retired `lb-api` host |
 | `/v2/prices-history` | CLOB `GET /prices-history`, used by `polyoxide polymarket clob prices download` |
-| `/v2/holders` | `data.holders()`, whose v1 `null` miss the SDK reads as `[]` ([../data/holders.md](../data/holders.md)) |
+| `/v2/holders` | `data.holders()` (v1), whose `null` miss the SDK read as `[]` |

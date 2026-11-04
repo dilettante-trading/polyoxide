@@ -103,49 +103,50 @@ def test_stub_matches_compiled_class(class_name: str) -> None:
     )
 
 
-# ── polyoxide.v2 ──────────────────────────────────────────────────────────────
+# ── The Data API client ───────────────────────────────────────────────────────
 #
-# The v2 classes reuse v1 names (`Trade`, `Position`, ...), so they have their
-# own stub and resolve on `polyoxide.v2` only: falling back to the top-level
-# module would compare a v2 stub with the v1 class of the same name.
+# Its routes' signatures all come from `#[pyo3(signature = ...)]`, so the
+# compiled `__text_signature__` is exact and each is checked parameter by
+# parameter, which member names alone miss.
 
-_V2_STUB_PATH = _STUB_PATH.with_name("v2.pyi")
-_V2_STUB = {
+_STUB_TREE = {
     node.name: node
-    for node in ast.parse(_V2_STUB_PATH.read_text()).body
+    for node in ast.parse(_STUB_PATH.read_text()).body
     if isinstance(node, ast.ClassDef)
 }
+_DATA_CLIENTS = ("DataApi", "DataApiSync")
 
 
-def _v2_methods(class_name: str) -> list[ast.FunctionDef]:
-    """Public stub methods of a v2 class, without its properties."""
+def _methods(class_name: str) -> list[ast.FunctionDef]:
+    """Public stub methods of a class, without its properties."""
     return [
         member
-        for member in _V2_STUB[class_name].body
+        for member in _STUB_TREE[class_name].body
         if isinstance(member, ast.FunctionDef)
         and not member.name.startswith("_")
         and not any(getattr(d, "id", None) == "property" for d in member.decorator_list)
     ]
 
 
-_V2_METHODS = sorted((c, m.name) for c in _V2_STUB for m in _v2_methods(c))
+_DATA_METHODS = sorted((c, m.name) for c in _DATA_CLIENTS for m in _methods(c))
 
 
-def test_v2_stub_declares_every_v2_export() -> None:
-    assert set(_V2_STUB) == set(polyoxide.v2.__all__)
+def test_every_exported_class_has_a_stub() -> None:
+    exported = {name for name in polyoxide.__all__ if isinstance(getattr(polyoxide, name), type)}
+    assert exported - set(_STUB_CLASSES) == set()
 
 
-@pytest.mark.parametrize("class_name", sorted(_V2_STUB))
-def test_v2_stub_matches_compiled_class(class_name: str) -> None:
-    stub_members = {
-        member.name
-        for member in _V2_STUB[class_name].body
-        if isinstance(member, ast.FunctionDef) and not member.name.startswith("_")
-    }
-    real_members = _public_members(getattr(polyoxide.v2, class_name))
-    assert stub_members == real_members, (
-        f"polyoxide/v2.pyi `{class_name}` is out of sync with the compiled class"
-    )
+def test_the_data_records_are_exported_from_polyoxide() -> None:
+    """The row classes, `Page` and its iterators are importable from `polyoxide`
+    itself, not only from the compiled module the stub check falls back to."""
+    records = {"Page", "PageIterator", "PageIteratorSync", "Pagination", "Activity", "Trade",
+               "Position", "ServiceStatus", "UserStats", "MetaHolder"}
+    assert records <= set(polyoxide.__all__)
+    assert all(hasattr(polyoxide, name) for name in records)
+
+
+def test_the_data_clients_carry_the_routes() -> None:
+    assert len(_DATA_METHODS) > 40, _DATA_METHODS
 
 
 def _stub_parameters(fn: ast.FunctionDef) -> list[tuple[str, str, bool]]:
@@ -170,14 +171,10 @@ def _compiled_parameters(method: object) -> list[tuple[str, str, bool]]:
 
 
 @pytest.mark.parametrize(
-    ("class_name", "method"), _V2_METHODS, ids=[f"{c}.{m}" for c, m in _V2_METHODS]
+    ("class_name", "method"), _DATA_METHODS, ids=[f"{c}.{m}" for c, m in _DATA_METHODS]
 )
-def test_v2_stub_signature_matches_compiled_method(class_name: str, method: str) -> None:
-    """Parameter names, order, kinds and defaults, which member names alone miss.
-
-    Only v2 is checked: its signatures all come from `#[pyo3(signature = ...)]`,
-    so the compiled `__text_signature__` is exact.
-    """
-    stub = next(m for m in _v2_methods(class_name) if m.name == method)
-    compiled = getattr(getattr(polyoxide.v2, class_name), method)
+def test_data_stub_signature_matches_compiled_method(class_name: str, method: str) -> None:
+    """Parameter names, order, kinds and defaults, which member names alone miss."""
+    stub = next(m for m in _methods(class_name) if m.name == method)
+    compiled = getattr(getattr(polyoxide, class_name), method)
     assert _stub_parameters(stub) == _compiled_parameters(compiled)

@@ -301,27 +301,28 @@ async fn trades_are_the_data_apis_public_trades_of_the_token_oldest_first() {
         1,
     )
     .await;
-    let query = format!("market={}&takerOnly=true", condition());
-    let trades_route = route(&mut server, "/trades", &query, &fixture("trades"), 2).await;
+    let query = format!("condition={}&taker_only=true&limit=100", condition());
+    let trades_route = route(&mut server, "/v2/trades", &query, &fixture("trades"), 2).await;
     let client = client(&server);
     let native = DataApi::builder()
         .base_url(server.url())
         .build()
         .unwrap()
         .trades()
-        .list()
-        .market([condition()])
+        .conditions([condition()])
         .taker_only(true)
+        .limit(100)
         .send()
         .await
-        .unwrap();
+        .unwrap()
+        .data;
     let expected: Vec<_> = native
         .iter()
         .rev()
-        .filter(|row| row.asset == token())
+        .filter(|row| row.token_id == token())
         .collect();
     assert!(
-        native.iter().any(|row| row.asset != token()),
+        native.iter().any(|row| row.token_id != token()),
         "the capture holds another outcome's trades, which the trait leaves out"
     );
 
@@ -346,8 +347,9 @@ async fn trades_are_the_data_apis_public_trades_of_the_token_oldest_first() {
             }
         );
         let ext = trade.extensions.get::<TradeExt>().unwrap();
-        assert_eq!(ext.transaction_hash, row.transaction_hash);
+        assert_eq!(ext.transaction_hash.as_ref(), Some(&row.transaction_hash));
         assert_eq!(ext.outcome.as_deref(), Some(row.outcome.as_str()));
+        assert_eq!(ext.proxy_wallet.as_deref(), Some(row.proxy_wallet.as_str()));
     }
     assert!(
         trades.windows(2).all(|w| w[0].time <= w[1].time),

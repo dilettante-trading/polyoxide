@@ -1,17 +1,8 @@
-//! API namespace modules for the Data API client.
+//! Request builders for the routes, one module per spec tag. The route
+//! methods themselves are on [`DataApi`](super::DataApi).
 
-pub mod accounting;
-pub mod approvals;
-pub mod builders;
-pub mod combos;
-pub mod health;
-pub mod holders;
-pub mod leaderboard;
-pub mod live_volume;
-pub mod market_positions;
-pub mod misc;
-pub mod open_interest;
-pub mod pnl;
-pub mod rankings;
-pub mod trades;
-pub mod users;
+pub mod boards;
+pub mod feeds;
+pub mod markets;
+pub mod service;
+pub mod wallet;

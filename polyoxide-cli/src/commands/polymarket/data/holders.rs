@@ -35,7 +35,7 @@ pub struct HoldersCommand {
 
 impl HoldersCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
-        let mut request = data.v2().holders(self.condition).limit(self.limit);
+        let mut request = data.holders(self.condition).limit(self.limit);
         if let Some(min_balance) = self.min_balance {
             request = request.min_balance(min_balance);
         }

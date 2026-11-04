@@ -4,7 +4,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// The protocol a market trades on, from [`Market::version`].
     ///
     /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration:
@@ -17,7 +17,7 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// A Protocol V2 market's resolution state, from
     /// [`Market::resolution_status`]. V1 markets use
     /// [`Market::uma_resolution_status`] instead.
@@ -31,7 +31,7 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::open_enum! {
+crate::shared::specta_open_enum! {
     /// Which side of a game a team is on, from [`Team::ordering`].
     pub enum HomeAway {
         /// The home team.
@@ -66,8 +66,6 @@ polyoxide_venue::wire_enum! {
         Any => "any",
     }
 }
-
-polyoxide_venue::specta_as_string!(ProtocolVersion, ResolutionStatus, HomeAway);
 
 /// Reads an array the served schema types `["array","null"]`, taking `null`
 /// as empty. `#[serde(default)]` alone covers only a missing key.

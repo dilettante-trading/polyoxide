@@ -108,14 +108,14 @@ let markets = pm.gamma.markets()
 
 // Data: list a user's positions
 let positions = pm.data
-    .user("0xabc...")
-    .list_positions()
+    
+    .positions("0xabc...")
     .limit(5)
     .send()
     .await?;
 
-for pos in &positions {
-    println!("{}: {} shares @ {}", pos.title, pos.size, pos.cur_price);
+for pos in &positions.data {
+    println!("{}: {} shares @ {}", pos.title, pos.current_size, pos.current_price);
 }
 
 // CLOB: place a limit order
@@ -156,7 +156,7 @@ let events = gamma.events().list().limit(5).send().await?;
 use polyoxide::polymarket::data::DataApi;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let data = DataApi::builder().build()?;
-let leaders = data.leaderboard().get().send().await?;
+let leaders = data.leaderboard().send().await?;
 # Ok(())
 # }
 ```

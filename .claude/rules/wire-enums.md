@@ -12,8 +12,8 @@ paths:
 
 # Wire enums
 
-`polyoxide-venue`'s macros declare the wire enums of gamma (`src/gamma/types.rs`), data v2
-(`src/data/v2/types/common.rs`), perps (`src/perps/types.rs`) and relay (`src/relay/types.rs`,
+`polyoxide-venue`'s macros declare the wire enums of gamma (`src/gamma/types.rs`), data
+(`src/data/types/common.rs`), perps (`src/perps/types.rs`) and relay (`src/relay/types.rs`,
 `session_signers.rs`), all in `polyoxide-polymarket`, and of Binance (`usdm/types.rs` and
 `spot/types.rs`):
 
@@ -33,8 +33,11 @@ Rules for using them:
   while `open_enum!` implements both by hand.
 - They emit no specta code, since a `cfg(feature = "specta")` in an exported macro is evaluated in
   every calling crate: data's closed enums pass
-  `#[cfg_attr(feature = "specta", derive(specta::Type))]`, and gamma and data give their open
-  enums a `String` shape with one `polyoxide_venue::specta_as_string!(..)`.
+  `#[cfg_attr(feature = "specta", derive(specta::Type))]`, and gamma's and data's open enums that
+  specta exports are declared through `polyoxide-polymarket`'s crate-private
+  `shared::specta_open_enum!`, which wraps `open_enum!` and, under `specta`, exports a named
+  union of the known spellings and `OpenString` (`string & {}`), so TypeScript keeps the
+  literals (spec D17; `tests/specta_open_enums.rs` pins each enum's export).
 - Perps, Binance's `usdm` and Binance's `spot` keep separate `Interval` enums (D16).
 
 Still written by hand, one spelling per variant: clob's `OrderSide` (`src/clob/types.rs`) and

@@ -2,7 +2,7 @@
 
 The exception follows the error's class one to one (Story 3.12), so these
 assert the exact type, through gamma and the Data API's v1 routes. A v2 error
-body still maps by its code; `test_data_v2_offline.py` holds that.
+body still maps by its code; `test_data_offline.py` holds that.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import socket
 import pytest
 
 import polyoxide
-from test_data_v2_offline import FakeDataApi
+from test_data_offline import FakeDataApi
 
 
 @pytest.fixture
@@ -28,23 +28,23 @@ def gamma_market(server: FakeDataApi) -> None:
     polyoxide.GammaSync(base_url=server.url).markets().get("1")
 
 
-def data_ping(server: FakeDataApi) -> None:
-    polyoxide.DataApiSync(base_url=server.url).health().ping()
+def data_status(server: FakeDataApi) -> None:
+    polyoxide.DataApiSync(base_url=server.url).status()
 
 
 # (status, body, the call, the exception it raises). A 429 is retried three
 # times with backoff first, so its row takes about four seconds.
 CASES = [
     (503, {"error": "down"}, gamma_market, polyoxide.UnavailableError),
-    (500, {"error": "broke"}, data_ping, polyoxide.UnavailableError),
+    (500, {"error": "broke"}, data_status, polyoxide.UnavailableError),
     (408, {"error": "slow"}, gamma_market, polyoxide.UnavailableError),
-    (429, {"error": "slow down"}, data_ping, polyoxide.RateLimitError),
+    (429, {"error": "slow down"}, data_status, polyoxide.RateLimitError),
     (401, {"error": "who are you"}, gamma_market, polyoxide.AuthenticationError),
-    (403, {"error": "forbidden"}, data_ping, polyoxide.AuthenticationError),
+    (403, {"error": "forbidden"}, data_status, polyoxide.AuthenticationError),
     (400, {"error": "bad limit"}, gamma_market, polyoxide.ApiError),
-    (404, {"error": "not found"}, data_ping, polyoxide.ApiError),
+    (404, {"error": "not found"}, data_status, polyoxide.ApiError),
     (451, {"error": "not here"}, gamma_market, polyoxide.RestrictedError),
-    (418, {"error": "banned"}, data_ping, polyoxide.RestrictedError),
+    (418, {"error": "banned"}, data_status, polyoxide.RestrictedError),
     (200, "not json", gamma_market, polyoxide.DecodeError),
 ]
 
@@ -55,7 +55,7 @@ CASES = [
     ids=[f"{status}-{call.__name__}" for status, _, call, _ in CASES],
 )
 def test_each_status_raises_its_class_s_exception(server, status, body, call, error) -> None:
-    path = "/markets/1" if call is gamma_market else "/"
+    path = "/markets/1" if call is gamma_market else "/v2/status"
     server.reply(path, body if isinstance(body, str) else json.dumps(body), status=status)
 
     with pytest.raises(polyoxide.PolyoxideError) as raised:

@@ -3,7 +3,7 @@ use std::io::Write;
 use clap::{Args, Subcommand, ValueEnum};
 use color_eyre::eyre::{bail, Result};
 use polyoxide_polymarket::data::{
-    v2::types::{PositionAnchor, PositionSortBy, PositionStatus},
+    types::{PositionAnchor, PositionSortBy, PositionStatus},
     DataApi,
 };
 
@@ -121,7 +121,6 @@ impl PositionsCommand {
                     None => PositionAnchor::User(self.user),
                 };
                 let mut request = data
-                    .v2()
                     .positions(anchor)
                     .status(status.into())
                     .sort_direction(sort_direction.into())
@@ -153,7 +152,7 @@ impl PositionsCommand {
                 run_paged(request, &page, out, err).await
             }
             PositionsSubcommand::Value { condition } => {
-                let mut request = data.v2().value(self.user);
+                let mut request = data.value(self.user);
                 if let Some(ids) = condition {
                     request = request.conditions(ids);
                 }

@@ -205,6 +205,8 @@ polyoxide-test-support = { path = "../polyoxide-test-support", features = ["quer
 # perps, rtds and sports run on. Path-only, so cargo strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 mockito = { workspace = true }
+# The open enums' TypeScript export test (specta_open_enums), at prader-rs's pin.
+specta-typescript = "=0.0.7"
 serde_json = { workspace = true }
 dotenvy = "0.15"
 futures-util = { workspace = true }
@@ -258,10 +260,9 @@ required-features = ["gamma"]
 name = "wire_agreement_gamma"
 required-features = ["gamma"]
 
-# The data module's suites (Story 5.3); `tests/common/` is their shared mock
-# server helper.
+# The data module's suites (Story 5.3).
 [[test]]
-name = "enum_wire_data_v2"
+name = "enum_wire_data"
 required-features = ["data"]
 
 [[test]]
@@ -273,10 +274,6 @@ name = "headers_data"
 required-features = ["data"]
 
 [[test]]
-name = "holders_shape_data"
-required-features = ["data"]
-
-[[test]]
 name = "live_data"
 required-features = ["data"]
 
@@ -285,19 +282,23 @@ name = "mock_data"
 required-features = ["data"]
 
 [[test]]
-name = "mock_data_v2"
-required-features = ["data"]
-
-[[test]]
 name = "query_setters_data"
 required-features = ["data"]
 
 [[test]]
-name = "spec_agreement_data_v2"
+name = "records_data"
 required-features = ["data"]
 
 [[test]]
-name = "wire_agreement_data_v2"
+name = "specta_open_enums"
+required-features = ["gamma", "data", "specta"]
+
+[[test]]
+name = "spec_agreement_data"
+required-features = ["data"]
+
+[[test]]
+name = "wire_agreement_data"
 required-features = ["data"]
 
 # The clob module's suites (Story 5.4). `live_clob` looks markets up through
@@ -483,18 +484,6 @@ path = "examples/v2_soak/main.rs"
 test = true
 required-features = ["data"]
 
-[[example]]
-name = "closed_positions_soak"
-path = "examples/closed_positions_soak.rs"
-test = true
-required-features = ["data"]
-
-[[example]]
-name = "closed_positions_burst_probe"
-path = "examples/closed_positions_burst_probe.rs"
-test = true
-required-features = ["data"]
-
 # The soak that measured `shared::perps_limits`; its verdict rules are
 # polyoxide-test-support's `soak::verdict::strict`, tested there.
 [[example]]
@@ -526,11 +515,11 @@ features = [
 # in the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket`"
+readme = "Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket`"
 venue = "polymarket"
 products = ["clob", "gamma", "data", "relay", "perps", "rtds", "sports"]
 classes = { clob = "event-contract", perps = "perpetual-future" }
-mirrors = ["clob", "gamma", "data", "data-v2", "undocumented", "relay", "session-keys", "perps", "rtds", "sports"]
+mirrors = ["clob", "gamma", "data-v2", "relay", "session-keys", "perps", "rtds", "sports"]
 identifiers = ["Poly-RateLimit"]
 notes = [
   "only `clob` and `relay` build `alloy`, and only the HTTP modules build core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma",

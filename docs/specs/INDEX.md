@@ -9,7 +9,6 @@ The specs are sourced from https://docs.polymarket.com (Polymarket's) and https:
 <!-- generated:begin index-upstream -->
 - CLOB: https://docs.polymarket.com/api-spec/clob-openapi.yaml
 - Gamma: https://docs.polymarket.com/api-spec/gamma-openapi.yaml
-- Data: https://docs.polymarket.com/api-spec/data-openapi.yaml
 - Data v2: https://data-api.polymarket.com/v2/openapi.json (served by the API host, not the docs site)
 - Relay: https://docs.polymarket.com/api-spec/relayer-openapi.yaml
 - Perps: https://docs.polymarket.com/api-spec/perps-openapi.json
@@ -27,8 +26,7 @@ Covered by a polyoxide crate:
 |-----|----------|-------------|-------|
 | [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ | `polyoxide-polymarket` |
 | [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments | `polyoxide-polymarket` |
-| [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-polymarket` |
-| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case | `polyoxide-polymarket` (`data.v2()`) |
+| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API (v2; v1 retired 2026-11-02): `data` envelope, cursor pagination, snake_case | `polyoxide-polymarket` (`data`) |
 | [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-polymarket` |
 | [Sports](sports/INDEX.md) | `wss://sports-api.polymarket.com/ws` | Live match scores, server push only | `polyoxide-polymarket` |
 | [RTDS](rtds/OBSERVED.md) | `wss://ws-live-data.polymarket.com` | Crypto price streams, Binance and Chainlink; observed, not published upstream | `polyoxide-polymarket` |
@@ -57,10 +55,9 @@ Not Polymarket hosts. Read by a polyoxide crate for consumers that trade across 
 
 ## Hosts with no upstream spec
 
-Some Polymarket APIs are published in **no** OpenAPI or AsyncAPI document.
-[undocumented/INDEX.md](undocumented/INDEX.md) records what we know about them
-— `user-pnl-api` and `lb-api` are implemented by `polyoxide-polymarket`'s `data` module; the shapes
-there were derived from live responses rather than a vendor contract.
+Some Polymarket APIs are published in **no** OpenAPI or AsyncAPI document. The two this
+repository once covered, `user-pnl-api` and `lb-api`, were retired upstream with Data API v1
+(410 since 2026-11-02); their mirror is in git history.
 
 ## Surfaces with no upstream spec
 
@@ -88,7 +85,7 @@ diffing the OpenAPI shows neither.
 | [clob/rate-limits.md](clob/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
 | [clob/trading-rate-limits.md](clob/trading-rate-limits.md) | per-signer token buckets | signer address | orders (batches cost N) |
 | [gamma/rate-limits.md](gamma/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
-| [data/rate-limits.md](data/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
+| [data-v2/rate-limits.md](data-v2/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
 
 Upstream's published tables also carry rows that name routes the host does not
 serve — every surface lists `Health check (/ok)`, but only `clob.polymarket.com`
