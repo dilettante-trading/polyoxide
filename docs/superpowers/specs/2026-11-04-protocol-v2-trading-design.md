@@ -20,8 +20,8 @@ markets behave exactly as before.
 - Live trading of a V2 market. No V2 market exists (none among 40,000 open markets on 2026-10-07);
   upstream's BUY/SELL fill checklist goes to `deferred-work.md` (see *Live*).
 - Python bindings. `polyoxide-py` exposes no CLOB order, balance or relay call (only Data), so
-  nothing changes there. The CLI places no orders and reads no balances, so it does not change
-  either.
+  nothing changes there. The CLI places no orders and reads no balances; its one change is the
+  `clob prices` market discovery of §4a.
 - Combo (module 3) splits through `CombinatorialModule.prepareCondition`. The Router builders
   accept a module-3 condition, as py-sdk's do, but no combo-leg helper is added.
 
@@ -201,6 +201,32 @@ only through its one `From<ApiError>`.
   (event groups now list V2 outcomes) and is recorded in the commit message and the CLOB rules.
 - A second new test, `event_group_skips_a_market_with_no_known_version`, gives market 1
   `version: "v3"` and asserts that its outcomes are absent and the group still returns.
+
+### 4a. CLI: `clob prices` market discovery
+
+Decided with the owner on 2026-11-04, after the plan's seams check found it:
+`polyoxide-cli/src/commands/polymarket/clob/prices/select.rs`'s `discover_targets` takes each
+market's ids from `clob_token_ids` with no `version` check, so a V2 market would yield ids with no
+book. It changes, in Story 3, as follows:
+
+- A market whose `version` is `Some(ProtocolVersion::V2)` yields the `id` of each `OutcomeId` from
+  `Market::outcome_ids`; a selector error skips the market with a stderr warning naming the market
+  and the error, as an unparseable `clob_token_ids` does today.
+- A market whose `version` is `Some(ProtocolVersion::Other(_))` is skipped with a stderr warning
+  naming the market and its version, as `event_group` skips it (§4).
+- A market whose `version` is `Some(V1)` or `None` keeps today's `clob_token_ids` path, unchanged.
+  `None` stays there, not refused, because the baseline test
+  `discover_extracts_token_ids_from_markets` (`polyoxide-cli/tests/prices_discovery.rs`) serves
+  markets with no `version` and must pass unedited.
+- `parse_clob_token_ids` keeps its signature (a baseline test calls it). The doc comment of
+  `discover_targets` says which field each version reads.
+- A new test appended to `polyoxide-cli/tests/prices_discovery.rs` serves a `v1` market, a `v2`
+  market carrying both `clobTokenIds` and `positionIds` (and `outcomes`), a market with no
+  `version`, and a `v3` market, and asserts the ids are the `v1` market's `clobTokenIds`, the
+  `v2` market's `positionIds`, the unversioned market's `clobTokenIds`, and nothing from `v3`,
+  each read straight off the served JSON.
+- `.claude/rules/cli.md`'s `polymarket clob prices download` section says discovery reads a V2
+  market's position ids.
 
 ### 5. Relay: Router position ops
 
