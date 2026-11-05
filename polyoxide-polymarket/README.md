@@ -71,14 +71,14 @@ The defaults build `clob`, `gamma` and `data`:
 
 ```toml
 [dependencies]
-polyoxide-polymarket = "0.47"
+polyoxide-polymarket = "0.48"
 ```
 
 Or name the modules you use:
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.47", default-features = false, features = ["gamma", "data"] }
+polyoxide-polymarket = { version = "0.48", default-features = false, features = ["gamma", "data"] }
 ```
 
 ## License

@@ -1,5 +1,26 @@
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-05
+
+`polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host
+once with no timer. Adding a required method breaks every downstream `Runtime` implementor, so the
+0.x minor rises. To migrate, write `yield_now`: delegate to `TokioRuntime.yield_now()` or
+`BrowserRuntime.yield_now()`, or on tokio return `Box::pin(tokio::task::yield_now())`. A future
+that completes at once, or a zero sleep, is not a yield. `polyoxide-rt` now builds `js-sys`,
+`wasm-bindgen` and `web-sys` on wasm32, which every browser build already had through
+`polyoxide-ws`.
+
+- **`Runtime::yield_now`.** The caller resumes after work already queued on the host has run.
+  `TokioRuntime` defers to `tokio::task::yield_now`. `BrowserRuntime` posts to a fresh
+  `MessageChannel` and resumes when the message is delivered: a macrotask, in a Window or a
+  Worker, that the browser's 4 ms clamp on nested `setTimeout` never delays. Before this, a task
+  that handed a Worker back between slices of work slept 1 ms, which the clamp stretched to about
+  4 ms, since `sleep(Duration::ZERO)` under `BrowserRuntime` completes with no timer at all.
+
+### 🚀 Features
+
+- *(rt)* Runtime::yield_now, a hand-back to the host with no timer
+
 ## [0.47.0] - 2026-11-04
 
 Data API v1 removed, since Polymarket retired it on 2026-11-02, with v2 made the `data` module

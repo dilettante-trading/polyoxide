@@ -11,7 +11,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.47", default-features = false, features = ["sports"] }
+polyoxide-polymarket = { version = "0.48", default-features = false, features = ["sports"] }
 ```
 
 ## Usage
