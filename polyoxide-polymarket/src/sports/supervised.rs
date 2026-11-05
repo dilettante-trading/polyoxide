@@ -599,6 +599,10 @@ mod tests {
             }
         }
 
+        fn yield_now(&self) -> polyoxide_rt::BoxFuture<()> {
+            Box::pin(tokio::task::yield_now())
+        }
+
         fn now(&self) -> polyoxide_rt::Instant {
             self.0.now()
         }
@@ -646,6 +650,10 @@ mod tests {
         fn sleep(&self, duration: Duration) -> polyoxide_rt::BoxFuture<()> {
             self.asked.lock().unwrap().push(duration);
             self.inner.sleep(duration)
+        }
+
+        fn yield_now(&self) -> polyoxide_rt::BoxFuture<()> {
+            Box::pin(tokio::task::yield_now())
         }
 
         fn now(&self) -> polyoxide_rt::Instant {

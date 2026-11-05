@@ -51,6 +51,10 @@ impl Runtime for Scripted {
         Box::pin(async {})
     }
 
+    fn yield_now(&self) -> BoxFuture<()> {
+        Box::pin(tokio::task::yield_now())
+    }
+
     fn now(&self) -> Instant {
         self.base + Duration::from_secs(10)
     }
@@ -123,6 +127,22 @@ async fn spawn_goes_through_the_runtime_it_is_given() {
     let task = spawn(&rt, async { 5 });
     assert_eq!(rt.spawned.load(Ordering::SeqCst), 1);
     assert_eq!(task.await, Some(5));
+}
+
+// Why: a yield that completes at once (a ready future, a zero sleep) would
+// leave the spawned task unrun; tokio's `yield_now` re-queues the caller
+// behind it on the current-thread scheduler.
+#[tokio::test]
+async fn yield_now_lets_a_ready_task_run_first() {
+    let ran = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&ran);
+    tokio::spawn(async move { flag.store(true, Ordering::SeqCst) });
+    assert!(!ran.load(Ordering::SeqCst), "the task ran before the yield");
+    TokioRuntime.yield_now().await;
+    assert!(
+        ran.load(Ordering::SeqCst),
+        "the ready task did not run during the yield"
+    );
 }
 
 #[tokio::test(start_paused = true)]

@@ -26,4 +26,5 @@ wasm-bindgen-futures
 wasm-bindgen-macro
 wasm-bindgen-macro-support
 wasm-bindgen-shared
+web-sys
 web-time

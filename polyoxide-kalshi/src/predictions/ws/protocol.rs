@@ -2427,6 +2427,10 @@ mod tests {
             Box::pin(std::future::pending())
         }
 
+        fn yield_now(&self) -> polyoxide_rt::BoxFuture<()> {
+            Box::pin(tokio::task::yield_now())
+        }
+
         fn now(&self) -> polyoxide_rt::Instant {
             self.0
         }

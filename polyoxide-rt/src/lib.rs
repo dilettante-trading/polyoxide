@@ -4,7 +4,8 @@
 //! clock or spawns takes a [`Runtime`] instead of calling a runtime's own
 //! functions, so a runtime can be injected rather than assumed.
 //!
-//! - [`Runtime`] is a detached `spawn`, a `sleep`, a monotonic `now` and a
+//! - [`Runtime`] is a detached `spawn`, a `sleep`, a `yield_now` that hands
+//!   the thread to the host once with no timer, a monotonic `now` and a
 //!   defaulted `sleep_until`. An implementor writes only those.
 //! - [`spawn`] turns any future into a [`Task`], which resolves to `Some`
 //!   output, or to `None` when it was aborted or panicked, and keeps running
@@ -15,8 +16,8 @@
 //!   takes a [`MissedTick`] to say what to do about ticks it was late for.
 //! - `TokioRuntime` is the native runtime, on tokio's own clock so a paused
 //!   clock drives it, and [`default_runtime`] returns it off wasm32. On wasm32
-//!   `BrowserRuntime` is the default: `spawn_local`, `setTimeout` and
-//!   `performance.now`.
+//!   `BrowserRuntime` is the default: `spawn_local`, `setTimeout`, a
+//!   `MessageChannel` post and `performance.now`.
 //! - [`Instant`], [`SystemTime`] and [`UNIX_EPOCH`] are `web-time`'s: std's own
 //!   types on native.
 //!

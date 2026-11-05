@@ -8,10 +8,10 @@ paths:
 - It is a foundation crate: it depends on nothing in the workspace, so it publishes first, and it
   names no venue (`scripts/venue_gate.py` reads it with `polyoxide-venue`, `-core`, `-ws` and
   `-test-support`). It has no public error type, so the `Classify` sweep has nothing to cover.
-- `Runtime` is the whole seam: a detached `spawn`, `sleep`, `now`, and `sleep_until`, whose default
-  is `sleep(deadline - now)`. An implementor writes only those; `Task`, `timeout` and `Interval`
-  are built on them and add nothing to the trait. A client takes its runtime from its builder and
-  falls back to `default_runtime()`; there is no process-wide install.
+- `Runtime` is the whole seam: a detached `spawn`, `sleep`, `yield_now`, `now`, and `sleep_until`,
+  whose default is `sleep(deadline - now)`. An implementor writes only those; `Task`, `timeout` and
+  `Interval` are built on them and add nothing to the trait. A client takes its runtime from its
+  builder and falls back to `default_runtime()`; there is no process-wide install.
 - `Task<T>` resolves to `Option<T>`: `None` when it was aborted or its output never arrived (a
   panic). Dropping a `Task` detaches it, as dropping tokio's `JoinHandle` does; only `abort()`
   stops it.
@@ -21,10 +21,13 @@ paths:
   clock drives it. A zero period panics with `interval period must be non-zero`. A tick within
   5 ms of its deadline is on time, so jitter never moves `MissedTick::Delay`'s grid. `tick` is
   cancel safe: a dropped tick leaves the same tick due.
+- `yield_now` hands the thread to the host once, with no timer, and has no default: nothing generic
+  really yields (a self-wake stays on a browser's microtask queue, and a zero sleep there is no
+  timer at all). Every `Runtime` in the workspace, the test fakes included, writes one.
 - The clock vocabulary is `web-time`'s, re-exported as `Instant`, `SystemTime` and `UNIX_EPOCH`:
   std's own types on native.
-- `TokioRuntime` (off wasm32) is a unit struct over tokio's spawn, sleep and clock, so tokio's
-  paused clock drives it; its `spawn` panics outside a tokio runtime, as `tokio::spawn` does.
+- `TokioRuntime` (off wasm32) is a unit struct over tokio's spawn, sleep, `yield_now` and clock,
+  so tokio's paused clock drives it; its `spawn` panics outside a tokio runtime, as `tokio::spawn` does.
   `default_runtime()` is `TokioRuntime` off wasm32. tokio is declared only under
   `[target.'cfg(not(target_arch = "wasm32"))'.dependencies]`.
 - The tests are `tests/tokio_runtime.rs`, on `#[tokio::test(start_paused = true)]` with a
@@ -54,17 +57,21 @@ timer or a spawn there goes through the `Runtime` the client was built with: `ru
 `BrowserRuntime` is the `wasm32` default of `default_runtime`; a host's is `TokioRuntime`. It holds
 no state: `spawn` is `wasm_bindgen_futures::spawn_local`, `now` is `web_time::Instant::now`
 (`performance.now`), and `sleep` chains gloo-timers' `TimeoutFuture` in steps of at most `i32::MAX`
-ms, because `setTimeout` fires at once for a larger delay. The arithmetic (`step_ms`, `steps`: the
-remainder rounded up to a millisecond, so a sleep is never short) is plain Rust built on every
-target, so the host's tests pin it. Each timer's JS handle sits in a `send_wrapper::SendWrapper`:
+ms, because `setTimeout` fires at once for a larger delay. `yield_now` posts to a fresh
+`MessageChannel` and resumes when `port1.onmessage` resolves its promise: a macrotask, in a Window
+or a Worker, that no nested-timer clamp (at least 4 ms) delays; it falls back to a zero
+`setTimeout` only when the channel cannot be made or posted to. The arithmetic (`step_ms`,
+`steps`: the remainder rounded up to a millisecond, so a sleep is never short) is plain Rust built
+on every target, so the host's tests pin it. Each timer's JS handle sits in a `send_wrapper::SendWrapper`:
 the `Send` bound of `Runtime` holds, and the handle is only touched on the one thread a browser
 build has. A build with atomics (threads) is unsupported, because the wrapper panics off its thread.
 The supported contexts are the main thread, a dedicated Worker and a SharedWorker, and a Worker is
 the recommended one: Chrome throttles a hidden tab's main-thread timers to once a second, and to
 once a minute after five minutes, which breaks ping cadences.
 
-Dependencies are per target: tokio's `rt` and `time` are the host's, and `gloo-timers`,
-`send_wrapper`, `wasm-bindgen-futures` and `getrandom` 0.3.4 with `wasm_js` are `wasm32`'s.
+Dependencies are per target: tokio's `rt` and `time` are the host's, and `gloo-timers`, `js-sys`,
+`send_wrapper`, `wasm-bindgen`, `wasm-bindgen-futures`, `web-sys` (`MessageChannel`,
+`MessagePort`) and `getrandom` 0.3.4 with `wasm_js` are `wasm32`'s.
 `getrandom` is here so feature unification reaches `rand` and `tungstenite` from every crate that
 builds this one. From 0.3.4 its `wasm_js` feature alone selects the browser backend, so the crate
 requires 0.3.4 and no build sets a `--cfg getrandom_backend` flag; `scripts/wasm_check.sh`,

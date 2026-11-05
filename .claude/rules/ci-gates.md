@@ -202,7 +202,8 @@ also requires its summary line to report at least one passed and 0 failed.
 It refuses a `wasm-bindgen-cli` whose version is not the `wasm-bindgen` one `Cargo.lock` pins,
 since the runner rejects a module built by another. The suite covers `BrowserRuntime` (sleep,
 `sleep_until`, `timeout`, `interval`, spawn, abort, `is_finished`, a monotonic `now`, a sleep past
-`i32::MAX` ms), `FetchTransport` (a 200, a timeout, both 429s read through `ErrorResponse`) and
+`i32::MAX` ms, and a `yield_now` that delivers a message queued before it and is not clamped like
+a timer), `FetchTransport` (a 200, a timeout, both 429s read through `ErrorResponse`) and
 `WebSocketTransport` (a text echo, a close with its code, a send before the close is yielded and
 one after it, a refused handshake header and ping frame). Three browser-only paths no host test reaches have a test each: a CLOB auth signature
 through `Account::sign_clob_auth`, byte-equal to the host's py-clob-client golden vector, which
