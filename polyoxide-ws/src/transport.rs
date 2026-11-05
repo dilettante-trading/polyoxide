@@ -390,6 +390,10 @@ mod tests {
             Box::pin(std::future::ready(()))
         }
 
+        fn yield_now(&self) -> BoxFuture<()> {
+            Box::pin(tokio::task::yield_now())
+        }
+
         fn now(&self) -> Instant {
             Instant::now()
         }

@@ -31,8 +31,12 @@ tokio = { workspace = true, features = ["rt", "time"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3.4", features = ["wasm_js"] }
 gloo-timers = { workspace = true, features = ["futures"] }
+# `yield_now`: a `MessageChannel` post, awaited as a promise.
+js-sys = { workspace = true }
 send_wrapper = { workspace = true, features = ["futures"] }
+wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true, features = ["MessageChannel", "MessagePort"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
@@ -42,4 +46,4 @@ tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
 # after an edit.
 [package.metadata.polyoxide]
 readme = "The runtime seam: an injected clock, sleep and spawn, with the tasks, timeouts and intervals built on them"
-notes = ["names no venue, which `scripts/venue_gate.py` holds, and builds futures-channel, futures-util and web-time on every target, tokio (`rt` and `time`) on a host, and getrandom, gloo-timers, send_wrapper and wasm-bindgen-futures on `wasm32`"]
+notes = ["names no venue, which `scripts/venue_gate.py` holds, and builds futures-channel, futures-util and web-time on every target, tokio (`rt` and `time`) on a host, and getrandom, gloo-timers, js-sys, send_wrapper, wasm-bindgen, wasm-bindgen-futures and web-sys on `wasm32`"]

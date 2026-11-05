@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::{BoxFuture, Instant, Runtime};
 
-/// The runtime over tokio's spawn, sleep and clock.
+/// The runtime over tokio's spawn, sleep, yield and clock.
 ///
 /// It reads tokio's clock, so a test on `tokio::time::pause` (or
 /// `#[tokio::test(start_paused = true)]`) drives it. `spawn` panics outside a
@@ -19,6 +19,10 @@ impl Runtime for TokioRuntime {
 
     fn sleep(&self, duration: Duration) -> BoxFuture<()> {
         Box::pin(::tokio::time::sleep(duration))
+    }
+
+    fn yield_now(&self) -> BoxFuture<()> {
+        Box::pin(::tokio::task::yield_now())
     }
 
     fn now(&self) -> Instant {

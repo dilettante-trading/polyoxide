@@ -46,7 +46,10 @@ polyoxide-test-support = { path = "../polyoxide-test-support" }
 polyoxide-venue = { workspace = true }
 polyoxide-ws = { workspace = true }
 serde_json = { workspace = true }
+# `yield_now`'s test: a message posted to a channel of its own before the yield.
+wasm-bindgen = { workspace = true }
 wasm-bindgen-test = "0.3"
+web-sys = { workspace = true, features = ["MessageChannel", "MessagePort"] }
 
 # Registration, read by scripts/gen_registry.py: the README line and the notes CLAUDE.md's
 # crate list carries. Run `python3 scripts/gen_registry.py --write` after an edit.

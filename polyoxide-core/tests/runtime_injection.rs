@@ -42,6 +42,10 @@ impl Runtime for Counting {
         self.inner.sleep(duration)
     }
 
+    fn yield_now(&self) -> BoxFuture<()> {
+        Box::pin(tokio::task::yield_now())
+    }
+
     fn now(&self) -> Instant {
         self.reads.fetch_add(1, Ordering::SeqCst);
         self.inner.now()

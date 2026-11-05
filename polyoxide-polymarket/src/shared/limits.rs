@@ -374,6 +374,10 @@ mod runtime_tests {
             self.inner.sleep(duration)
         }
 
+        fn yield_now(&self) -> polyoxide_rt::BoxFuture<()> {
+            Box::pin(tokio::task::yield_now())
+        }
+
         fn now(&self) -> polyoxide_rt::Instant {
             self.inner.now()
         }

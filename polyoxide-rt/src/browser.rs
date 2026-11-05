@@ -85,13 +85,18 @@ mod web {
     use std::time::Duration;
 
     use gloo_timers::future::TimeoutFuture;
+    use js_sys::Promise;
     use send_wrapper::SendWrapper;
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::MessageChannel;
 
     use super::chunks::steps;
     use crate::{BoxFuture, Instant, Runtime};
 
     /// The runtime of a browser page or Worker: `spawn_local` for tasks,
-    /// `setTimeout` for sleeps and `performance.now` for the clock.
+    /// `setTimeout` for sleeps, a `MessageChannel` post for a yield and
+    /// `performance.now` for the clock.
     ///
     /// A timer's JS handle is `!Send`, so each sleep sits in a
     /// `SendWrapper`: the `Send` bound of [`Runtime`] holds, and the handle is
@@ -115,9 +120,38 @@ mod web {
             }))
         }
 
+        fn yield_now(&self) -> BoxFuture<()> {
+            Box::pin(SendWrapper::new(next_macrotask()))
+        }
+
         fn now(&self) -> Instant {
             Instant::now()
         }
+    }
+
+    /// Resume on the next macrotask: post a message to a fresh channel and
+    /// wait for its delivery. A message is a task of its own, so the event
+    /// loop runs what was queued before it, and unlike a zero `setTimeout` it
+    /// is never clamped to 4 ms. A context that cannot make or post to a
+    /// channel falls back to that timer, which still yields.
+    async fn next_macrotask() {
+        let Ok(channel) = MessageChannel::new() else {
+            return TimeoutFuture::new(0).await;
+        };
+        let receiver = channel.port1();
+        // Setting `onmessage` also starts the port.
+        let delivered = Promise::new(&mut |resolve, _reject| {
+            receiver.set_onmessage(Some(&resolve));
+        });
+        if channel.port2().post_message(&JsValue::UNDEFINED).is_err() {
+            receiver.set_onmessage(None);
+            return TimeoutFuture::new(0).await;
+        }
+        // The promise only resolves; it has no rejection to report.
+        let _ = JsFuture::from(delivered).await;
+        receiver.set_onmessage(None);
+        receiver.close();
+        channel.port2().close();
     }
 }
 

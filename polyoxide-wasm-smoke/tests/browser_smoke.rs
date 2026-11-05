@@ -12,6 +12,8 @@ wasm_bindgen_test_configure!(run_in_dedicated_worker);
 
 mod runtime {
     use std::{
+        cell::Cell,
+        rc::Rc,
         sync::{
             atomic::{AtomicBool, Ordering},
             Arc,
@@ -20,7 +22,9 @@ mod runtime {
     };
 
     use polyoxide_rt::{interval, spawn, timeout, BrowserRuntime, MissedTick, Runtime};
+    use wasm_bindgen::{closure::Closure, JsCast, JsValue};
     use wasm_bindgen_test::wasm_bindgen_test;
+    use web_sys::MessageChannel;
 
     fn runtime() -> Arc<dyn Runtime> {
         Arc::new(BrowserRuntime)
@@ -216,6 +220,43 @@ mod runtime {
         rt.sleep(Duration::from_millis(30)).await;
         assert!(task.is_finished());
         assert_eq!(task.await, Some(()));
+    }
+
+    // Why: a yield that stays on the microtask queue (a self-wake, or a zero sleep, which
+    // `BrowserRuntime` completes with no timer) resolves before the event loop delivers any
+    // message, so the one posted first would still be undelivered.
+    #[wasm_bindgen_test]
+    async fn yield_now_delivers_a_message_posted_before_it() {
+        let channel = MessageChannel::new().unwrap();
+        let delivered = Rc::new(Cell::new(false));
+        let flag = Rc::clone(&delivered);
+        let on_message = Closure::<dyn FnMut()>::new(move || flag.set(true));
+        channel
+            .port1()
+            .set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+        channel.port2().post_message(&JsValue::UNDEFINED).unwrap();
+        assert!(!delivered.get(), "the message arrived before the yield");
+        BrowserRuntime.yield_now().await;
+        assert!(
+            delivered.get(),
+            "the yield resumed before the queued message was delivered"
+        );
+    }
+
+    // Why: nested `setTimeout`s are clamped to at least 4 ms, so a hundred timer yields take
+    // 400 ms or more; a hundred message posts take a fraction of a millisecond each.
+    #[wasm_bindgen_test]
+    async fn yield_now_is_not_clamped_like_a_timer() {
+        let rt = runtime();
+        let start = rt.now();
+        for _ in 0..100 {
+            rt.yield_now().await;
+        }
+        let elapsed = rt.now().saturating_duration_since(start);
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "a hundred yields took {elapsed:?}"
+        );
     }
 
     #[wasm_bindgen_test]
@@ -633,6 +674,9 @@ mod quota {
         }
         fn sleep(&self, duration: Duration) -> BoxFuture<()> {
             BrowserRuntime.sleep(duration / Self::SPEED)
+        }
+        fn yield_now(&self) -> BoxFuture<()> {
+            BrowserRuntime.yield_now()
         }
         fn now(&self) -> Instant {
             let real = BrowserRuntime.now().saturating_duration_since(self.origin);
