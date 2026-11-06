@@ -77,6 +77,5 @@ a FAK SELL of 10 limited at 0.32 into a 0.35 bid.
 - The CLOB's `CONDITIONAL` balance and Data v2's `/v2/positions` showed the 10 shares, and both
   dropped them after the sale, within the 25 s run; pUSD fell by 0.15, exactly the trades' net
   cost (5 at 0.36 and 5 at 0.37 bought, 10 at 0.35 sold).
-- `GET /balance-allowance?asset_type=CONDITIONAL` lists three spenders (the two exchanges and the
-  neg-risk adapter), each with the unlimited `2^256 - 1` approval a Polymarket proxy wallet is
-  created with.
+- `GET /balance-allowance?asset_type=CONDITIONAL` lists three spenders, the CTF Exchange V2, the
+  NegRisk CTF Exchange V2 and the neg-risk adapter (`Chain::contracts`), each at `2^256 - 1`.
