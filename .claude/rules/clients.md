@@ -71,9 +71,10 @@ fields every namespace takes (`http_client;`, Binance's `http;`):
 `#[deprecated]` pass through. The namespace structs stay declared by hand, since
 their paths are public.
 
-Five accessors are hand-written because they do more than clone: clob's account-gated `orders`,
+Six accessors are hand-written because they do more than clone: clob's account-gated `orders`,
 `account_api`, `notifications`, `rewards` and `auth`, each projecting its own part of the account
-and failing with its own message.
+and failing with its own message, and clob's `readonly(key, address)`, which needs no account and
+carries the read-only API key it is given (in a `Secret`) into its namespace.
 
 ## Query setters
 

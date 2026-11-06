@@ -5273,3 +5273,366 @@ async fn a_v2_id_on_an_amoy_client_is_refused_at_signing_and_nothing_is_posted()
     tick_size_mock.assert_async().await;
     post_mock.assert_async().await;
 }
+
+/// Hardhat account #0's address as the L2 headers send it (lowercase).
+const HARDHAT_0_L2_ADDRESS: &str = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+
+/// A `GET /data/wallet-open-orders` page built from the spec's
+/// `WalletOpenOrder` property examples (`docs/specs/clob/openapi.yaml`), with a
+/// second order that omits the optional `owner`.
+const WALLET_OPEN_ORDERS_PAGE: &str = r#"{
+    "data": [
+        {
+            "id": "0xabcdef1234567890abcdef1234567890abcdef12",
+            "status": "LIVE",
+            "owner": "f4f247b7-4ac7-ff29-a152-04fda0a8755a",
+            "signer_address": "0x1234567890123456789012345678901234567890",
+            "maker_address": "0x1234567890123456789012345678901234567890",
+            "market": "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "asset_id": "0xabc123def456...",
+            "side": "BUY",
+            "original_size": "10",
+            "size_matched": "5",
+            "price": "0.5",
+            "expiration": "1735689600",
+            "order_type": "GTC",
+            "created_at": 1700000000,
+            "outcome": "YES"
+        },
+        {
+            "id": "0x2222222222222222222222222222222222222222",
+            "status": "LIVE",
+            "signer_address": "0x3333333333333333333333333333333333333333",
+            "maker_address": "0x1234567890123456789012345678901234567890",
+            "market": "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "asset_id": "0xabc123def456...",
+            "side": "SELL",
+            "original_size": "3",
+            "size_matched": "0",
+            "price": "0.61",
+            "expiration": "0",
+            "order_type": "GTD",
+            "created_at": 1700000100,
+            "outcome": "NO"
+        }
+    ],
+    "next_cursor": ""
+}"#;
+
+#[tokio::test]
+async fn wallet_open_orders_sends_l2_headers_and_decodes_the_spec_shape() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/data/wallet-open-orders")
+        .match_query(Matcher::Regex(
+            "^market=0xcond&asset_id=123&session_keys=0x1111111111111111111111111111111111111111\
+             &session_keys=0x3333333333333333333333333333333333333333&cursor=MTAw$"
+                .into(),
+        ))
+        .match_header("POLY_ADDRESS", HARDHAT_0_L2_ADDRESS)
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_PASSPHRASE", "test-pass")
+        .match_header("POLY_SIGNATURE", Matcher::Regex("^[A-Za-z0-9_=-]+$".into()))
+        .match_header("POLY_TIMESTAMP", Matcher::Regex("^[0-9]+$".into()))
+        .match_header("POLY_READONLY_API_KEY", Matcher::Missing)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(WALLET_OPEN_ORDERS_PAGE)
+        .create_async()
+        .await;
+
+    let page = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .wallet_open_orders()
+        .market("0xcond")
+        .asset_id("123")
+        .session_keys([
+            "0x1111111111111111111111111111111111111111",
+            "0x3333333333333333333333333333333333333333",
+        ])
+        .cursor("MTAw")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(page.next_cursor, "");
+    assert_eq!(page.data.len(), 2);
+    let first = &page.data[0];
+    assert_eq!(first.id, "0xabcdef1234567890abcdef1234567890abcdef12");
+    assert_eq!(first.status, "LIVE");
+    assert_eq!(
+        first.owner.as_deref(),
+        Some("f4f247b7-4ac7-ff29-a152-04fda0a8755a")
+    );
+    assert_eq!(
+        first.signer_address,
+        "0x1234567890123456789012345678901234567890"
+    );
+    assert_eq!(
+        first.maker_address,
+        "0x1234567890123456789012345678901234567890"
+    );
+    assert_eq!(
+        first.market,
+        "0x0000000000000000000000000000000000000000000000000000000000000001"
+    );
+    assert_eq!(first.asset_id, "0xabc123def456...");
+    assert_eq!(first.side, "BUY");
+    assert_eq!(first.original_size, "10");
+    assert_eq!(first.size_matched, "5");
+    assert_eq!(first.price, "0.5");
+    assert_eq!(first.expiration, "1735689600");
+    assert_eq!(first.order_type, "GTC");
+    assert_eq!(first.created_at, 1_700_000_000);
+    assert_eq!(first.outcome, "YES");
+    let second = &page.data[1];
+    assert_eq!(second.owner, None);
+    assert_eq!(
+        second.signer_address,
+        "0x3333333333333333333333333333333333333333"
+    );
+    mock.assert_async().await;
+}
+
+/// The spec: a page can be empty while `next_cursor` is still set.
+#[tokio::test]
+async fn wallet_open_orders_decodes_an_empty_page_with_a_cursor() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/data/wallet-open-orders")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": "NTAw"}"#)
+        .create_async()
+        .await;
+
+    let page = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .wallet_open_orders()
+        .send()
+        .await
+        .unwrap();
+
+    assert!(page.data.is_empty());
+    assert_eq!(page.next_cursor, "NTAw");
+    mock.assert_async().await;
+}
+
+/// The spec's `WalletOpenOrder` requires `signer_address`, so a row without it
+/// fails to decode rather than yielding a half-empty order.
+#[tokio::test]
+async fn wallet_open_orders_refuses_a_row_without_its_signer() {
+    let mut server = Server::new_async().await;
+    let body = WALLET_OPEN_ORDERS_PAGE.replace(
+        r#""signer_address": "0x1234567890123456789012345678901234567890","#,
+        "",
+    );
+    assert_ne!(body, WALLET_OPEN_ORDERS_PAGE);
+    let mock = server
+        .mock("GET", "/data/wallet-open-orders")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let err = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .wallet_open_orders()
+        .send()
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.class(), polyoxide_venue::Class::Decode, "{err}");
+    mock.assert_async().await;
+}
+
+/// The example body of `DELETE /cancel-wallet-orders`'s `200`.
+const CANCEL_WALLET_ORDERS_ANSWER: &str = r#"{
+    "canceled": ["0xabababababababababababababababababababababababababababababababab"],
+    "not_canceled": {
+        "0x0000000000000000000000000000000000000000000000000000000000000000": "order not found on the caller's deposit wallet"
+    }
+}"#;
+
+#[tokio::test]
+async fn cancel_wallet_orders_sends_the_order_ids_arm() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("DELETE", "/cancel-wallet-orders")
+        .match_header("POLY_ADDRESS", HARDHAT_0_L2_ADDRESS)
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_PASSPHRASE", "test-pass")
+        .match_header("POLY_SIGNATURE", Matcher::Regex("^[A-Za-z0-9_=-]+$".into()))
+        .match_header("POLY_TIMESTAMP", Matcher::Regex("^[0-9]+$".into()))
+        .match_body(Matcher::JsonString(
+            r#"{"order_ids": [
+                "0xabababababababababababababababababababababababababababababababab",
+                "0x0000000000000000000000000000000000000000000000000000000000000000"
+            ]}"#
+            .into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(CANCEL_WALLET_ORDERS_ANSWER)
+        .create_async()
+        .await;
+
+    let resp = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .cancel_wallet_orders(vec![
+            "0xabababababababababababababababababababababababababababababababab".to_string(),
+            "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        ])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.canceled,
+        vec!["0xabababababababababababababababababababababababababababababababab"]
+    );
+    assert_eq!(
+        resp.not_canceled
+            .get("0x0000000000000000000000000000000000000000000000000000000000000000")
+            .map(String::as_str),
+        Some("order not found on the caller's deposit wallet")
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_all_wallet_orders_sends_the_all_arm() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("DELETE", "/cancel-wallet-orders")
+        .match_header("POLY_ADDRESS", HARDHAT_0_L2_ADDRESS)
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_SIGNATURE", Matcher::Regex("^[A-Za-z0-9_=-]+$".into()))
+        .match_body(Matcher::JsonString(r#"{"all": true}"#.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(CANCEL_WALLET_ORDERS_ANSWER)
+        .create_async()
+        .await;
+
+    let resp = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .cancel_all_wallet_orders()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.canceled.len(), 1);
+    assert_eq!(resp.not_canceled.len(), 1);
+    mock.assert_async().await;
+}
+
+/// One token per ID on the signer's cancel bucket, as `DELETE /orders` costs:
+/// 1,000 IDs, the route's maximum, is over the default tier's cancel burst, so
+/// it is refused before anything is sent.
+#[tokio::test]
+async fn cancel_wallet_orders_draws_one_cancel_token_per_id() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("DELETE", "/cancel-wallet-orders")
+        .match_body(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let ids: Vec<String> = (0..1_000).map(|i| format!("0x{i:064x}")).collect();
+    let err = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .cancel_wallet_orders(ids)
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(err, ClobError::BurstCapacityExceeded(_)),
+        "{err:?}"
+    );
+    mock.assert_async().await;
+}
+
+/// The owner-only route answers a session signer `403` with the spec's
+/// `ErrorResponse`; the client surfaces it, and retries nothing.
+#[tokio::test]
+async fn cancel_wallet_orders_surfaces_the_session_signer_403() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("DELETE", "/cancel-wallet-orders")
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "forbidden"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_authed_clob(&server)
+        .orders()
+        .unwrap()
+        .cancel_all_wallet_orders()
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("forbidden"), "{err}");
+    mock.assert_async().await;
+}
+
+/// A read-only API key reads `GET /data/wallet-open-orders` with no account:
+/// exactly `POLY_READONLY_API_KEY` and `POLY_ADDRESS` (lowercase), and none of
+/// the L1 or L2 headers.
+#[tokio::test]
+async fn wallet_open_orders_under_a_readonly_key_sends_only_its_two_headers() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/data/wallet-open-orders")
+        .match_query(Matcher::UrlEncoded("market".into(), "0xcond".into()))
+        .match_header("POLY_READONLY_API_KEY", "readonly-key-v")
+        .match_header("POLY_ADDRESS", "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed")
+        .match_header("POLY_SIGNATURE", Matcher::Missing)
+        .match_header("POLY_TIMESTAMP", Matcher::Missing)
+        .match_header("POLY_API_KEY", Matcher::Missing)
+        .match_header("POLY_PASSPHRASE", Matcher::Missing)
+        .match_header("POLY_NONCE", Matcher::Missing)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(WALLET_OPEN_ORDERS_PAGE)
+        .create_async()
+        .await;
+
+    let address: alloy::primitives::Address = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+        .parse()
+        .unwrap();
+    let page = test_public_clob(&server)
+        .readonly("readonly-key-v", address)
+        .wallet_open_orders()
+        .market("0xcond")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(page.data.len(), 2);
+    assert_eq!(
+        page.data[0].signer_address,
+        "0x1234567890123456789012345678901234567890"
+    );
+    mock.assert_async().await;
+}
+
+/// A read-only key needs no account: the L2 path refuses a client without one,
+/// and the read-only namespace is built on it.
+#[test]
+fn a_readonly_key_needs_no_account() {
+    let clob = ClobBuilder::new().build().unwrap();
+    // No account: the L2 path refuses, the read-only path is built.
+    assert!(clob.orders().is_err());
+    let _ = clob
+        .readonly("readonly-key-v", alloy::primitives::Address::ZERO)
+        .wallet_open_orders();
+}

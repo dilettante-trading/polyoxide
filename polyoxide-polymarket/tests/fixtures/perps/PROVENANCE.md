@@ -52,6 +52,17 @@ ranked, paid row.
 |---------|---------|
 | `builder.json` | `https://api.perpetuals.polymarket.com/v1/info/builder?address=0xE0Ebcff994a0f3A644634927aE1B68913ad58A39` |
 
+## Captured 2026-11-06 (drift #90)
+
+Two fixtures were added for the route and the parameter the drift adopted; the rest were
+not recaptured. `competition_leaderboard_unqualified.json` is the page across the entry
+gate of live competition 1: its last two ranked rows and the first two unqualified ones.
+
+| Fixture | Request |
+|---------|---------|
+| `fills.json` | `https://api.perpetuals.polymarket.com/v1/info/fills?address=0xf544CAB9e73e868c2D65A898978E58A3f4DDc215&instrument_id=37` |
+| `competition_leaderboard_unqualified.json` | `https://api.perpetuals.polymarket.com/v1/info/competition/leaderboard?competition_id=1&include_unqualified=true&limit=4&offset=74` |
+
 No competition existed at capture time: every competition id answered 404, and
 the widget held only its timestamp,
 so these were written by hand from `docs/specs/perps/openapi.json` and kept:

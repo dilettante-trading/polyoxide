@@ -324,3 +324,36 @@ const CASES: &[Case] = &[
 async fn every_setter_sends_its_key_and_value() {
     assert_cases(CASES).await;
 }
+
+/// `WalletOpenOrders` (`GET /data/wallet-open-orders`, #91), beside `CASES`,
+/// which stays as the S3 baseline holds it.
+const WALLET_OPEN_ORDERS_CASES: &[Case] = &[Case {
+    builder: "WalletOpenOrders",
+    path: "/data/wallet-open-orders",
+    fire: |base| {
+        Box::pin(async move {
+            let _ = authed(&base)
+                .orders()
+                .unwrap()
+                .wallet_open_orders()
+                .market("market-v")
+                .asset_id("asset_id-v")
+                .session_keys(["session_key-a", "session_key-b"])
+                .cursor("cursor-v")
+                .send()
+                .await;
+        })
+    },
+    sends: &[
+        ("market", "market-v"),
+        ("asset_id", "asset_id-v"),
+        ("session_keys", "session_key-a"),
+        ("session_keys", "session_key-b"),
+        ("cursor", "cursor-v"),
+    ],
+}];
+
+#[tokio::test]
+async fn every_wallet_open_orders_setter_sends_its_key_and_value() {
+    assert_cases(WALLET_OPEN_ORDERS_CASES).await;
+}

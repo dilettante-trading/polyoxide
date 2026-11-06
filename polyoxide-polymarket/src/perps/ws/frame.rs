@@ -201,7 +201,9 @@ pub struct TickerData {
     /// Mid price. Wire key `mid`.
     #[serde(rename = "mid", with = "rust_decimal::serde::str")]
     pub mid_price: Decimal,
-    /// Open interest in the base asset (one contract is one unit). Wire key `oi`.
+    /// One-sided open interest in the base asset (one contract is one unit): the total long
+    /// size, which equals the total short size. Multiply by the mark price for the quote-asset
+    /// notional. Wire key `oi`.
     #[serde(rename = "oi", with = "rust_decimal::serde::str")]
     pub open_interest: Decimal,
     /// Funding rate. Wire key `fr`.

@@ -24,6 +24,7 @@ const POLY_TIMESTAMP: HeaderName = HeaderName::from_static("poly_timestamp");
 const POLY_NONCE: HeaderName = HeaderName::from_static("poly_nonce");
 const POLY_API_KEY: HeaderName = HeaderName::from_static("poly_api_key");
 const POLY_PASSPHRASE: HeaderName = HeaderName::from_static("poly_passphrase");
+const POLY_READONLY_API_KEY: HeaderName = HeaderName::from_static("poly_readonly_api_key");
 
 /// A clob error raised while signing, carried through core's loop.
 fn sign_error(err: ClobError) -> ApiError {
@@ -66,6 +67,24 @@ impl Authenticator for L2Auth {
         headers.insert(POLY_TIMESTAMP, value(&timestamp.to_string())?);
         headers.insert(POLY_API_KEY, value(&credentials.key)?);
         headers.insert(POLY_PASSPHRASE, value(&credentials.passphrase)?);
+        Ok(())
+    }
+}
+
+/// A read-only API key: `POLY_READONLY_API_KEY` and `POLY_ADDRESS`, the same
+/// two static headers on every attempt, with no signature or timestamp.
+#[derive(Debug)]
+pub(crate) struct ReadonlyAuth {
+    pub(crate) key: Secret<String>,
+    pub(crate) address: Address,
+}
+
+impl Authenticator for ReadonlyAuth {
+    async fn sign(&self, parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
+        let headers = &mut parts.headers;
+        // Lowercase, as the L2 address is sent.
+        headers.insert(POLY_ADDRESS, value(&format!("{:?}", self.address))?);
+        headers.insert(POLY_READONLY_API_KEY, value(self.key.expose())?);
         Ok(())
     }
 }

@@ -13,9 +13,15 @@ paths:
 # Polymarket CLOB
 
 Namespaces: `clob.markets()`, `orders()`, `account_api()`, `health()`, `auth()`, `rewards()`,
-`public_rewards()`, `notifications()`. `rewards()` requires an `Account`; `public_rewards()`
-exposes the subset that is public upstream (`/rewards/markets/current`,
-`/rewards/markets/{condition_id}`, `/rewards/markets/multi`, `/rebates/current`) without one.
+`public_rewards()`, `notifications()`, `readonly(key, address)`. `rewards()` requires an
+`Account`; `public_rewards()` exposes the subset that is public upstream
+(`/rewards/markets/current`, `/rewards/markets/{condition_id}`, `/rewards/markets/multi`,
+`/rebates/current`) without one.
+`readonly` needs no `Account` either: it sends the spec's `polyReadonlyApiKey` scheme
+(`POLY_READONLY_API_KEY` and `POLY_ADDRESS`, static, no signature) on the routes upstream opens to
+a read-only key, today only `wallet_open_orders()` (`GET /data/wallet-open-orders`), which returns
+the same `WalletOpenOrders` builder as `orders()?.wallet_open_orders()` under L2. A route upstream
+later opens to read-only keys joins that namespace.
 Tests use `Clob::public()` for unauthenticated endpoints.
 
 `clob` does not turn on `gamma`. With both, the CLOB client looks a proxy wallet up through Gamma;

@@ -1371,7 +1371,7 @@ def test_main_retires_a_test_by_its_listed_removal(repo: Path, capsys) -> None:
 def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     config = body_diff.read_config(REPO)
     rows = body_diff.drift_rows((REPO / body_diff.DIVERGENCES).read_text())
-    assert rows == {f"R{n}" for n in range(1, 28)}
+    assert rows == {f"R{n}" for n in range(1, 28)} | {"R31"}
     assert all(entry.row in rows for entry in config.drift)
     # S2's DRIFT rows are R6, rtds' `test-fixtures` becoming `test-server`, and
     # R12, the live tests of the two data hosts Polymarket retired. S3 adds R13,
@@ -1393,9 +1393,10 @@ def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     # `extra` test that modelling `turn`, `turnProviderId` and
     # `sportradarGameId` (#84) moves; R26, core's test authenticator that
     # logs the body it signs, which `RequestParts::body` becoming bytes (#87)
-    # moves; and R27, the tests that Data API v1's retirement and the flatten
-    # of v2 into the `data` module move.
+    # moves; R27, the tests that Data API v1's retirement and the flatten
+    # of v2 into the `data` module move; and R31, the five perps tables that
+    # adopting `/v1/info/fills` and its other drift (#90) moves again.
     assert {entry.row for entry in config.drift} <= {
         "R6", "R12", "R13", "R14", "R15", "R16", "R17", "R18", "R19", "R20", "R21", "R22", "R23",
-        "R24", "R25", "R26", "R27",
+        "R24", "R25", "R26", "R27", "R31",
     }

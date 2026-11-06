@@ -3,9 +3,13 @@
 **There is no machine-readable mirror for this surface.** Polymarket's published
 OpenAPI documents (`../clob/openapi.yaml`, `../relay/openapi.yaml`) barely touch it.
 The relay mirror documents only `GET /deployed?type=WALLET`, and its `/submit`
-`type` enumerates `SAFE` and `PROXY` only. The CLOB mirror's `signatureType` still
-enumerates 0–2. None of `/v1/user/session-signers`, `/v1/session-signers/*`,
-`/v1/account/transactions/params` or `/v1/account/transactions/{id}` appears.
+`type` enumerates `SAFE` and `PROXY` only. Since #91 (2026-11) the CLOB mirror
+enumerates `signatureType` 3 (`POLY_1271`) on `Order` and on every `signature_type`
+query parameter, says that a session signer posts `/order` with the Deposit Wallet as
+both `maker` and `signer`, and documents two Deposit Wallet routes (see
+[L2 auth and visibility](#l2-auth-and-visibility)). None of `/v1/user/session-signers`,
+`/v1/session-signers/*`, `/v1/account/transactions/params` or
+`/v1/account/transactions/{id}` appears.
 `nightly-schema.yml` therefore has nothing
 to diff and deliberately excludes this directory (see the "Deliberately absent"
 comment in the workflow). This file is the contract record; [OBSERVED.md](OBSERVED.md)
@@ -93,7 +97,23 @@ L2 is unchanged (HMAC over `timestamp + method + path [+ body]`). Visibility is 
 by the submitting key **in both directions**: a session key lists only its own orders
 and trades, and *"A Deposit Wallet Owner cannot fetch orders submitted by its
 authorized Session Keys"* (session-keys.md, Considerations). A caller who needs a
-whole-wallet view must query with every key it holds.
+whole-wallet view must query with every key it holds, or use the two wallet-wide routes
+the CLOB OpenAPI added in #91 (2026-11), which polyoxide implements and no SDK calls yet:
+
+- `GET /data/wallet-open-orders` (`Orders::wallet_open_orders`) lists every live order on the caller's Deposit Wallet,
+  whichever signer or key placed it, newest first in pages of about 500 (`market`,
+  `asset_id`, up to 50 `session_keys`, `cursor`; page until `next_cursor` is empty, even
+  past an empty page). L2 headers (`orders()?.wallet_open_orders()`), or
+  `POLY_READONLY_API_KEY` with `POLY_ADDRESS` (`Clob::readonly(key, address).wallet_open_orders()`,
+  which needs no account); the address must be the owner or a non-revoked session signer.
+- `DELETE /cancel-wallet-orders` (`Orders::cancel_wallet_orders` for `order_ids`,
+  `Orders::cancel_all_wallet_orders` for `all`; also `/v1/gateway/cancel-wallet-orders`) cancels across
+  every key, expired session signers' included, with exactly one of `order_ids` (up to
+  1000) or `all: true`, answering `CancelOrdersResponse`. Owner credentials only; a session
+  signer gets `403`. It shares the cancel bucket with `DELETE /orders` and `/cancel-all`.
+
+A wallet holds at most 15 non-revoked session signers, expired ones counting, and an
+authorization or revocation takes up to about 5 seconds to show on either route.
 
 ## Session-signers list
 
@@ -176,6 +196,7 @@ asking `GET /deployed` for each; `resolve_wallet` does so (four requests on Poly
 | Any alloy signer, or no key at all | `Account::with_signer`, `Account::l2_only` | unit and mock tests |
 | L1 auth with an external signer | `clob_auth_typed_data`, `Clob::create_api_key_with_signature`, `Clob::derive_api_key_with_signature` (signer recovered locally before any request) | `tests/fixtures/clob/session_keys/clob_auth.json` |
 | Session-signers list | `AccountApi::list_session_signers` | mock tests |
+| Wallet-wide open orders and cancels (#91) | `Orders::wallet_open_orders` and, under a read-only key, `Clob::readonly(..).wallet_open_orders` (`WalletOpenOrders`, `WalletOpenOrdersResponse`, `WalletOpenOrder`), `Orders::cancel_wallet_orders`, `Orders::cancel_all_wallet_orders` | mock tests on the mirror's examples, `tests/query_setters_clob.rs` |
 | Wallet derivation and resolution | `polyoxide_polymarket::relay::wallet::{derive_safe, derive_proxy, derive_deposit_wallet_uups, derive_deposit_wallet_beacon}`, `RelayClient::resolve_wallet -> Option<WalletKind>` over beacon, UUPS, Safe and Proxy | `polyoxide-polymarket/tests/fixtures/relay/session_keys/relay_vectors.json` (`derivations`) |
 | Nonce and transaction poll | `RelayClient::get_execute_params`, `RelayClient::get_gasless_transaction`, `TransactionState` | mock tests |
 | Batch typed data, digest, session envelope, calldata | `polyoxide_polymarket::relay::deposit_wallet::{batch_typed_data, batch_digest, wrap_session_signer, …_calldata}` | `relay_vectors.json` (seven signed batches) |

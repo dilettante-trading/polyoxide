@@ -98,6 +98,11 @@ impl GetCompetitionLeaderboard {
         limit: u32 => "limit",
         /// Page offset.
         offset: u64 => "offset",
+        /// Also list, after the ranked rows, the live accounts with volume
+        /// still short of the entry gate: unranked, without a prize, ordered
+        /// by score. `total` and `offset` then count both, and every row
+        /// carries `qualified`. Ignored for a lottery or raffle board.
+        include_unqualified: bool => "include_unqualified",
     }
 
     /// Execute the request.
@@ -284,8 +289,11 @@ pub struct CompetitionLeaderboard {
 pub struct CompetitionEntry {
     /// Account address.
     pub account: String,
-    /// Rank, from 1.
+    /// Rank, from 1; `None` on a row still short of the entry gate.
     pub rank: Option<u64>,
+    /// Whether the account meets the entry gate. Sent only when the request
+    /// set [`GetCompetitionLeaderboard::include_unqualified`].
+    pub qualified: Option<bool>,
     /// Score: PnL times the square root of boosted volume, to six decimal
     /// places. Can be negative.
     #[serde(with = "rust_decimal::serde::str")]
@@ -318,6 +326,10 @@ pub struct CompetitionEntry {
     /// The account's first counted fill in the competition, Unix ms, which
     /// breaks a tie after boosted volume; absent without one.
     pub first_fill_at: Option<u64>,
+    /// Instruments the account traded in the competition. Undocumented.
+    pub instruments_traded: Option<u64>,
+    /// The instruments it traded most. Undocumented.
+    pub top_instrument_ids: Option<Vec<InstrumentId>>,
 }
 
 /// `GET /v1/info/competition/account`.

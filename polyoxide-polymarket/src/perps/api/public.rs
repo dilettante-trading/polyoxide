@@ -1,5 +1,5 @@
 //! Public-by-address lookups and the invite check:
-//! `/v1/info/{portfolio,position-fills,leaderboard,invite,registered,builder,position-snapshots}`.
+//! `/v1/info/{portfolio,fills,position-fills,leaderboard,invite,registered,builder,position-snapshots}`.
 
 use std::collections::BTreeSet;
 
@@ -11,8 +11,8 @@ use crate::perps::{
     api::Fetch,
     error::PerpsError,
     types::{
-        InstrumentId, LeaderboardSort, LeaderboardWindow, PositionSnapshotStatus, Side,
-        SnapshotMarkerKind, SortOrder,
+        InstrumentId, LeaderboardSort, LeaderboardWindow, LiquidationMethod,
+        PositionSnapshotStatus, Side, SnapshotMarkerKind, SortOrder,
     },
 };
 
@@ -36,6 +36,21 @@ impl PublicApi {
     pub fn portfolio(&self, address: impl Into<String>) -> Fetch<PublicPortfolio> {
         Fetch {
             request: Request::new(self.http_client.clone(), "/v1/info/portfolio")
+                .query("address", address.into()),
+        }
+    }
+
+    /// `GET /v1/info/fills`: a registered account's fill history, newest
+    /// first by default, at most 100 per page, cursor-paged. The window
+    /// starts 30 days before its end unless [`ListFills::start`] is set, and
+    /// ends now unless [`ListFills::end`] is. An unregistered address is a
+    /// `400` (`account not found`).
+    ///
+    /// The rows are [`PositionFill`]s, as `position-fills` returns, with no
+    /// builder terms on this public route.
+    pub fn fills(&self, address: impl Into<String>) -> ListFills {
+        ListFills {
+            request: Request::new(self.http_client.clone(), "/v1/info/fills")
                 .query("address", address.into()),
         }
     }
@@ -102,6 +117,37 @@ impl PublicApi {
                 history_fills: Vec::new(),
             },
         }
+    }
+}
+
+/// Request builder for `GET /v1/info/fills`.
+pub struct ListFills {
+    request: Request<PositionFills, PerpsError>,
+}
+
+impl ListFills {
+    polyoxide_core::query_setters! {
+        /// Window start, Unix ms. The default is 30 days before the end.
+        start: u64 => "start_timestamp",
+        /// Window end, Unix ms. The default is now; with an instrument set,
+        /// a later end is capped at now.
+        end: u64 => "end_timestamp",
+        /// Only this instrument's fills. Such a read scans at most 250,000
+        /// rows and answers `413` past that, so narrow the window, and it
+        /// pages only by the returned `cursor`: a trade id as the cursor is
+        /// a `400`.
+        instrument_id: InstrumentId => "instrument_id",
+        /// Resume from a previous page's `cursor`. Without an instrument, the
+        /// last fill's trade id is also accepted.
+        cursor: impl Into<String> => "cursor",
+        /// Sort order, kept the same across pages. The server default is
+        /// descending.
+        sort: SortOrder => "sort",
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<PositionFills, PerpsError> {
+        self.request.send().await
     }
 }
 
@@ -555,12 +601,30 @@ pub struct PositionFill {
     pub pnl: Decimal,
     /// Whether the fill was a liquidation.
     pub liquidation: bool,
+    /// How a liquidation fill was made. Sent only for a backstop
+    /// liquidation today, so `None` on most liquidation fills too.
+    pub liquidation_details: Option<LiquidationDetails>,
     /// Whether the fill was auto-deleveraging.
     pub adl: bool,
     /// Fill time, Unix ms.
     pub timestamp: u64,
     /// Transaction hash.
     pub hash: String,
+}
+
+/// A liquidation fill's details.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct LiquidationDetails {
+    /// Mark price when the liquidation was issued. The fill's `price` stays
+    /// the accounting price.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub mark: Decimal,
+    /// How the position was liquidated.
+    pub method: LiquidationMethod,
+    /// The liquidated account, checksummed. On the public routes, sent only
+    /// on that account's own rows.
+    pub liquidated_user: Option<String>,
 }
 
 /// `GET /v1/info/leaderboard`.

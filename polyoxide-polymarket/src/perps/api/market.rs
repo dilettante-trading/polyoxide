@@ -289,7 +289,9 @@ pub struct Ticker {
     /// Mid price.
     #[serde(with = "rust_decimal::serde::str")]
     pub mid_price: Decimal,
-    /// Open interest in the base asset (one contract is one unit).
+    /// One-sided open interest in the base asset (one contract is one unit):
+    /// the total long size, equal to the total short size. Times the mark
+    /// price, it is the notional in the quote asset.
     #[serde(with = "rust_decimal::serde::str")]
     pub open_interest: Decimal,
     /// Current funding rate.

@@ -1178,3 +1178,148 @@ async fn a_selection_at_each_limit_is_sent() {
         .expect("twenty instruments and four fills are within the limits");
     mock.assert_async().await;
 }
+
+// ── fill history, liquidation details and unqualified rows ──────
+
+use polyoxide_polymarket::perps::types::LiquidationMethod;
+
+#[tokio::test]
+async fn fills_sends_every_setter_and_decodes_the_captured_page() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/fills")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("address".into(), "0xabc".into()),
+            Matcher::UrlEncoded("start_timestamp".into(), "1".into()),
+            Matcher::UrlEncoded("end_timestamp".into(), "2".into()),
+            Matcher::UrlEncoded("instrument_id".into(), "37".into()),
+            Matcher::UrlEncoded("cursor".into(), "c".into()),
+            Matcher::UrlEncoded("sort".into(), "desc".into()),
+        ]))
+        .with_body(fixtures!("perps").text("fills"))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let page = test_perps(&server)
+        .public()
+        .fills("0xabc")
+        .start(1)
+        .end(2)
+        .instrument_id(InstrumentId(37))
+        .cursor("c")
+        .sort(SortOrder::Desc)
+        .send()
+        .await
+        .expect("fills");
+    mock.assert_async().await;
+    assert_eq!(page.data.len(), 100);
+    assert!(page.more);
+    assert!(page
+        .cursor
+        .as_deref()
+        .is_some_and(|c| c.starts_with("eyJ0cyI6")));
+    let first = &page.data[0];
+    assert_eq!(first.trade_id, 4938205121303255);
+    assert_eq!(first.order_id, 7074771084395712);
+    assert_eq!(first.instrument_id, InstrumentId(37));
+    assert_eq!(first.side, Side::Long);
+    assert_eq!(first.price, Decimal::new(13001, 2));
+    assert_eq!(first.quantity, Decimal::new(38468, 3));
+    assert_eq!(first.timestamp, 1793966457415);
+    assert!(page.data.iter().all(|f| f.builder.is_none()));
+    assert!(page.data.iter().all(|f| f.liquidation_details.is_none()));
+}
+
+#[tokio::test]
+async fn a_backstop_liquidation_fill_carries_its_details() {
+    let mut server = Server::new_async().await;
+    // The spec's `liquidatedPosition` example row, with the details its
+    // `LiquidationDetails` schema documents; then an unknown method.
+    let row = |details: &str| {
+        format!(
+            r#"{{"adl":false,"builder_fee":"0","fee":"7.36426236","fee_asset":"pUSD","hash":"0x","instrument_id":7,"liquidation":true,"order_id":2237918023271485,"pnl":"-33.95049","previous_entry_price":"2567.1","previous_size":"0.5649","price":"2507","quantity":"0.5649","settlement":false,"side":"short","taker":true,"timestamp":1791466955844,"total_fee":"7.36426236","trade_id":6790736448213776,"liquidation_details":{details}}}"#
+        )
+    };
+    let body = format!(
+        r#"{{"data":[{},{}],"more":false}}"#,
+        row(
+            r#"{"mark":"2506.85","method":"backstop","liquidated_user":"0xF544CAB9e73e868c2D65A898978E58A3f4DDc215"}"#
+        ),
+        row(r#"{"mark":"2506.85","method":"auction"}"#),
+    );
+    let _mock = server
+        .mock("GET", "/v1/info/fills")
+        .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let page = test_perps(&server)
+        .public()
+        .fills("0xabc")
+        .send()
+        .await
+        .expect("fills");
+    let backstop = page.data[0].liquidation_details.as_ref().expect("details");
+    assert_eq!(backstop.mark, Decimal::new(250685, 2));
+    assert_eq!(backstop.method, LiquidationMethod::Backstop);
+    assert_eq!(
+        backstop.liquidated_user.as_deref(),
+        Some("0xF544CAB9e73e868c2D65A898978E58A3f4DDc215")
+    );
+    assert_eq!(page.data[0].price, Decimal::from(2507));
+    let unknown = page.data[1].liquidation_details.as_ref().expect("details");
+    assert_eq!(
+        unknown.method,
+        LiquidationMethod::Other("auction".to_owned())
+    );
+    assert_eq!(unknown.liquidated_user, None);
+}
+
+#[tokio::test]
+async fn include_unqualified_lists_the_unranked_rows_after_the_ranked_ones() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/competition/leaderboard")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("competition_id".into(), "1".into()),
+            Matcher::UrlEncoded("include_unqualified".into(), "true".into()),
+            Matcher::UrlEncoded("limit".into(), "4".into()),
+            Matcher::UrlEncoded("offset".into(), "74".into()),
+        ]))
+        .with_body(fixtures!("perps").text("competition_leaderboard_unqualified"))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let page = test_perps(&server)
+        .competitions()
+        .leaderboard(CompetitionId(1))
+        .include_unqualified(true)
+        .limit(4)
+        .offset(74)
+        .send()
+        .await
+        .expect("competition leaderboard");
+    mock.assert_async().await;
+    assert_eq!(page.total, 2990);
+    assert_eq!(page.offset, 74);
+    let ranks: Vec<_> = page.entries.iter().map(|e| e.rank).collect();
+    assert_eq!(ranks, [Some(75), Some(76), None, None]);
+    let qualified: Vec<_> = page.entries.iter().map(|e| e.qualified).collect();
+    assert_eq!(
+        qualified,
+        [Some(true), Some(true), Some(false), Some(false)]
+    );
+    assert!(page.entries.iter().all(|e| e.prize.is_none()));
+    assert_eq!(
+        page.entries[2].account,
+        "0xa519A1202f403167ef2Bd94d3f58d5Ec74481c8D"
+    );
+    assert_eq!(page.entries[2].instruments_traded, Some(1));
+    assert_eq!(
+        page.entries[2].top_instrument_ids,
+        Some(vec![InstrumentId(27)])
+    );
+}

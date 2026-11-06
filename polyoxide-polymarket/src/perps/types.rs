@@ -119,6 +119,13 @@ polyoxide_venue::open_enum! {
     pub enum SnapshotMarkerKind { Increase => "increase", Decrease => "decrease" }
 }
 
+polyoxide_venue::open_enum! {
+    /// How a liquidated position was closed. Only `backstop` is sent today;
+    /// `market` is reserved for order-book liquidations, which carry no
+    /// liquidation details yet.
+    pub enum LiquidationMethod { Market => "market", Backstop => "backstop" }
+}
+
 polyoxide_venue::wire_enum! {
     /// Sort direction for paged history.
     pub enum SortOrder { Desc => "desc", Asc => "asc" }

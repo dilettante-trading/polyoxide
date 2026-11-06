@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: Kalshi Trade API Manual Endpoints
-  version: 3.35.0
+  version: 3.36.0
   description: Manually defined OpenAPI spec for endpoints being migrated to spec-first approach
 
 servers:
@@ -1993,9 +1993,12 @@ paths:
       operationId: GetPositions
       summary: Get Positions
       description: |
-        Returns unsettled positions by default. Set `settlement_status=settled` to page through settled positions that are still in the live data set, or `settlement_status=all` for both live states. Positions already archived are available via `GET /historical/positions`.
-        Settled and all-state positions are paginated by event ticker to keep large histories bounded. Cursors are specific to the selected settlement status.
-        `count_filter` restricts positions to those with a non-zero position or total traded count.
+        Returns unsettled positions by default, including closed markets awaiting determination or settlement. These may retain non-zero quantities and cost basis. Check the market's `status` via `GET /markets/{ticker}` for trading status.
+
+        Set `settlement_status=settled` for unarchived settled positions or `all` for both states. These results paginate by event ticker; cursors are specific to settlement status. Archived positions are available via `GET /historical/positions`.
+
+        Use `count_filter=position` for non-zero net holdings, including closed, unsettled markets. Without a count filter, results may include fully exited positions with trading history, realized P&L or fees.
+
         Registered partners may also use a user OAuth access token with the explicitly granted read::compliance_partner scope.
       tags:
         - portfolio
@@ -2031,13 +2034,16 @@ paths:
     get:
       operationId: GetSettlements
       summary: Get Settlements
-      description: 'Returns settlement records still in the live data set. Archived positions are available via `GET /historical/positions`, which has different fields; this endpoint does not return archived settlement records.'
+      description: |
+        Returns settlement records still in the live data set. Archived positions are available via `GET /historical/positions`, which has different fields; this endpoint does not return archived settlement records.
+        Resource-bound MCP OAuth tokens may read the owner's settlements with read::mcp_portfolio.
       tags:
         - portfolio
       security:
         - kalshiAccessKey: []
           kalshiAccessSignature: []
           kalshiAccessTimestamp: []
+        - kalshiOauthAccessToken: []
       parameters:
         - $ref: '#/components/parameters/LimitQuery'
         - $ref: '#/components/parameters/CursorQuery'
@@ -2313,11 +2319,41 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /communications/block-trade-proposals/{block_trade_proposal_id}:
+    delete:
+      operationId: CancelBlockTradeProposal
+      summary: Cancel Block Trade Proposal
+      description: ' Endpoint for cancelling a pending block trade proposal. Only the proposer can cancel it.'
+      tags:
+        - communications
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - name: block_trade_proposal_id
+          in: path
+          required: true
+          description: Block trade proposal ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Block trade proposal cancelled successfully
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /communications/block-trade-proposals/{block_trade_proposal_id}/accept:
     post:
       operationId: AcceptBlockTradeProposal
       summary: Accept Block Trade Proposal
-      description: ' Endpoint for accepting a block trade proposal.'
+      description: ' Endpoint for accepting a block trade proposal. The caller accepts as whichever side it is named on, and may book that side onto any of its own subaccounts, including one the proposal did not name. Without a subaccount, the side keeps the one the proposal named. A side that has already accepted may accept again to move to another subaccount until the trade executes.'
       tags:
         - communications
       security:
@@ -2346,6 +2382,38 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '404':
           $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /communications/block-trade-proposals/{block_trade_proposal_id}/reject:
+    post:
+      operationId: RejectBlockTradeProposal
+      summary: Reject Block Trade Proposal
+      description: ' Endpoint for rejecting a pending block trade proposal. Either counterparty can reject it, but not the proposer, which cancels it instead.'
+      tags:
+        - communications
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - name: block_trade_proposal_id
+          in: path
+          required: true
+          description: Block trade proposal ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Block trade proposal rejected successfully
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2564,7 +2632,10 @@ paths:
     put:
       operationId: AcceptRFQQuote
       summary: Accept RFQ Quote
-      description: ' Endpoint for accepting a quote scoped to its RFQ. This will require the quoter to confirm.'
+      description: >-
+        Endpoint for accepting a quote scoped to its RFQ. This will require the quoter to confirm.
+        The quote that fills can be another maker's quote at the same price; see
+        [RFQs](/getting_started/rfqs#flow).
       tags:
         - communications
       security:
@@ -3054,8 +3125,11 @@ paths:
       operationId: GetQuotes
       summary: Get Quotes
       description: >-
-        List quotes. The rfq_id filter requires an RFQ UUID. Pass pagination
-        cursors back unchanged; malformed RFQ IDs or cursors return HTTP 400.
+        List quotes. The rfq_id filter requires an RFQ UUID. With rfq_id, quotes
+        are sorted on the RFQ's main side (no for a target-cost RFQ, yes
+        otherwise): the best price first, then the earliest place in line at that
+        price. Pass pagination cursors back unchanged; malformed RFQ IDs or
+        cursors return HTTP 400.
       tags:
         - communications
       security:
@@ -3262,7 +3336,7 @@ paths:
       operationId: AcceptQuote
       summary: Accept Quote
       deprecated: true
-      description: 'DEPRECATED: Use PUT /communications/rfqs/{rfq_id}/quotes/{quote_id}/accept instead. Endpoint for accepting a quote. This will require the quoter to confirm.'
+      description: 'DEPRECATED: Use PUT /communications/rfqs/{rfq_id}/quotes/{quote_id}/accept instead.'
       x-mint:
         content: |
           <Warning>
@@ -5379,14 +5453,15 @@ components:
     CountFilterQuery:
       name: count_filter
       in: query
-      description: Restricts the positions to those with any of following fields with non-zero values, as a comma separated list. The following values are accepted - position, total_traded
+      description: |
+        Comma-separated filters combined with OR: `position` (non-zero net contracts), `total_traded` (any contracts traded, including fully exited positions). Omit for no count filter.
       schema:
         type: string
 
     PositionSettlementStatusQuery:
       name: settlement_status
       in: query
-      description: Return unsettled positions by default, settled positions that have not yet been archived, or all positions in the live data set.
+      description: 'Filters settlement state, not trading status: `unsettled` (default), `settled` (not yet archived), or `all` (both live states).'
       schema:
         type: string
         enum: [unsettled, settled, all]
@@ -7356,7 +7431,7 @@ components:
           description: The event ticker symbol of the market that was settled.
         market_result:
           type: string
-          enum: ['yes', 'no', 'scalar']
+          enum: ['yes', 'no', 'scalar', '']
           description: The outcome of the market settlement. 'yes' = market resolved to YES, 'no' = market resolved to NO, 'scalar' = scalar market settled at a specific value.
         yes_count_fp:
           $ref: '#/components/schemas/FixedPointCount'
@@ -7815,6 +7890,7 @@ components:
         - realized_pnl_dollars
         - fees_paid_dollars
         - last_updated_ts
+        - netting_enabled
       properties:
         ticker:
           type: string
@@ -7824,13 +7900,13 @@ components:
           $ref: '#/components/schemas/ExchangeIndex'
         total_traded_dollars:
           $ref: '#/components/schemas/FixedPointDollars'
-          description: Total spent on this market in dollars
+          description: Total spent trading this market in dollars, including past trades; not the remaining position's cost or value.
         position_fp:
           $ref: '#/components/schemas/FixedPointCount'
-          description: String representation of the number of contracts bought in this market. Negative means NO contracts and positive means YES contracts
+          description: 'Signed net contracts as a fixed-point string: positive for YES, negative for NO, zero for no net position.'
         market_exposure_dollars:
           $ref: '#/components/schemas/FixedPointDollars'
-          description: Cost of the aggregate market position in dollars
+          description: Cost basis of the remaining position in dollars, excluding fees; not current market value or realized loss.
         realized_pnl_dollars:
           $ref: '#/components/schemas/FixedPointDollars'
           description: Locked in profit and loss, in dollars
@@ -7841,6 +7917,9 @@ components:
           type: string
           format: date-time
           description: Last time the position is updated
+        netting_enabled:
+          type: boolean
+          description: Whether netting applies to this position's event. Set at the subaccount's first order in the event.
 
     EventPosition:
       type: object
@@ -8840,7 +8919,7 @@ components:
           description: Expiration time of the proposal
         status:
           type: string
-          description: Current status of the proposal
+          description: 'Current status of the proposal: pending, executed, cancelled (by the proposer, or on expiry) or rejected (by a counterparty)'
         created_ts:
           type: string
           format: date-time
@@ -8976,13 +9055,13 @@ components:
       properties:
         subtrader_id:
           type: string
-          description: Subtrader ID to accept as. Provide either this or subaccount, not both.
+          description: Subtrader ID to book your side onto. It may differ from the one the proposal named. Omit both this and subaccount to keep the proposal's. Provide either this or subaccount, not both.
           x-go-type-skip-optional-pointer: true
         subaccount:
           type: integer
           minimum: 0
           maximum: 63
-          description: User-managed subaccount number to accept as (0 for primary, 1-63 for numbered subaccounts). Provide either this or subtrader_id, not both.
+          description: User-managed subaccount number to book your side onto (0 for primary, 1-63 for numbered subaccounts). It may differ from the one the proposal named. Omit both this and subtrader_id to keep the proposal's. Provide either this or subtrader_id, not both.
 
     RFQ:
       type: object
@@ -11384,6 +11463,7 @@ components:
         market_type:
           type: string
           enum: [binary, scalar]
+          x-enumNames: [MarketMarketTypeBinary, MarketMarketTypeScalar]
           description: Identifies the type of market
         title:
           type: string

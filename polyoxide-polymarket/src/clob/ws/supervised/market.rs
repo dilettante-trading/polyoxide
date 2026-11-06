@@ -50,7 +50,9 @@ pub enum MarketEvent {
     /// subscription, changes included. Sent once per outage, however many
     /// attempts it took. Drop book state and rebuild it from the books that
     /// follow (the replayed subscription asks for the initial dump again
-    /// unless its options turned it off).
+    /// unless its options turned it off). With the dump off, no book follows
+    /// for the replayed assets, though an asset subscribed through
+    /// [`MarketMembership`] gets one whatever the options say.
     Reconnected,
 }
 
@@ -328,7 +330,10 @@ impl MarketWsBuilder {
     }
 
     /// The subscription options every connection's subscribe frame carries,
-    /// the replay after a reconnect included.
+    /// the replay after a reconnect included. The frame is each connection's
+    /// first, so the venue honours its `initial_dump`; a later membership
+    /// change carries no options, and the venue sends a book for each asset
+    /// it adds whatever `initial_dump` says.
     pub fn options(mut self, options: MarketSubscriptionOptions) -> Self {
         self.options = options;
         self

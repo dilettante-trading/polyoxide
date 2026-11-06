@@ -7,8 +7,10 @@ Order book trading API for Polymarket. Supports market data queries, order place
 
 Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/clob-openapi.yaml`).
 
-Not in the schema: order `signatureType` 3 (a Deposit Wallet signing an ERC-7739
-envelope, as owner or session key) and `GET /v1/user/session-signers`. See
+Order `signatureType` 3 (`POLY_1271`, a Deposit Wallet signing an ERC-7739
+envelope, as owner or session key) is in the schema since #91 (2026-11), with the
+Deposit Wallet routes `GET /data/wallet-open-orders` and `DELETE /cancel-wallet-orders`.
+Still not in it: `GET /v1/user/session-signers`. See
 [../session-keys/README.md](../session-keys/README.md).
 
 ## Auth
@@ -19,6 +21,8 @@ Three authentication levels. See [auth.md](auth.md) for details.
 - **L1** — EIP-712 signing for credential creation
 - **L2** — HMAC-SHA256 for most authenticated operations
 - **Builder** — Separate HMAC keys for builder-attributed orders
+- **Read-only key** — `POLY_READONLY_API_KEY` with `POLY_ADDRESS`, no signature; only
+  `GET /data/wallet-open-orders` accepts it (`openapi.yaml`'s `polyReadonlyApiKey`, #91)
 
 ## Endpoints
 
@@ -26,7 +30,7 @@ Three authentication levels. See [auth.md](auth.md) for details.
 |------|-----------|------|
 | [auth.md](auth.md) | /auth/api-key, /auth/derive-api-key, /auth/api-keys, /auth/builder-api-key | L1/L2 |
 | [markets.md](markets.md) | /book, /books, /price, /prices, /midpoint, /midpoints, /spread, /spreads, /last-trade-price, /last-trades-prices, /fee-rate, /tick-size, /neg-risk, /prices-history, /batch-prices-history, /clob-markets/{id}, /markets-by-token/{id}, /simplified-markets, /sampling-markets, /sampling-simplified-markets, /markets/live-activity, /markets/live-activity/{id}, /time | None |
-| [orders.md](orders.md) | /order, /data/order/{id}, /orders, /data/orders, /cancel-all, /cancel-market-orders, /data/trades, /order-scoring, /orders-scoring, /builder/trades | L2/Builder |
+| [orders.md](orders.md) | /order, /data/order/{id}, /orders, /data/orders, /cancel-all, /cancel-market-orders, /data/trades, /order-scoring, /orders-scoring, /builder/trades; /data/wallet-open-orders and /cancel-wallet-orders are in openapi.yaml only | L2/Builder |
 | [account.md](account.md) | /balance-allowance, /balance-allowance/update, /heartbeats, /v1/heartbeats, /auth/ban-status, /v1/user/rate-limit-tier | L2 |
 | [rewards.md](rewards.md) | /rewards/user, /rewards/user/total, /rewards/user/percentages, /rewards/user/markets, /rewards/markets/current, /rewards/markets/{id}, /rewards/markets/multi, /rebates/current | Mixed |
 | [rfq.md](rfq.md) | /rfq/request, /rfq/quote, /rfq/quotes, /rfq/requests, /rfq/prices | L2 |

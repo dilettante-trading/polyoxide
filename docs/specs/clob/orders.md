@@ -77,7 +77,9 @@ Base URL: `https://clob.polymarket.com`
 **Auth:** L2 or Builder
 
 Returns **live** orders only. Filtering by `id` is the exception: that order is
-returned whatever its status, including canceled or fully matched.
+also returned when canceled or fully matched, but only within the last hour
+(upstream's `x-mint` warning on the route, added 2026-11, #91). Historical fills
+remain on `GET /data/trades`.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|

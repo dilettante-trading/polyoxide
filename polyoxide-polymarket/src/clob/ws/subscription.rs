@@ -68,8 +68,13 @@ pub struct MarketSubscriptionOptions {
     /// sends them, so [`MarketMessage::BestBidAsk`](crate::clob::ws::MarketMessage)
     /// and its siblings will never be observed.
     pub custom_feature_enabled: bool,
-    /// Whether to send an order book snapshot on subscribe (upstream default:
-    /// `true`).
+    /// Whether the server sends an order book snapshot for the assets of the
+    /// connection's first subscription frame (upstream default: `true`).
+    ///
+    /// It governs that frame alone. An asset added later on the same
+    /// connection, by a [`MarketSubscriptionUpdate`] subscribe, always gets a
+    /// `book` snapshot, even when this is `false` (probed live 2026-11-06,
+    /// `docs/specs/clob/OBSERVED.md`).
     pub initial_dump: Option<bool>,
     /// Order book depth level (upstream default: [`SubscriptionLevel::Two`]).
     pub level: Option<SubscriptionLevel>,
@@ -82,7 +87,9 @@ impl MarketSubscriptionOptions {
         self
     }
 
-    /// Set whether the server sends an initial order book snapshot.
+    /// Set whether the server sends an order book snapshot for the assets of
+    /// the connection's first subscription frame. Assets subscribed later on
+    /// the connection get one whatever this says.
     pub fn initial_dump(mut self, initial_dump: bool) -> Self {
         self.initial_dump = Some(initial_dump);
         self
@@ -244,13 +251,17 @@ impl UserSubscriptionUpdate {
 /// - `subscribe` delivers a fresh `book` snapshot for each **newly** added
 ///   asset (~155 ms); an asset that is already subscribed gets **nothing** —
 ///   to force a snapshot, `unsubscribe` it and `subscribe` it again.
+///   The snapshot comes whatever `initial_dump` the connection's first
+///   subscription frame set, and an `initial_dump` sent in this frame is
+///   ignored (probed live 2026-11-06).
 /// - `unsubscribe` stops that asset's frames; siblings are unaffected.
 /// - A socket opened with an empty asset list (or with no subscription frame
 ///   at all) accepts a later `subscribe`. It stays open indefinitely as long
 ///   as the text `PING` keep-alive is sent; a silent socket is reset after
 ///   about two minutes.
 /// - Re-sending a `{"type":"market", …}` subscription frame on a live socket
-///   does nothing — it is not additive. Only this frame changes membership.
+///   does nothing — it is not additive, and its `initial_dump` sends no
+///   snapshot either way. Only this frame changes membership.
 ///
 /// ```
 /// use polyoxide_polymarket::clob::ws::MarketSubscriptionUpdate;

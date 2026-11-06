@@ -272,7 +272,7 @@ name = "Deposit Wallets and session keys"
 section = "excluded"
 base_urls = ["https://clob.polymarket.com", "https://relayer-v2.polymarket.com"]
 description = "Order signature type 3, session signers and the relayer's `type: WALLET` dialect"
-exclude = "The surface is almost entirely absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the SDK-generated fixtures are the drift check."
+exclude = "The surface is mostly absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET`, signature type 3 and the CLOB's two wallet-wide order routes appear, and those are diffed in the CLOB mirror), so there is no mirror to diff; the SDK-generated fixtures are the drift check."
 
 [workspace.metadata.polyoxide.mirrors.binance]
 name = "Binance USDⓈ-M and spot"

@@ -25,8 +25,9 @@ paths:
   pins the owner's and the session key's signatures (py-sdk 0.12.0).
 - The role (owner or session key) is never inferred from addresses:
   `SigningTarget::DepositWallet { wallet, role }` carries it.
-- **No mirror.** The published OpenAPI omits almost all of it (the relay mirror documents only
-  `GET /deployed?type=WALLET`). `docs/specs/session-keys/` holds the contract (`README.md`) and the
+- **No mirror.** The published OpenAPI omits most of it: the relay mirror documents only
+  `GET /deployed?type=WALLET`, and the CLOB mirror (since #91) only `signatureType` 3 and the
+  wallet-wide `GET /data/wallet-open-orders` and `DELETE /cancel-wallet-orders`. `docs/specs/session-keys/` holds the contract (`README.md`) and the
   SDK behaviours the pages omit (`OBSERVED.md`): signature type 3,
   `GET /v1/user/session-signers`, and the relayer's `type: WALLET` dialect with
   `/v1/session-signers/*` and `/v1/account/transactions/*`.
@@ -38,7 +39,9 @@ paths:
   `polyoxide-polymarket/tests/fixtures/{clob,relay}/session_keys/` from py-sdk; every signing,
   encoding and wire-body test is pinned to them, never to a self-computed value.
 - Implemented by the `clob` module (`SigningTarget`, `Account::{with_signer,l2_only}`,
-  `*_with_signature`, `list_session_signers`) and the `relay` module
+  `*_with_signature`, `list_session_signers`, and the wallet-wide `Orders::wallet_open_orders`,
+  `cancel_wallet_orders` and `cancel_all_wallet_orders`, with `Clob::readonly(key, address)`'s
+  `wallet_open_orders` under a read-only key) and the `relay` module
   (`WalletType::DepositWallet`, `deposit_wallet`, `session_signers`, `resolve_wallet`,
   `with_auth`).
 - The live round trip is `polyoxide-polymarket/tests/live_clob_session_keys.rs` (features `clob`,

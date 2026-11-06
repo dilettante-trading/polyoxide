@@ -174,7 +174,7 @@ pub use api::{
     notifications::Notification,
     orders::{
         BatchCancelResponse, ListOrders, ListOrdersResponse, OpenOrder, OrderResponse,
-        OrderScoringResponse,
+        OrderScoringResponse, WalletOpenOrder, WalletOpenOrders, WalletOpenOrdersResponse,
     },
     rewards::{
         CurrentRebatesRequest, ListMultiRewardMarkets, ListRewardMarkets, ListUserRewardMarkets,

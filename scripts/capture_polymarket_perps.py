@@ -93,6 +93,7 @@ def main():
     portfolio = save("portfolio", "/v1/info/portfolio", address=address)
     fill_iid = portfolio["positions"][0]["instrument_id"] if portfolio["positions"] else iid
     save("position_fills", "/v1/info/position-fills", address=address, instrument_id=fill_iid)
+    save("fills", "/v1/info/fills", address=address, instrument_id=fill_iid)
     save("invite", "/v1/info/invite", code="polyoxide-fixture")
     save("registered", "/v1/info/registered", address=address)
     save("builder", "/v1/info/builder", address=address)
@@ -132,6 +133,12 @@ def main():
         save("competition", "/v1/info/competition", competition_id=cid)
         board = save("competition_leaderboard", "/v1/info/competition/leaderboard",
                      competition_id=cid, limit=3)
+        # The last ranked rows and the first unqualified ones after them.
+        ranked = capture_common.require_ok(
+            get("/v1/info/competition/leaderboard", competition_id=cid, limit=1), "ranked board")
+        save("competition_leaderboard_unqualified", "/v1/info/competition/leaderboard",
+             competition_id=cid, include_unqualified="true", limit=4,
+             offset=max(ranked["total"] - 2, 0))
         entrant = board["entries"][0]["account"] if board["entries"] else address
         save("competition_account", "/v1/info/competition/account",
              competition_id=cid, address=entrant)

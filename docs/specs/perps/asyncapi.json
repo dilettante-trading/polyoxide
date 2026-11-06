@@ -3244,7 +3244,7 @@
                   },
                   "oi": {
                     "type": "string",
-                    "description": "Open interest in number of contracts",
+                    "description": "One-sided open interest in number of contracts (total long size, equal to total short size); multiply by mark price for quote-asset notional",
                     "example": "10.00"
                   },
                   "fr": {
@@ -4627,7 +4627,7 @@
                   },
                   "status": {
                     "type": "string",
-                    "description": "Order status",
+                    "description": "Order status, such as `open` for a resting order. See [Handle Terminal Order Outcomes](/perps/trading#handle-terminal-order-outcomes) for the statuses that end an order.",
                     "example": "open"
                   },
                   "coid": {
@@ -7137,7 +7137,7 @@
                             },
                             "status": {
                               "type": "string",
-                              "description": "Order status",
+                              "description": "Order status, such as `open` for a resting order. See [Handle Terminal Order Outcomes](/perps/trading#handle-terminal-order-outcomes) for the statuses that end an order.",
                               "example": "open"
                             },
                             "coid": {
@@ -7480,7 +7480,7 @@
                             },
                             "status": {
                               "type": "string",
-                              "description": "Order status",
+                              "description": "Order status, such as `open` for a resting order. See [Handle Terminal Order Outcomes](/perps/trading#handle-terminal-order-outcomes) for the statuses that end an order.",
                               "example": "open"
                             },
                             "coid": {
