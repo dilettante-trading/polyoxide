@@ -168,7 +168,7 @@ Two workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
   - `live-polyoxide-venue` (15 min): `live_venue` with `--features polymarket-clob,polymarket-perps,binance-usdm,binance-spot,kalshi-predictions`
   - `live-polyoxide-cli-live` (15 min): `live_api`
   - `live-wasm-browser` (15 min): `browser_live` with `--features live`
-  - Manual, never in the nightly: `live_clob_fills` in `polyoxide-polymarket` with `--features clob-ws,data,gamma`: spends real money: buys about $3 of one outcome token in two marketable orders and sells it back, at a cost of about the spread. Run it by hand with `-- --ignored`.
+  - Manual, never in the nightly: `live_clob_fills` in `polyoxide-polymarket` with `--features clob-ws,data,gamma`: spends real money: buys up to about $7 of one outcome token in two marketable orders and sells it back, at a cost of about the spread. Run it by hand with `-- --ignored`.
   <!-- generated:end claude-nightly -->
 - `.github/workflows/nightly-schema.yml` compares each published upstream spec with its mirror in `docs/specs/` and files a `schema-drift` and `spec:<id>` issue on drift.
   <!-- generated:begin claude-schema-watch -->

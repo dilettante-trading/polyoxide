@@ -79,7 +79,7 @@ runs under, so every order that key has resting is cancelled some 10 to 15 secon
 
 ## The manual fill test
 
-`tests/live_clob_fills.rs` buys about $3 of one outcome token (a partial FAK and a FOK through
+`tests/live_clob_fills.rs` buys up to about $7 of one outcome token (a partial FAK and a FOK through
 `Trading::place`), sells everything back with a native FAK, and checks each order against
 `GET /data/order`, `/data/trades`, the user channel's `Fill`s, the positions and the pUSD balance,
 the cost read from the trades' maker entries (`1 - price` for a maker on the complementary

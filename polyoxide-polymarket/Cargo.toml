@@ -576,7 +576,7 @@ secrets = [
   "POLYMARKET_API_SECRET",
   "POLYMARKET_PRIVATE_KEY",
 ]
-manual = "spends real money: buys about $3 of one outcome token in two marketable orders and sells it back, at a cost of about the spread"
+manual = "spends real money: buys up to about $7 of one outcome token in two marketable orders and sells it back, at a cost of about the spread"
 
 [package.metadata.polyoxide.live.live_clob_session_keys]
 suite = "clob-session-keys"

@@ -1,5 +1,5 @@
-//! Live fills on the CLOB: one test buys about $3 of one outcome token in two
-//! marketable orders, checks every fill path the SDK has, and sells it all
+//! Live fills on the CLOB: one test buys up to about $7 of one outcome token in
+//! two marketable orders, checks every fill path the SDK has, and sells it all
 //! back. **It spends real money**, about the spread, so its registry entry is
 //! `manual` and the nightly never runs it. Run it by hand, with the account in
 //! the OS keychain:
@@ -44,20 +44,23 @@ const fn dec(units: u32, scale: u32) -> Decimal {
 }
 
 /// The least pUSD the wallet must hold before the test spends anything.
-const LEAST_FUNDS: Decimal = dec(5, 0);
+const LEAST_FUNDS: Decimal = dec(10, 0);
 /// The cheapest best ask the test buys at.
 const LOWEST_ASK: Decimal = dec(10, 2);
 /// The dearest best ask the test buys at.
 const HIGHEST_ASK: Decimal = dec(40, 2);
-/// The one tick the test trades on, so a whole-share BUY pays in whole cents.
-const TICK: Decimal = dec(1, 2);
+/// The ticks the test trades on: a cent, and a tenth of one.
+const CENT_TICK: Decimal = dec(1, 2);
+const MILLI_TICK: Decimal = dec(1, 3);
+/// The lowest limit the sale is given.
+const PRICE_FLOOR: Decimal = dec(1, 2);
 /// The largest minimum order size the test accepts, and the one a book that
 /// omits it is taken to have.
 const LARGEST_MINIMUM: Decimal = dec(5, 0);
 /// The widest spread the test accepts.
 const WIDEST_SPREAD: Decimal = dec(2, 2);
 /// The partial FAK takes the whole top ask level, which must cost less than this.
-const THIN_LEVEL: Decimal = dec(150, 2);
+const THIN_LEVEL: Decimal = dec(300, 2);
 /// The bids this close to the best bid must absorb everything the test buys.
 const BID_BAND: Decimal = dec(3, 2);
 /// How far above the best ask the FOK's limit may reach.
@@ -72,8 +75,10 @@ const COST_TOLERANCE: Decimal = dec(1, 2);
 const POSITION_TOLERANCE: Decimal = dec(1, 2);
 /// The CLOB's raw units per share and per pUSD.
 const RAW_PER_UNIT: Decimal = dec(1_000_000, 0);
+/// How many pages of 100 open markets, by 24-hour volume, gamma is read for.
+const GAMMA_PAGES: u32 = 3;
 /// How many gamma-listed candidates are read on the CLOB before giving up.
-const MAX_BOOK_PROBES: usize = 15;
+const MAX_BOOK_PROBES: usize = 60;
 /// How long an order's fills may take to arrive on the user channel.
 const EVENT_WAIT: Duration = Duration::from_secs(30);
 /// How long the account's trades may take to list an order.
@@ -189,15 +194,54 @@ fn shares_for_a_dollar(ask: Decimal) -> Decimal {
     (MARKETABLE_MINIMUM / ask).ceil()
 }
 
-/// The partial FAK's size: more than the top level's `depth`, and enough for
-/// the marketable minimum.
-fn partial_size(depth: Decimal, ask: Decimal) -> Decimal {
-    (depth.floor() + Decimal::ONE).max(shares_for_a_dollar(ask))
+/// How a market's order sizes are rounded, from its tick. A marketable BUY's
+/// pUSD amount may carry two decimals, so its shares come in lots of one on a
+/// cent tick and of ten on a tenth-of-a-cent tick; the sale's pUSD amount may
+/// carry four, so its shares are floored to two decimals and to one.
+#[derive(Debug, Clone, Copy)]
+struct Sizing {
+    lot: Decimal,
+    sale_decimals: u32,
 }
 
-/// The FOK's size: the book's minimum, and enough for the marketable minimum.
-fn fok_size(least: Decimal, ask: Decimal) -> Decimal {
-    least.ceil().max(shares_for_a_dollar(ask))
+impl Sizing {
+    fn of(tick: Decimal) -> Option<Self> {
+        if tick == CENT_TICK {
+            Some(Self {
+                lot: dec(1, 0),
+                sale_decimals: 2,
+            })
+        } else if tick == MILLI_TICK {
+            Some(Self {
+                lot: dec(10, 0),
+                sale_decimals: 1,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// `size` rounded up to whole lots.
+    fn lots(self, size: Decimal) -> Decimal {
+        (size / self.lot).ceil() * self.lot
+    }
+
+    /// What of `held` the sale can sell.
+    fn sellable(self, held: Decimal) -> Decimal {
+        held.round_dp_with_strategy(self.sale_decimals, RoundingStrategy::ToZero)
+    }
+}
+
+/// The partial FAK's size: more than the top level's `depth`, and enough for
+/// the marketable minimum, in whole lots.
+fn partial_size(depth: Decimal, ask: Decimal, sizing: Sizing) -> Decimal {
+    sizing.lots((depth.floor() + Decimal::ONE).max(shares_for_a_dollar(ask)))
+}
+
+/// The FOK's size: the book's minimum, and enough for the marketable minimum,
+/// in whole lots.
+fn fok_size(least: Decimal, ask: Decimal, sizing: Sizing) -> Decimal {
+    sizing.lots(least.ceil().max(shares_for_a_dollar(ask)))
 }
 
 /// The lowest ask price at which the asks up to it hold `size` shares.
@@ -222,24 +266,25 @@ fn least_size(book: &OrderBook) -> Option<Decimal> {
     }
 }
 
-/// The book's minimum order size, when the book admits the run: a best ask in
-/// [`LOWEST_ASK`, `HIGHEST_ASK`] on a [`TICK`] tick, a small enough minimum, a
-/// spread of at most [`WIDEST_SPREAD`], a top ask level cheaper than
-/// [`THIN_LEVEL`], and enough bids within [`BID_BAND`] for both buys.
-fn admits_the_run(book: &OrderBook) -> Option<Decimal> {
+/// The book's minimum order size and sizing, when the book admits the run: a
+/// best ask in [`LOWEST_ASK`, `HIGHEST_ASK`] on a [`CENT_TICK`] or
+/// [`MILLI_TICK`] tick, a small enough minimum, a spread of at most
+/// [`WIDEST_SPREAD`], a top ask level cheaper than [`THIN_LEVEL`], and enough
+/// bids within [`BID_BAND`] for both buys.
+fn admits_the_run(book: &OrderBook) -> Option<(Decimal, Sizing)> {
     let ask = best_ask(book)?;
     let bid = best_bid(book)?;
-    let tick = book.tick_size.as_deref()?.parse::<Decimal>().ok()?;
+    let sizing = Sizing::of(book.tick_size.as_deref()?.parse::<Decimal>().ok()?)?;
     let least = least_size(book)?;
     let depth = depth_at(&book.asks, ask);
-    let planned = partial_size(depth, ask) + LARGEST_MINIMUM.max(shares_for_a_dollar(ask));
+    let planned = partial_size(depth, ask, sizing)
+        + sizing.lots(LARGEST_MINIMUM.max(shares_for_a_dollar(ask)));
     let fits = (LOWEST_ASK..=HIGHEST_ASK).contains(&ask)
-        && tick == TICK
         && least <= LARGEST_MINIMUM
         && ask - bid <= WIDEST_SPREAD
         && depth * ask < THIN_LEVEL
         && bids_from(book, bid - BID_BAND) >= planned;
-    fits.then_some(least)
+    fits.then_some((least, sizing))
 }
 
 /// The token the test trades, chosen before anything is spent.
@@ -248,6 +293,7 @@ struct Pick {
     key: MarketKey,
     slug: String,
     least: Decimal,
+    sizing: Sizing,
 }
 
 /// The first open market's token whose book admits the run and whose market
@@ -255,14 +301,21 @@ struct Pick {
 /// none does, and with the last error when every book probe failed.
 async fn pick_a_token(clob: &Clob) -> Pick {
     let gamma = Gamma::builder().build().or_fail("gamma client");
-    let markets = gamma
-        .markets()
-        .list()
-        .closed(false)
-        .limit(100)
-        .send()
-        .await
-        .or_fail("gamma list markets");
+    let mut markets = Vec::new();
+    for page in 0..GAMMA_PAGES {
+        let listed = gamma
+            .markets()
+            .list()
+            .closed(false)
+            .order("volume24hr")
+            .ascending(false)
+            .limit(100)
+            .offset(page * 100)
+            .send()
+            .await
+            .or_fail("gamma list markets by 24-hour volume");
+        markets.extend(listed);
+    }
     let mut probed = 0usize;
     let mut errored = 0usize;
     let mut last_error = None;
@@ -292,7 +345,7 @@ async fn pick_a_token(clob: &Clob) -> Pick {
                 continue;
             }
         };
-        let Some(least) = admits_the_run(&book) else {
+        let Some((least, sizing)) = admits_the_run(&book) else {
             continue;
         };
         let details = clob
@@ -310,6 +363,7 @@ async fn pick_a_token(clob: &Clob) -> Pick {
             key,
             slug: market.slug.clone().unwrap_or_default(),
             least,
+            sizing,
         };
     }
     if let Some(probe_error) = last_error.filter(|_| errored == probed) {
@@ -320,7 +374,8 @@ async fn pick_a_token(clob: &Clob) -> Pick {
     }
     environmental(&format!(
         "no open market admits the run ({probed} book(s) probed): a best ask in \
-         [{LOWEST_ASK}, {HIGHEST_ASK}] on a {TICK} tick, a spread of at most {WIDEST_SPREAD}, \
+         [{LOWEST_ASK}, {HIGHEST_ASK}] on a {CENT_TICK} or {MILLI_TICK} tick, a spread of at \
+         most {WIDEST_SPREAD}, \
          a top ask level under ${THIN_LEVEL}, enough bids, no taker fee or delay; market \
          conditions rather than a defect, so re-run"
     ));
@@ -739,8 +794,8 @@ async fn sell_what_is_held(clob: &Clob, pick: &Pick) {
             )
         }
     };
-    let size = held.round_dp_with_strategy(2, RoundingStrategy::ToZero);
-    if size < TICK {
+    let size = pick.sizing.sellable(held);
+    if size.is_zero() {
         return;
     }
     let bid = clob
@@ -753,7 +808,7 @@ async fn sell_what_is_held(clob: &Clob, pick: &Pick) {
     let Some(bid) = bid else {
         return stranded(&size.to_string(), "the guard found no bid");
     };
-    let price = (bid - SALE_REACH).max(TICK);
+    let price = (bid - SALE_REACH).max(PRICE_FLOOR);
     match clob
         .place_order(&sale(&pick.token, price, size), None)
         .await
@@ -806,7 +861,7 @@ async fn round_trip(
     // 1. The partial FAK: the whole top ask level, and a share more.
     let book = read_book(clob, &pick.token).await;
     let ask = best_ask(&book).unwrap_or_else(|| environmental("the book has no asks"));
-    let size = partial_size(depth_at(&book.asks, ask), ask);
+    let size = partial_size(depth_at(&book.asks, ask), ask, pick.sizing);
     let (partial, partial_client) = place(
         trading,
         &pick.key,
@@ -857,7 +912,7 @@ async fn round_trip(
     // that covers them.
     let book = read_book(clob, &pick.token).await;
     let ask = best_ask(&book).unwrap_or_else(|| environmental("the book has no asks"));
-    let size = fok_size(pick.least, ask);
+    let size = fok_size(pick.least, ask, pick.sizing);
     let Some(limit) = fok_limit(&book, size).filter(|limit| *limit <= ask + FOK_REACH) else {
         environmental(&format!(
             "the asks within {FOK_REACH} of {ask} hold fewer than {size} shares; nothing was \
@@ -907,8 +962,8 @@ async fn round_trip(
     // 4. The sale of everything held, through the native client.
     let book = read_book(clob, &pick.token).await;
     let bid = best_bid(&book).unwrap_or_else(|| environmental("the book has no bids to sell to"));
-    let price = (bid - SALE_REACH).max(TICK);
-    let size = credited.round_dp_with_strategy(2, RoundingStrategy::ToZero);
+    let price = (bid - SALE_REACH).max(PRICE_FLOOR);
+    let size = pick.sizing.sellable(credited);
     let response = clob
         .place_order(&sale(&pick.token, price, size), None)
         .await

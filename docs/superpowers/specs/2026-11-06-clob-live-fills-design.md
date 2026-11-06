@@ -7,8 +7,8 @@ nothing is left for the plan to settle.
 
 On 2026-11-06 every CLOB order test passed against the venue for the first time on 0.48.0 (both
 resting round trips, the unmatched FAK, the heartbeat), but each order either rested or was killed:
-no test has ever seen a fill. After this work one live test, run by hand, buys about $3 of one
-outcome token in two marketable orders, checks every fill path the SDK has (`Trading::place`'s
+no test has ever seen a fill. After this work one live test, run by hand, buys up to about $7 of
+one outcome token in two marketable orders, checks every fill path the SDK has (`Trading::place`'s
 read-back, the user channel's `Fill` events, positions, balances, the native post response, order
 and trade reads), and sells everything back. It is the first run of the partial-FAK branch, the
 matched-FOK read-back and the taker `Fill` decode against the venue.
@@ -21,7 +21,8 @@ matched-FOK read-back and the taker `Fill` decode against the venue.
   2026-11-05); the deferred V2 fill checklist in `deferred-work.md` stays open.
 - Maker fills. A maker fill needs a counterparty the test cannot arrange; D17's maker-only frame
   capture stays deferred.
-- Markets with a taker fee or a taker delay, and markets off a 0.01 tick. The selection skips them.
+- Markets with a taker fee or a taker delay, and markets on a tick other than 0.01 or 0.001. The
+  selection skips them.
 - Changes to the existing live tests. Nothing in `live_clob.rs`, `live_clob_trading.rs` or
   `live_clob_ws.rs` moves or changes, so the test-bodies job is untouched.
 
@@ -63,8 +64,8 @@ One `#[tokio::test] #[ignore]` test, `live_clob_fills_buy_partially_and_in_full_
 
 **Registration.** A `[[test]] name = "live_clob_fills"`, `required-features = ["clob-ws", "data",
 "gamma"]`, and the live entry `suite = "clob"`, `timeout = 15`, the same `features`, `secrets` the
-four `POLYMARKET_*` names `live_clob_trading` reads, and `manual = "spends real money: buys about $3
-of one outcome token in two marketable orders and sells it back, at a cost of about the spread"`.
+four `POLYMARKET_*` names `live_clob_trading` reads, and `manual = "spends real money: buys up to
+about $7 of one outcome token in two marketable orders and sells it back, at a cost of about the spread"`.
 Run locally, through loom:
 
 ```
@@ -81,30 +82,39 @@ client-id ledger and the events stream are the same client's.
 
 Each failure here is `environmental` and moves no money.
 
-1. **Funds.** `Trading::balances()`; the pUSD `total` must be at least $5.00 (the CLOB reports no `available`), else
-   "fund the proxy wallet with at least $5 of pUSD".
-2. **Selection.** From gamma's open markets (`closed(false)`, `limit(100)`), take each market's first
-   token whose gamma `best_ask` is in [0.10, 0.40], and confirm on the CLOB (at most 15 `/book`
-   probes, as `find_token_the_bid_can_rest_on` does, failing with the last error when every probe
-   errored). A token qualifies when its live book has:
-   - a best ask `a` in [0.10, 0.40] and `tick_size` exactly 0.01;
+1. **Funds.** `Trading::balances()`; the pUSD `total` must be at least $10.00 (the CLOB reports no `available`),
+   else "fund the proxy wallet with at least $10 of pUSD".
+2. **Selection.** From gamma's open markets ordered by 24-hour volume (`closed(false)`,
+   `order("volume24hr")`, `ascending(false)`, three pages of 100), take each market's first token
+   whose gamma `best_ask` is in [0.10, 0.40], and confirm on the CLOB (at most 60 `/book` probes,
+   as `find_token_the_bid_can_rest_on` does, failing with the last error when every probe errored).
+   A token qualifies when its live book has:
+   - a best ask `a` in [0.10, 0.40] and a `tick_size` of 0.01 or 0.001;
    - `min_order_size` at most 5 (absent counts as 5);
    - a best bid `b` with `a - b <= 0.02`;
-   - a top ask level of depth `d` with `d * a < 1.50`;
+   - a top ask level of depth `d` with `d * a < 3.00`;
    - bid depth at prices `>= b - 0.03` of at least the planned total buy (below);
    - and the CLOB's market details for its condition (`ClobMarketDetails`) show `tbf` absent or 0
      and `itode` absent or false.
+
+   Measured 2026-11-06, the first run: gamma's default listing held 6 markets in range, all on a
+   0.001 tick, and of 59 tight books by volume only 2 had a top level under $1.50 and 4 under
+   $3.00, mostly on a 0.001 tick; hence the volume order, the second tick and the $3.00 cap.
 3. **Approval.** The token's `balance_allowance` must show a non-zero allowance for every exchange
    it reports, else "the wallet has not approved the exchange for outcome tokens".
 
-**Sizes**, all whole shares so a BUY's pUSD amount has at most 2 decimals:
-- partial FAK: `s1 = max(floor(d) + 1, ceil(1.00 / a))`, which is more than `d`, and whose order
-  notional `s1 * a` is at least the $1 marketable minimum; it spends `d * a < $1.50`;
+**Sizes.** A marketable BUY's pUSD amount may carry two decimals and its shares four, so a BUY's
+shares come in *lots*: one share on a 0.01 tick, ten on a 0.001 tick; sizes round up to whole lots.
+- partial FAK: `s1 = lots(max(floor(d) + 1, ceil(1.00 / a)))`, which is more than `d`, and whose
+  order notional `s1 * a` is at least the $1 marketable minimum; it spends `d * a < $3.00`;
 - FOK: computed after the partial, on the re-read book with best ask `a2`:
-  `s2 = max(min_order_size, ceil(1.00 / a2))`; its limit `p2` is the lowest ask price at which the
-  cumulative ask depth reaches `s2`, and must be `<= a2 + 0.02`, else `environmental` (nothing spent
-  on it). It spends at most `s2 * p2`, about $2.10 at most.
-- The planned total buy for the bid-depth check is `s1 + max(5, ceil(1.00 / a))`.
+  `s2 = lots(max(min_order_size, ceil(1.00 / a2)))`; its limit `p2` is the lowest ask price at which
+  the cumulative ask depth reaches `s2`, and must be `<= a2 + 0.02`, else `environmental` (nothing
+  spent on it). It spends at most `s2 * p2`, about $4.20 at most (ten shares at 0.42).
+- The planned total buy for the bid-depth check is `s1 + lots(max(5, ceil(1.00 / a)))`.
+- The sale's pUSD amount may carry four decimals, so it sells the credited balance floored to 0.01
+  share on a 0.01 tick and to 0.1 share on a 0.001 tick; what is left is at most 0.1 share, which
+  Data v2 serves only as `CLOSED`.
 
 ### The three orders
 
@@ -122,7 +132,7 @@ pUSD `total` is read again just before the first order: the baseline.
    `Killed { Unfillable }` (the book moved; nothing filled) is `environmental` after the guard sells
    what the partial bought.
 3. **Sale**, through the native `place_order`: `OrderSide::Sell`, `OrderKind::Fak`, size the
-   credited token balance floored to 0.01 share, price `max(0.01, b' - 0.03)` where `b'` is the
+   credited token balance floored as *Sizes* says, price `max(0.01, b' - 0.03)` where `b'` is the
    re-read best bid. Expected native response: `success`, `status` `matched`, `making_amount` equal
    to the size sold, and `taking_amount` between `size * price` and `size * b'` (both inclusive).
    A sale short of its size is followed by the guard's sale of the rest, then fails `environmental`
@@ -146,7 +156,7 @@ pUSD `total` is read again just before the first order: the baseline.
   sum of the two buys' fills.
 - **Positions.** `Trading::positions()` (Data v2, `max-age=5`) is polled every 5 s for up to 60 s:
   after the buys it lists the token with size equal to the credited balance (within 0.01); after
-  the sale it no longer lists it (what is left is under 0.01 share, which v2 serves only as
+  the sale it no longer lists it (what is left is at most 0.1 share, which v2 serves only as
   `CLOSED`). Not seen in 60 s fails `real`.
 - **Cost.** The cost is read from the three orders' trades, not from the `Fill` events: a taker
   `Fill` carries the trade's one `price`, but a marketable order can match several makers, and a
@@ -161,15 +171,15 @@ pUSD `total` is read again just before the first order: the baseline.
 
 - From the first `place` on, the test body runs inside `AssertUnwindSafe(..).catch_unwind()`, as
   `live_trading_places_acks_and_cancels_a_resting_post_only_bid` does around its cancel.
-- On any failure the guard reads the token's balance and, if at least 0.01 share is held, sends a
-  native FAK SELL of all of it floored to 0.01 share at `max(0.01, best bid - 0.03)`, then resumes
+- On any failure the guard reads the token's balance and, if any of it is sellable, sends a
+  native FAK SELL of it, floored as *Sizes* says, at `max(0.01, best bid - 0.03)`, then resumes
   the original panic. If the guard's sale fails or falls short, it prints one line naming the token
   id, the market slug, the size still held and "sell it by hand on polymarket.com", and still
   resumes the original panic.
 - A `place` that fails with `Network`, `Unavailable` or `Decode` may have reached the venue (D18),
   so it runs the guard too.
 - None of the orders rest, so the test and `live_heartbeat` cannot cancel each other's orders.
-- At most about $3.60 of outcome tokens is ever held, and it stays sellable.
+- At most about $7.20 of outcome tokens is ever held, and it stays sellable.
 
 ### Tags
 
