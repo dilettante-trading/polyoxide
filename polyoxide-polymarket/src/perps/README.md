@@ -36,8 +36,12 @@ for instrument in &instruments {
 
 `perps.public().builder(address)` reads an address's public builder profile, and
 a `PositionFill` carries the builder fee charged on top of the exchange fee
-(`builder_fee`, with `total_fee` their sum). `perps.competitions()` reads the trading competitions: the list, one competition's
-settings and prize table, its leaderboard, an account's standing and the live widget.
+(`builder_fee`, with `total_fee` their sum). `perps.public().fills(address)` pages through an
+account's fill history, and `position_fills` the fills behind one open position; a backstop
+liquidation fill carries its `liquidation_details`. `perps.competitions()` reads the trading
+competitions: the list, one competition's settings and prize table, its leaderboard (with
+`include_unqualified`, also the accounts still short of the entry gate), an account's standing
+and the live widget.
 `perps.public().position_snapshots(address)` posts a selection of open positions and
 past fills and returns share-card numbers and a small chart for each; without the
 account's credentials `leverage` and `pnl_percent` come back `None`.

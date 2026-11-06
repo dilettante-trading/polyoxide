@@ -753,6 +753,180 @@
         }
       }
     },
+    "/v1/info/fills": {
+      "get": {
+        "operationId": "getPublicFills",
+        "summary": "Get Public Fills",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached 2s — a request served from cache costs **1**</Badge>"
+        },
+        "description": "Get fill history for a registered account address.\nRows include order IDs, exchange and builder fees, and position accounting.\nBuilder identity and rate are omitted on this public surface.\nThe default window starts 30 days before request time.\nWhen instrument_id is provided, returns only fills for that instrument and\nreads at most 250,000 physical rows; reads exceeding this cap return HTTP 413.\nFiltered reads cap the end time at the current time and, when the start is\nomitted, start 30 days before that effective end time.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\nResults are ordered by time; use `sort` to choose newest-first (`desc`,\ndefault) or oldest-first (`asc`). To page through more than 100 fills,\npass the `cursor` returned by the previous page (keep `sort` consistent\nacross pages). Passing the trade ID of the last fill from the previous\npage is also accepted for unfiltered requests. When instrument_id is set,\nlegacy numeric cursors are rejected with HTTP 400; use the returned keyset cursor.\n",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "x-js-safe-integer": true
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/cursor"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public fills response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTrades"
+                },
+                "examples": {
+                  "liquidatedPosition": {
+                    "summary": "Position opened in two fills, then closed by one liquidation fill",
+                    "value": {
+                      "data": [
+                        {
+                          "trade_id": 6790736448213776,
+                          "order_id": 2237918023271485,
+                          "instrument_id": 7,
+                          "side": "short",
+                          "price": "2507",
+                          "quantity": "0.5649",
+                          "taker": true,
+                          "fee": "7.36426236",
+                          "builder_fee": "0",
+                          "total_fee": "7.36426236",
+                          "fee_asset": "pUSD",
+                          "previous_size": "0.5649",
+                          "previous_entry_price": "2567.1",
+                          "pnl": "-33.95049",
+                          "liquidation": true,
+                          "adl": false,
+                          "settlement": false,
+                          "timestamp": 1791466955844,
+                          "hash": "0x"
+                        },
+                        {
+                          "trade_id": 7117662635645083,
+                          "order_id": 8048326000529043,
+                          "instrument_id": 7,
+                          "side": "long",
+                          "price": "2567.1",
+                          "quantity": "0.3115",
+                          "taker": true,
+                          "fee": "0.1599303300000000000000000000",
+                          "builder_fee": "0",
+                          "total_fee": "0.1599303300000000000000000000",
+                          "fee_asset": "pUSD",
+                          "previous_size": "0",
+                          "previous_entry_price": "0",
+                          "pnl": "0",
+                          "liquidation": false,
+                          "adl": false,
+                          "settlement": false,
+                          "timestamp": 1791377749140,
+                          "hash": "0x"
+                        },
+                        {
+                          "trade_id": 7117662635645082,
+                          "order_id": 8048326000529043,
+                          "instrument_id": 7,
+                          "side": "long",
+                          "price": "2567.1",
+                          "quantity": "0.2534",
+                          "taker": true,
+                          "fee": "0.1301006280000000000000000000",
+                          "builder_fee": "0",
+                          "total_fee": "0.1301006280000000000000000000",
+                          "fee_asset": "pUSD",
+                          "previous_size": "0",
+                          "previous_entry_price": "0",
+                          "pnl": "0",
+                          "liquidation": false,
+                          "adl": false,
+                          "settlement": false,
+                          "timestamp": 1791377749140,
+                          "hash": "0x"
+                        }
+                      ],
+                      "more": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "413": {
+            "description": "Account history read exceeds the 250,000-row cap; narrow the time window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error413"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
     "/v1/info/position-fills": {
       "get": {
         "operationId": "getPublicPositionFills",
@@ -807,6 +981,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AccountTrades"
+                },
+                "examples": {
+                  "openPosition": {
+                    "summary": "Current cycle opened in two fills",
+                    "value": {
+                      "data": [
+                        {
+                          "trade_id": 7117662635645083,
+                          "order_id": 8048326000529043,
+                          "instrument_id": 7,
+                          "side": "long",
+                          "price": "2567.1",
+                          "quantity": "0.3115",
+                          "taker": true,
+                          "fee": "0.1599303300000000000000000000",
+                          "builder_fee": "0",
+                          "total_fee": "0.1599303300000000000000000000",
+                          "fee_asset": "pUSD",
+                          "previous_size": "0",
+                          "previous_entry_price": "0",
+                          "pnl": "0",
+                          "liquidation": false,
+                          "adl": false,
+                          "settlement": false,
+                          "timestamp": 1791377749140,
+                          "hash": "0x"
+                        },
+                        {
+                          "trade_id": 7117662635645082,
+                          "order_id": 8048326000529043,
+                          "instrument_id": 7,
+                          "side": "long",
+                          "price": "2567.1",
+                          "quantity": "0.2534",
+                          "taker": true,
+                          "fee": "0.1301006280000000000000000000",
+                          "builder_fee": "0",
+                          "total_fee": "0.1301006280000000000000000000",
+                          "fee_asset": "pUSD",
+                          "previous_size": "0",
+                          "previous_entry_price": "0",
+                          "pnl": "0",
+                          "liquidation": false,
+                          "adl": false,
+                          "settlement": false,
+                          "timestamp": 1791377749140,
+                          "hash": "0x"
+                        }
+                      ],
+                      "more": false
+                    }
+                  }
                 }
               }
             }
@@ -4157,7 +4383,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached 1s</Badge>\n"
         },
-        "description": "Ranked leaderboard rows at any depth. Only accounts that reached the\nminimum volume are ranked; ties go to higher boosted volume, then the\nearlier first qualifying fill. `prize` is the projected prize while live\nand the prize won once the competition ends. `updated_at` is the event\ntime the standings reflect (\"Updated X seconds ago\").\n\nReturns 50 entries by default and at most 100 per request.\n",
+        "description": "Ranked leaderboard rows at any depth. Only accounts that reached the\nminimum volume are ranked; ties go to higher boosted volume, then the\nearlier first qualifying fill. `prize` is the projected prize while live\nand the prize won once the competition ends. `updated_at` is the event\ntime the standings reflect (\"Updated X seconds ago\").\n\nWith `include_unqualified=true` on a ranked board, the rows still short\nof the entry gate follow the ranked ones, unranked and without a prize,\nby score with the same tie-breaks. Only live accounts with volume are\nlisted; disqualified and under-review accounts never are. `total` and\n`offset` then count across both, and every entry carries `qualified`.\n\nReturns 50 entries by default and at most 100 per request.\n",
         "parameters": [
           {
             "name": "competition_id",
@@ -4181,6 +4407,14 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/offset"
+            }
+          },
+          {
+            "name": "include_unqualified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/competition_include_unqualified"
             }
           }
         ],
@@ -5079,7 +5313,7 @@
       },
       "open_interest": {
         "type": "string",
-        "description": "Open interest in number of contracts",
+        "description": "One-sided open interest in number of contracts (total long size, equal to total short size); multiply by mark price for quote-asset notional",
         "example": "10.00"
       },
       "funding_rate": {
@@ -5503,6 +5737,25 @@
         "description": "On-chain transaction hash, \"0x\" if not yet mined",
         "default": "0x",
         "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      },
+      "LiquidationDetails": {
+        "type": "object",
+        "required": ["mark", "method"],
+        "properties": {
+          "liquidated_user": {
+            "type": "string",
+            "description": "Checksummed address of the liquidated account. Present on authenticated fill surfaces and, on public account-scoped routes, only on the liquidated account's own rows; absent on fund-side public rows and the anonymous trade tape."
+          },
+          "mark": {
+            "type": "string",
+            "description": "Mark price captured when the liquidation command was issued. The fill price itself stays the accounting price."
+          },
+          "method": {
+            "type": "string",
+            "enum": ["market", "backstop"],
+            "description": "How the position was liquidated. Only backstop is emitted today; market is reserved for order-book liquidations, which currently carry no liquidation_details."
+          }
+        }
       },
       "TradeData": {
         "type": "object",
@@ -6679,7 +6932,7 @@
       },
       "st": {
         "type": "string",
-        "description": "Order status",
+        "description": "Order status, such as `open` for a resting order. See [Handle Terminal Order Outcomes](/perps/trading#handle-terminal-order-outcomes) for the statuses that end an order.",
         "example": "open"
       },
       "cts": {
@@ -7029,7 +7282,7 @@
       },
       "cursor": {
         "type": "string",
-        "description": "Pagination cursor. Pass the opaque `cursor` returned by the previous page to fetch the next page. Paging follows the `sort` direction (strictly older fills when `sort=desc`, strictly newer when `sort=asc`). The trade ID of the last fill from the previous page is also accepted for backwards compatibility.",
+        "description": "Pagination cursor. Pass the opaque `cursor` returned by the previous page to fetch the next page. Paging follows the `sort` direction (strictly older fills when `sort=desc`, strictly newer when `sort=asc`). The trade ID of the last fill from the previous page is also accepted for backwards compatibility, except on instrument-filtered `/v1/info/fills`, which requires the returned keyset cursor.",
         "example": "eyJ0cyI6MTc2NzIyNTYwMDAwMDAwMDAwMCwiaWQiOjF9"
       },
       "fills_cursor": {
@@ -7165,6 +7418,9 @@
           },
           "settlement": {
             "$ref": "#/components/schemas/settlement_fill"
+          },
+          "liquidation_details": {
+            "$ref": "#/components/schemas/LiquidationDetails"
           }
         }
       },
@@ -9426,6 +9682,10 @@
           "first_fill_at": {
             "$ref": "#/components/schemas/competition_first_fill_at"
           },
+          "qualified": {
+            "type": "boolean",
+            "description": "Whether the account meets the entry gate. Present only with `include_unqualified=true`."
+          },
           "prize": {
             "type": "string",
             "description": "Projected prize while live, prize won once ended; absent outside the prize zone"
@@ -9742,6 +10002,11 @@
         "minimum": 1,
         "description": "Trading competition ID",
         "example": 3
+      },
+      "competition_include_unqualified": {
+        "type": "boolean",
+        "default": false,
+        "description": "List the traders still short of the entry gate after the ranked board. Ignored for a lottery or raffle board."
       },
       "competition_row_state": {
         "type": "string",

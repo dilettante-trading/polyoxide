@@ -29,7 +29,9 @@ paths:
     post:
       summary: Post a new order
       description: |
-        Creates a new order in the order book
+        Creates a new order in the order book.
+        When placing an order as a session signer, use the deposit wallet as both `maker`
+        and `signer`, with the POLY_1271 signature wrapped in a session-signer envelope.
       operationId: postOrder
       tags:
         - Trade
@@ -551,6 +553,203 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: Trading is currently disabled. Check polymarket.com for updates
+  /data/wallet-open-orders:
+    get:
+      summary: Get wallet open orders
+      description: |
+        Lists every live order on the caller's deposit wallet, regardless of which signer or API key placed it.
+        Authenticate with L2 headers or `POLY_READONLY_API_KEY` and `POLY_ADDRESS`.
+        `POLY_ADDRESS` must be the wallet owner or one of its non-revoked session signers.
+
+        Results are newest first, in pages of about 500. A page can be short or empty while
+        `next_cursor` is still set. Keep paging with `cursor` until `next_cursor` is empty.
+
+        A deposit wallet supports at most 15 non-revoked session signers. Expired signers
+        count toward this limit; revoke them to free a slot. Authorizing or revoking a signer
+        can take up to about 5 seconds to appear in this endpoint and wallet-wide cancellation.
+        Revoking a signer immediately triggers cancellation of all its open orders by the relayer;
+        those orders no longer appear here after cancellation.
+      operationId: getWalletOpenOrders
+      tags:
+        - Trade
+      security:
+        - polyApiKey: []
+          polyAddress: []
+          polySignature: []
+          polyPassphrase: []
+          polyTimestamp: []
+        - polyReadonlyApiKey: []
+          polyAddress: []
+      parameters:
+        - name: market
+          in: query
+          description: Exact-match filter on the condition ID
+          schema:
+            type: string
+        - name: asset_id
+          in: query
+          description: Exact-match filter on the token ID
+          schema:
+            type: string
+        - name: session_keys
+          in: query
+          description: |
+            Filter to orders placed by these signer addresses (maximum 50).
+            Accepts comma-separated or repeated values. Addresses outside the wallet match nothing.
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 50
+            items:
+              type: string
+              pattern: '^0x[a-fA-F0-9]{40}$'
+        - name: cursor
+          in: query
+          description: The next_cursor returned by the previous page
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Wallet open orders, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletOpenOrdersResponse'
+        '400':
+          description: Invalid POLY_ADDRESS, cursor or session_keys, or the signer belongs to more than one wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: The caller has no deposit wallet or is not a signer of it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: The selected signers hold more than 50 API keys; narrow the request with session_keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: A dependency is unavailable or timed out; safe to retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /cancel-wallet-orders:
+    delete:
+      summary: Cancel wallet orders
+      description: |
+        Cancels orders on the deposit wallet across all API keys, including orders from expired session signers.
+        Also served at `/v1/gateway/cancel-wallet-orders`.
+
+        Only the wallet owner can call this endpoint. Send L2 headers with `POLY_ADDRESS`
+        set to the owner EOA and the owner's API key. Session signers receive 403 and must use
+        `DELETE /order`, `DELETE /orders` or `DELETE /cancel-all`, which only cancel orders
+        placed with their own API key.
+
+        Set exactly one of `order_ids` or `all`. Unknown orders, orders from another maker,
+        and already canceled orders are returned in `not_canceled` with the reason
+        `order not found on the caller's deposit wallet`.
+
+        Shares the cancel rate-limit bucket with `DELETE /orders` and `DELETE /cancel-all`.
+        With `order_ids`, each ID costs one token up front. With `all`, the request costs
+        one token up front and is then charged for the number of orders actually canceled.
+
+        Revoking a session signer immediately triggers the relayer to cancel its open orders.
+        After cancellation, canceling those IDs returns them in `not_canceled`.
+        Authorization and revocation changes can take up to about 5 seconds to appear here.
+
+        Production rollout: this route currently returns an nginx 404 page until load-balancer
+        routing is enabled. The production feature flag must also be enabled. A disabled
+        application endpoint returns a JSON 404 response instead.
+      operationId: cancelWalletOrders
+      tags:
+        - Trade
+      security:
+        - polyApiKey: []
+          polyAddress: []
+          polySignature: []
+          polyPassphrase: []
+          polyTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelWalletOrdersPayload'
+            examples:
+              by_id:
+                value:
+                  order_ids:
+                    - '0xabababababababababababababababababababababababababababababababab'
+              all_orders:
+                value:
+                  all: true
+      responses:
+        '200':
+          description: Wallet cancellation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelOrdersResponse'
+              example:
+                canceled:
+                  - '0xabababababababababababababababababababababababababababababababab'
+                not_canceled:
+                  '0x0000000000000000000000000000000000000000000000000000000000000000': "order not found on the caller's deposit wallet"
+        '400':
+          description: Both or neither of order_ids/all set, more than 1000 IDs, or an invalid order ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: The address does not own a deposit wallet; session signers also receive this response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Endpoint disabled in this environment, or production load-balancer routing not yet enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+            text/html:
+              schema:
+                type: string
+              example: '<html><body><h1>404 Not Found</h1></body></html>'
+        '429':
+          description: Cancel rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Deposit-wallet lookup failed; retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /data/orders:
     get:
       summary: Get user orders
@@ -558,6 +757,13 @@ paths:
         Retrieves live orders for the authenticated user. Returns paginated results.
         Filtering by id returns that order regardless of status, including canceled or fully matched orders.
         Builder-authenticated clients can also use this endpoint to retrieve orders attributed to their builder account.
+      x-mint:
+        content: |
+          <Warning>
+            Filtering by `id` only returns canceled and fully matched orders within the last hour.
+            Listen to the [user stream](/trading/realtime-order-updates#user-stream) for fuller data.
+            Historical fills remain in [get trades](/api-reference/trade/get-trades).
+          </Warning>
       operationId: getOrders
       tags:
         - Trade
@@ -2589,7 +2795,7 @@ paths:
           example: 0xabc123def456...
         - name: signature_type
           in: query
-          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE)
+          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE, 3=POLY_1271)
           required: false
           schema:
             type: integer
@@ -2598,6 +2804,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
       responses:
         '200':
           description: Successfully retrieved balance and allowances
@@ -2675,7 +2882,7 @@ paths:
           example: 0xabc123def456...
         - name: signature_type
           in: query
-          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE)
+          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE, 3=POLY_1271)
           required: false
           schema:
             type: integer
@@ -2684,6 +2891,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
       responses:
         '200':
           description: Balance and allowances successfully updated
@@ -2758,7 +2966,7 @@ paths:
           example: 0xabc123def456...
         - name: signature_type
           in: query
-          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE)
+          description: Signature type for address derivation (0=EOA, 1=POLY_PROXY, 2=POLY_GNOSIS_SAFE, 3=POLY_1271)
           required: false
           schema:
             type: integer
@@ -2767,6 +2975,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
       responses:
         '200':
           description: Balance and allowances successfully updated
@@ -3023,6 +3232,7 @@ paths:
             - 0: EOA
             - 1: POLY_PROXY
             - 2: POLY_GNOSIS_SAFE
+            - 3: POLY_1271 (Deposit Wallet)
           required: true
           schema:
             type: integer
@@ -3030,6 +3240,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
       responses:
         '200':
           description: Successfully retrieved notifications
@@ -3168,6 +3379,7 @@ paths:
             - 0: EOA
             - 1: POLY_PROXY
             - 2: POLY_GNOSIS_SAFE
+            - 3: POLY_1271 (Deposit Wallet)
           required: false
           schema:
             type: integer
@@ -3175,6 +3387,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
         - name: maker_address
           in: query
           description: Maker address to query earnings for
@@ -3281,6 +3494,7 @@ paths:
             - 0: EOA
             - 1: POLY_PROXY
             - 2: POLY_GNOSIS_SAFE
+            - 3: POLY_1271 (Deposit Wallet)
           required: false
           schema:
             type: integer
@@ -3288,6 +3502,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
         - name: maker_address
           in: query
           description: Maker address to query earnings for
@@ -3384,6 +3599,7 @@ paths:
             - 0: EOA
             - 1: POLY_PROXY
             - 2: POLY_GNOSIS_SAFE
+            - 3: POLY_1271 (Deposit Wallet)
           required: false
           schema:
             type: integer
@@ -3391,6 +3607,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
         - name: maker_address
           in: query
           description: Maker address to query percentages for
@@ -3485,6 +3702,7 @@ paths:
             - 0: EOA
             - 1: POLY_PROXY
             - 2: POLY_GNOSIS_SAFE
+            - 3: POLY_1271 (Deposit Wallet)
           required: false
           schema:
             type: integer
@@ -3492,6 +3710,7 @@ paths:
               - 0
               - 1
               - 2
+              - 3
         - name: maker_address
           in: query
           description: Maker address to query data for
@@ -4800,6 +5019,11 @@ components:
       in: header
       name: POLY_API_KEY
       description: Your API key
+    polyReadonlyApiKey:
+      type: apiKey
+      in: header
+      name: POLY_READONLY_API_KEY
+      description: Read-only API key for wallet open orders; also requires POLY_ADDRESS
     polyAddress:
       type: apiKey
       in: header
@@ -4899,11 +5123,12 @@ components:
           example: 1234567890
         signatureType:
           type: integer
-          description: Type of signature (0 = EOA, 1 = POLY_PROXY, 2 = POLY_GNOSIS_SAFE)
+          description: Type of signature (0 = EOA, 1 = POLY_PROXY, 2 = POLY_GNOSIS_SAFE, 3 = POLY_1271)
           enum:
             - 0
             - 1
             - 2
+            - 3
     SendOrder:
       type: object
       required:
@@ -5022,6 +5247,125 @@ components:
             type: string
           example:
             '0xabcdef1234567890abcdef1234567890abcdef12': Order not found or already canceled
+    CancelWalletOrdersPayload:
+      description: Set exactly one field. The server deduplicates order_ids.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [order_ids]
+          properties:
+            order_ids:
+              type: array
+              maxItems: 1000
+              items:
+                type: string
+                pattern: '^0x[a-fA-F0-9]{64}$'
+        - type: object
+          additionalProperties: false
+          required: [all]
+          properties:
+            all:
+              type: boolean
+              const: true
+              description: Cancel every order resting on the wallet
+    WalletOpenOrdersResponse:
+      type: object
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WalletOpenOrder'
+        next_cursor:
+          type: string
+          description: Pass as cursor on the next request. Keep paging until empty, even if data is empty.
+          example: ''
+    WalletOpenOrder:
+      type: object
+      required:
+        - id
+        - status
+        - signer_address
+        - maker_address
+        - market
+        - asset_id
+        - side
+        - original_size
+        - size_matched
+        - price
+        - expiration
+        - order_type
+        - created_at
+        - outcome
+      properties:
+        id:
+          type: string
+          description: Order ID (order hash)
+          example: '0xabcdef1234567890abcdef1234567890abcdef12'
+        status:
+          type: string
+          description: Order status
+          enum: [LIVE]
+        owner:
+          type: string
+          description: API key, only filled in for orders placed with the caller's own key
+          example: f4f247b7-4ac7-ff29-a152-04fda0a8755a
+        signer_address:
+          type: string
+          description: EOA whose key placed the order, either the wallet owner or a session signer
+          example: '0x1234567890123456789012345678901234567890'
+        maker_address:
+          type: string
+          description: Ethereum address of the maker
+          example: '0x1234567890123456789012345678901234567890'
+        market:
+          type: string
+          description: Market (condition ID)
+          example: '0x0000000000000000000000000000000000000000000000000000000000000001'
+        asset_id:
+          type: string
+          description: Asset ID (token ID)
+          example: 0xabc123def456...
+        side:
+          type: string
+          description: Order side
+          enum:
+            - BUY
+            - SELL
+          example: BUY
+        original_size:
+          type: string
+          description: Original order size
+          example: '10'
+        size_matched:
+          type: string
+          description: Size that has been matched
+          example: '5'
+        price:
+          type: string
+          description: Order price
+          example: '0.5'
+        outcome:
+          type: string
+          description: Market outcome (YES/NO)
+          example: 'YES'
+        expiration:
+          type: string
+          description: Unix timestamp when the order expires
+          example: '1735689600'
+        order_type:
+          type: string
+          description: Order type
+          enum:
+            - GTC
+            - FOK
+            - GTD
+            - FAK
+          example: GTC
+        created_at:
+          type: integer
+          description: Unix timestamp when the order was created
+          example: 1700000000
     OpenOrder:
       type: object
       required:

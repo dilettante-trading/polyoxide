@@ -143,7 +143,7 @@ Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depend
 
 `docs/specs/` mirrors the upstream API documentation, one directory per host, indexed by `docs/specs/INDEX.md`: the source of truth for endpoint contracts, rate limits and response schemas. Never edit a mirror that `nightly-schema.yml` watches, which must stay byte-faithful; record what a host actually does in its `OBSERVED.md`.
 
-**Not fully implemented.** `docs/specs/` also mirrors three upstream APIs that no crate fully covers, so parity audits can see them: **Perps** (`perps/`, 74 endpoints on `api.perpetuals.polymarket.com`, with its own header auth; `polyoxide-polymarket`'s `perps` module implements the 29 public `/v1/info/*` routes), **Bridge** (`bridge/`, 5 endpoints) and **Combos RFQ** (`combos-rfq/`, 4 endpoints). **Data API v2** (`data-v2/`, 21 endpoints under `/v2` on `data-api.polymarket.com`) is the `data` module, each route a `DataApi` method; v1 was retired upstream on 2026-11-02.
+**Not fully implemented.** `docs/specs/` also mirrors three upstream APIs that no crate fully covers, so parity audits can see them: **Perps** (`perps/`, 75 endpoints on `api.perpetuals.polymarket.com`, with its own header auth; `polyoxide-polymarket`'s `perps` module implements the 30 public `/v1/info/*` routes), **Bridge** (`bridge/`, 5 endpoints) and **Combos RFQ** (`combos-rfq/`, 4 endpoints). **Data API v2** (`data-v2/`, 21 endpoints under `/v2` on `data-api.polymarket.com`) is the `data` module, each route a `DataApi` method; v1 was retired upstream on 2026-11-02.
 
 ## Testing and the nightly
 
@@ -177,7 +177,7 @@ Two workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
   <!-- generated:begin claude-schema-exclusions -->
   - Sports (`docs/specs/sports/`): Upstream's AsyncAPI documents a `slug`-keyed payload and a text ping/pong that the server never sends, so the mirror is modelled on captured wire frames, and diffing it would report drift forever.
   - RTDS (`docs/specs/rtds/`): Upstream publishes no AsyncAPI for `ws-live-data`; the mirror is modelled on captured wire frames, so there is nothing to diff it against.
-  - Deposit Wallets and session keys (`docs/specs/session-keys/`): The surface is almost entirely absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the SDK-generated fixtures are the drift check.
+  - Deposit Wallets and session keys (`docs/specs/session-keys/`): The surface is mostly absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET`, signature type 3 and the CLOB's two wallet-wide order routes appear, and those are diffed in the CLOB mirror), so there is no mirror to diff; the SDK-generated fixtures are the drift check.
   - Binance USDⓈ-M and spot (`docs/specs/binance/`): Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; spot's `spot_api.yaml` (in `binance-api-swagger`) was last released on 2024-10-08 and lacks fields the wire sends today, so a diff of it would never fire. The live suites in `polyoxide-binance` are the drift check.
   <!-- generated:end claude-schema-exclusions -->
 

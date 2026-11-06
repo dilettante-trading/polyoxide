@@ -23,6 +23,8 @@ modelled as an `Option` and allowed through `OBSERVED_EXTRA` in
 | `LeaderboardEntry`, `LeaderboardAccount` | `instruments_traded` | `1` | on every row, `0` for an address with no activity |
 | `LeaderboardEntry`, `LeaderboardAccount` | `top_instrument_ids` | `[6]` | on every row, `[]` for an address with no activity |
 | `CompetitionList` | `live_competition_ids` | `[]` | sent where the schema names `live_competition_id`, which was absent |
+| `CompetitionEntry` | `instruments_traded` | `1` | on every row, ranked or not (2026-11-06, `competition_leaderboard_unqualified.json`) |
+| `CompetitionEntry` | `top_instrument_ids` | `[27]` | on every row, ranked or not (2026-11-06) |
 
 Until the 2026-10-21 adoption (#56) the table also held `Instrument`'s `display_symbol`
 and `close_only` and both trade schemas' `settlement`, which the spec now documents;
@@ -120,7 +122,7 @@ A longer fraction would be rounded on decode, since the module's string serde
 uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement_perps.rs` compares
 values as well as key paths, so a rounded or overflowed value fails it.
 
-## No competition has existed yet
+## Competitions: none until 2026-11, then competition 1
 
 On 2026-10-21 `GET /v1/info/competitions` answered `{"timestamp", "live_competition_ids": [],
 "competitions": []}`, with and without an `address`, `/v1/info/competition/widget` only
@@ -132,6 +134,28 @@ spec, `wire_agreement_perps.rs`'s `NEVER_ON_WIRE` names `competitions[]`, and
 `scripts/capture_polymarket_perps.py` captures all four on its first run that finds a
 competition. The list's `live_competition_ids` suggests a plural that the spec's
 `live_competition_id` may be replaced by; both are modelled.
+
+By 2026-11-06 competition 1 was live (`live_competition_id: 1` and `live_competition_ids:
+[1]`, both sent), so the capture script now records all four. Their committed fixtures are
+still the hand-written ones, which `mock_perps.rs`'s competition test reads for competitions
+2 and 3. Diffed against them, that day's capture carried keys no type models and the spec
+does not document: `cohort` and `next_update_at` on the leaderboard; `next_update_at`,
+`instruments_traded` and `top_instrument_ids` on the account; `next_update_at`, `row_state`
+and `score` on the widget; `award` (`kind`, `score_formula`), `featured`,
+`requires_positive_pnl` and `slug` on the detail; and `award_kind`, `featured` and `slug` on
+each listed competition. Of these only the leaderboard entry's two are modelled so far (the
+table above). The same capture also carried `fee_override` and `funding_multiplier` on
+instruments, `coverage` on the portfolio and `long_count` and `short_count` on tickers, none of
+them documented or modelled.
+
+### `include_unqualified` on the competition leaderboard
+
+`GET /v1/info/competition/leaderboard?competition_id=1&include_unqualified=true`
+(2026-11-06) behaved as the spec says: 77 ranked rows (`total: 77` without the flag), then
+2,911 more in score order, `total` counting both (2,988). Every row carried `qualified`,
+`true` on the ranked rows; the others had no `rank` and no `prize`. Without the flag, or with
+`include_unqualified=false`, no row carried `qualified`. A ranked row past the prize zone has no
+`prize` either. `CompetitionEntry::rank` was already an `Option`.
 
 ## A settled instrument is served only by id
 
@@ -250,7 +274,7 @@ during the ramps was `{"status":"err","error":"ip_rate_limited"}` with
 
 **How the table is modelled** (`polyoxide_polymarket::shared::perps_limits`): one row per
 soaked route at its pinned count, a `/v1/info` catch-all at the lowest
-pinned count (10 per 10 s) for the 17 routes that were not soaked, and a
+pinned count (10 per 10 s) for the routes that were not soaked, and a
 general bucket of 30 per 10 s that caps the whole client, set by the
 validation runs above. `WindowQuotaTable` reserves a tenth of every row.
 
@@ -331,6 +355,39 @@ that day and pushed a trade within 4 s.
   leaves the socket open. Not soaked. `LimitTier`'s WebSocket fields are a
   sentinel (see above). The supervised tier retries a rate-limited subscribe
   three times with backoff.
+
+## Fill history (`/v1/info/fills`)
+
+Probed 2026-11-06 for a leaderboard account (`fills.json` in the fixtures).
+
+- The answer has the `position-fills` shape (`AccountTrades`): 100 rows, `more: true` and an
+  opaque `cursor` (base64 JSON of a nanosecond `ts` and an `id`). No row carried `builder` or
+  `liquidation_details`, and none was a liquidation.
+- With `instrument_id`, only that instrument's rows come back, and a trade id as the `cursor`
+  is a `400` (`filtered public fills require a keyset cursor; legacy numeric cursors are
+  unsupported`); without `instrument_id` the same trade id is accepted. An instrument the
+  account never traded is `{"data": [], "more": false}`, with no `cursor`.
+- An unregistered address is a `400` `account not found`, and no `address` a `400`
+  (`invalid query parameters: missing field \`address\``).
+- `liquidation_details` (`LiquidationDetails`: `mark`, `method`, `liquidated_user`) was not
+  seen on the wire: the spec says only backstop liquidations carry it. Its `method` is an
+  `open_enum!` (`LiquidationMethod`), since the spec reserves `market` for later.
+- Its documented weight is 10, 1 when served from the 2 s cache. The client's `/v1/info`
+  catch-all row counts it as one request; it was not soaked.
+
+## Order status (`st`)
+
+The 2026-11-06 spec says `st` (`Order.status`, `OrderData.status`) is a status "such as
+`open` for a resting order" and links the trading guide's terminal outcomes: `cancelled`,
+`auto_cancelled`, `order_expired`, `order_already_terminal`, `sweep_cap_exceeded`,
+`resting_order_limit_exceeded`, `below_min_notional`, `instrument_disabled`,
+`instrument_close_only`, `instrument_settled`, `insufficient_margin_at_fill`,
+`mark_price_unavailable`, `zero_quantity`, `duplicate_order` and `order_not_found`
+(`https://docs.polymarket.com/perps/trading.md`, "Handle Terminal Order Outcomes"). The schema
+is still a bare `string`. Only `/v1/trade/orders`, `/v1/trade/orders-coid`,
+`/v1/account/orders` and `/v1/account/open-orders` (and the private `orders` socket frames)
+return it, none of them implemented, so no type carries it yet and nothing was probed. Read it
+as an `open_enum!`, since the list is prose, not a schema enum.
 
 ## Builders (`/v1/info/builder`, builder fees on fills)
 

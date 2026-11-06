@@ -1,5 +1,68 @@
 ## [Unreleased]
 
+- **Kalshi OpenAPI drift (#88).** Mirror only, with no code change (3.35.0 to 3.36.0).
+  `Settlement.market_result` gains `""`, which `Market.result` already listed; the client decodes
+  `Market.result` as a string, and 15,000 settled and archived markets read on 2026-11-06 all
+  carried `yes` or `no`. `MarketPosition` requires a new `netting_enabled`, and
+  `Market.market_type` gains Go `x-enumNames` for its `binary` and `scalar` values; the client
+  models no positions and reads `market_type` as a string. The rest is surface the client does not
+  implement: two block-trade routes (cancel and reject), an OAuth scheme on
+  `/portfolio/settlements`, and reworded positions, block-trade, quote and RFQ descriptions.
+
+- **Perps AsyncAPI drift (#89).** Mirror and one doc comment. Upstream's order `status` on the
+  `modifyOrders`, `modifyOrdersCOID` and `orders` channels now links "Handle Terminal Order
+  Outcomes"; the client implements none of the three (perps auth and trading are pending). The
+  `tickers` channel's `oi` is now documented as one-sided (total long size, equal to total short
+  size), as the REST mirror already said, and `perps::ws::TickerData::open_interest` says so.
+
+- **Perps spec drift (#90).** Fill history, liquidation details and unqualified competition rows
+  (DRIFT R31). Additive: both structs that gain fields are `#[non_exhaustive]`.
+  - New route: `perps.public().fills(address)`, `GET /v1/info/fills`, a registered account's
+    fill history (`PositionFills`, as `position_fills` returns), with `start`, `end`,
+    `instrument_id`, `cursor` and `sort`. Filtered by instrument, it pages only by the returned
+    `cursor`: a trade id there is a `400`.
+  - `PositionFill` gains `liquidation_details: Option<LiquidationDetails>` (`mark`, a
+    `LiquidationMethod` and `liquidated_user`), which the host sends only on a backstop
+    liquidation fill. `LiquidationMethod` (`perps::types`) is an open enum, `market` or
+    `backstop`.
+  - `GetCompetitionLeaderboard` gains `include_unqualified(bool)`, which lists the accounts still
+    short of the entry gate after the ranked rows, and `CompetitionEntry` gains
+    `qualified: Option<bool>`, sent only then. `CompetitionEntry` also gains the undocumented
+    `instruments_traded` and `top_instrument_ids` that the live board sends.
+  - Upstream's order status `st` now points at the terminal order outcomes. Only the
+    unimplemented order routes return it, so nothing changes in code; `docs/specs/perps/OBSERVED.md`
+    lists the statuses, and the undocumented fields a 2026-11-06 capture showed on other routes.
+  - `Ticker::open_interest`'s doc says what upstream now does: it is one-sided, the total long
+    size, equal to the total short size.
+
+- **CLOB OpenAPI drift (#91).** Upstream enumerates `signatureType` 3 (`POLY_1271`, a Deposit
+  Wallet) on `Order` and on the `signature_type` parameter of `/balance-allowance`,
+  `/balance-allowance/update`, `/notifications` and the `/rewards/user*` routes;
+  `SignatureType::Poly1271` already sends 3 on every one. It warns that `ListOrders::id` returns a
+  canceled or fully matched order only within the last hour, which its doc now says.
+- **Deposit Wallet open orders and cancels (#91).** `Orders::wallet_open_orders` reads
+  `GET /data/wallet-open-orders`, every live order on the caller's Deposit Wallet whichever signer
+  or API key placed it, through `WalletOpenOrders` (`market`, `asset_id`, `session_keys`, `cursor`)
+  into `WalletOpenOrdersResponse` of `WalletOpenOrder`s. `Clob::readonly(key, address)` opens the
+  same builder under a read-only API key (`POLY_READONLY_API_KEY` and `POLY_ADDRESS`, no L2
+  signature), with no account and on `Clob::public()`; it keeps the key in a `Secret` its `Debug`
+  never prints. `Orders::cancel_wallet_orders(ids)` and
+  `Orders::cancel_all_wallet_orders()` send `DELETE /cancel-wallet-orders`, with which the owner
+  cancels across every key, an expired session signer's included; they draw on the signer's cancel
+  bucket as `cancel_many` and `cancel_all` do.
+- **Cancel refusal reasons (fix).** `BatchCancelResponse::not_canceled` now reads `not_canceled`,
+  the spec's and both official SDKs' spelling, as well as `notCanceled`. Before, every reason the
+  cancel routes gave was dropped, and `Trading::cancel` said the CLOB "did not answer".
+
+- **CLOB market-socket AsyncAPI drift (#92).** Upstream rewords `SubscriptionRequest.initial_dump`:
+  later subscriptions ignore it. Probed live: the flag governs only a connection's first
+  subscription frame, and every later `subscribe` update sends a book for each asset it adds, even
+  when the first frame turned the dump off or the update itself sends `initial_dump: false`
+  (`docs/specs/clob/OBSERVED.md`). No code change: the supervised socket's replay is each
+  connection's first frame, and nothing waits on a snapshot. The docs of
+  `MarketSubscriptionOptions::initial_dump`, `MarketSubscriptionUpdate`, `MarketWsBuilder::options`
+  and `MarketEvent::Reconnected` now say so.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host

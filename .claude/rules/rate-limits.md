@@ -121,12 +121,16 @@ throttling. Detect it through a `tracing` subscriber: `polyoxide_test_support::s
 - A `CapacityBucket` refuses an exact cost above its capacity at once (`Refused`), charges an
   inexact one at capacity, and can be resized in place keeping its tokens and its `Hold`; a new
   tier still replaces both signer buckets at full capacity.
-- Batch endpoints cost their full size (`POST /orders` N, `DELETE /orders` N, `cancel-all` 1+N),
+- Batch endpoints cost their full size (`POST /orders` N, `DELETE /orders` N, `cancel-all` 1+N;
+  `DELETE /cancel-wallet-orders` N with `order_ids` and 1+N with `all`, priced as
+  `TradingRequest::CancelOrders` and `CancelAll`),
   so a batch can cost more than the bucket can ever hold: permanently rejected, not throttled.
   `ClobThrottle` refuses it client-side before anything is sent, and clob's `From<ApiError>` turns
   the refusal into `ClobError::BurstCapacityExceeded` (not retriable), rather than letting the
-  loop burn attempts on a 429 it would misread as transient. `cancel-all`/`cancel-market-orders`
-  costs are not knowable client-side; `TradingRequest::cost_is_exact` flags that.
+  loop burn attempts on a 429 it would misread as transient. The `cancel-all`, `cancel-market-orders`
+  and wallet-wide `all` costs are not knowable client-side; `TradingRequest::cost_is_exact` flags that.
+  Cloudflare publishes no IP window for `/cancel-wallet-orders`, so it has no row of its own in
+  `clob_limits` and falls to the 9,000/10 s default.
 - The tier starts at `Standard` (tightest) and is adopted from every response's
   `Poly-RateLimit-Tier` header, a 429's included, since it derives from 30-day volume the client
   cannot compute. `account_api().rate_limit_tier()` (`GET /v1/user/rate-limit-tier`) reads it from

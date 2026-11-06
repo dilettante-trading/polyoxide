@@ -36,6 +36,11 @@ rules: `sockets.md`.
 - Verified live 2026-09-09: an added asset gets a fresh `book` in ~155 ms; a duplicate add gets
   nothing (unsubscribe then subscribe to force a snapshot); an empty-membership socket stays open
   under the 10 s `PING` but is reset after ~125 s without it.
+- `initial_dump` is honoured only in a connection's first subscription frame (probed 2026-11-06,
+  `docs/specs/clob/OBSERVED.md`): an added asset gets its `book` even when that frame set
+  `initial_dump: false` or the update frame sends it, and a second full frame sends nothing. The
+  supervised socket's replay is each connection's first frame, so its options hold there; nothing
+  in the crate waits on a snapshot.
 
 ## The supervised market socket
 

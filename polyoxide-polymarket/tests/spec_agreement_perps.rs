@@ -72,6 +72,7 @@ const NUMERIC_STRINGS: &[(&str, &[&str])] = &[
         ],
     ),
     ("CompetitionLockedPosition", &["size_at_start"]),
+    ("LiquidationDetails", &["mark"]),
     (
         "CompetitionWidget",
         &["volume", "min_volume", "qualification_progress"],
@@ -133,6 +134,8 @@ const OBSERVED_EXTRA: &[(&str, &str)] = &[
     ("LeaderboardAccount", "instruments_traded"),
     ("LeaderboardAccount", "top_instrument_ids"),
     ("CompetitionList", "live_competition_ids"),
+    ("CompetitionEntry", "instruments_traded"),
+    ("CompetitionEntry", "top_instrument_ids"),
     ("LimitTier", "connects_per_minute_limit"),
     ("LimitTier", "max_connections"),
     ("LimitTier", "ws_messages_burst_limit"),
@@ -188,6 +191,7 @@ agreement! {
     "PublicPortfolioPosition" => PublicPortfolioPosition,
     "AccountTrades" => PositionFills,
     "AccountTradeData" => PositionFill,
+    "LiquidationDetails" => LiquidationDetails,
     "Builder" => BuilderTerms,
     "Leaderboard" => Leaderboard,
     "LeaderboardEntry" => LeaderboardEntry,
@@ -475,6 +479,20 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     ("/v1/info/portfolio", "portfolio", |p| {
         Box::pin(async move { p.public().portfolio("0xabc").send().await.map(|_| ()) })
     }),
+    ("/v1/info/fills", "fills", |p| {
+        Box::pin(async move {
+            p.public()
+                .fills("0xabc")
+                .start(1)
+                .end(2)
+                .instrument_id(InstrumentId(1))
+                .cursor("c")
+                .sort(SortOrder::Asc)
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
     ("/v1/info/position-fills", "position_fills", |p| {
         Box::pin(async move {
             p.public()
@@ -544,6 +562,7 @@ const ROUTES: &[(&str, &str, Fire)] = &[
                     .leaderboard(CompetitionId(3))
                     .limit(2)
                     .offset(0)
+                    .include_unqualified(true)
                     .send()
                     .await
                     .map(|_| ())
@@ -721,4 +740,21 @@ async fn the_position_snapshots_body_is_the_documented_request() {
     assert_eq!(fill_keys, fill_documented);
     assert_eq!(fill["trade_id"], "7", "trade_id is a decimal string");
     assert_eq!(body["active_instrument_ids"], serde_json::json!([1, 2]));
+}
+
+#[test]
+fn the_liquidation_method_matches_the_spec() {
+    let schemas = schemas();
+    let wire: BTreeSet<String> = LiquidationMethod::ALL
+        .iter()
+        .map(|m| m.as_str().to_owned())
+        .collect();
+    let documented: BTreeSet<String> = schemas["LiquidationDetails"]["properties"]["method"]
+        ["enum"]
+        .as_array()
+        .expect("an enum")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(wire, documented);
 }
