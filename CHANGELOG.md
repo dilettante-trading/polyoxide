@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+- **Perps AsyncAPI drift (#89).** Mirror and one doc comment. Upstream's order `status` on the
+  `modifyOrders`, `modifyOrdersCOID` and `orders` channels now links "Handle Terminal Order
+  Outcomes"; the client implements none of the three (perps auth and trading are pending). The
+  `tickers` channel's `oi` is now documented as one-sided (total long size, equal to total short
+  size), as the REST mirror already said, and `perps::ws::TickerData::open_interest` says so.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host
