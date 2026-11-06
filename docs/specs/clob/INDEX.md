@@ -21,6 +21,8 @@ Three authentication levels. See [auth.md](auth.md) for details.
 - **L1** — EIP-712 signing for credential creation
 - **L2** — HMAC-SHA256 for most authenticated operations
 - **Builder** — Separate HMAC keys for builder-attributed orders
+- **Read-only key** — `POLY_READONLY_API_KEY` with `POLY_ADDRESS`, no signature; only
+  `GET /data/wallet-open-orders` accepts it (`openapi.yaml`'s `polyReadonlyApiKey`, #91)
 
 ## Endpoints
 

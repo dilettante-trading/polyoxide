@@ -6,6 +6,7 @@ pub mod health;
 pub mod markets;
 pub mod notifications;
 pub mod orders;
+pub mod readonly;
 pub mod rewards;
 
 pub use account::AccountApi;
@@ -14,4 +15,5 @@ pub use health::Health;
 pub use markets::Markets;
 pub use notifications::Notifications;
 pub use orders::{CancelOrderRequest, Orders};
+pub use readonly::Readonly;
 pub use rewards::Rewards;

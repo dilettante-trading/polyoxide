@@ -64,4 +64,6 @@ only (no cancel was sent): `GET /cancel-wallet-orders` and `GET /v1/gateway/canc
 both answer `405` with no body, so both paths now reach the application rather than nginx;
 whether the production feature flag is on was not probed. `GET /data/wallet-open-orders`
 answers `401 {"error":"Unauthorized/Invalid api key"}`, a JSON answer from the application.
-Neither route is implemented by the crate yet.
+`Orders::wallet_open_orders`, `Readonly::wallet_open_orders`, `cancel_wallet_orders` and
+`cancel_all_wallet_orders` implement the two routes from the mirror alone; neither has been
+called with credentials or a read-only key.

@@ -129,6 +129,84 @@ impl Orders {
             .send()
             .await
     }
+
+    /// List every live order on the caller's Deposit Wallet
+    /// (`GET /data/wallet-open-orders`), whichever signer or API key placed it.
+    ///
+    /// Unlike [`Orders::list`], which lists only the orders of the key it is
+    /// signed with, this reads the whole wallet. The L2 address must be the
+    /// wallet's owner or one of its non-revoked session signers; any other
+    /// address is a `403`. An authorization or revocation can take about five
+    /// seconds to show here.
+    ///
+    /// Results are newest first, in pages of about 500. A page can be short or
+    /// empty while `next_cursor` is still set: feed it back through
+    /// [`WalletOpenOrders::cursor`] until it is empty.
+    ///
+    /// A caller with a read-only API key and no L2 credentials reads the same
+    /// route through [`Clob::readonly`](crate::clob::Clob::readonly).
+    pub fn wallet_open_orders(&self) -> WalletOpenOrders {
+        WalletOpenOrders::new(self.http_client.clone(), self.l2.clone())
+    }
+
+    /// Cancel orders by ID on the caller's Deposit Wallet across every API key
+    /// (`DELETE /cancel-wallet-orders`), an expired session signer's included.
+    ///
+    /// Only the wallet's owner may call it, under the owner's own credentials;
+    /// a session signer is answered `403` and cancels its own orders with
+    /// [`Orders::cancel`], [`Orders::cancel_many`] or [`Orders::cancel_all`]. Up
+    /// to 1,000 IDs, which the server deduplicates. An unknown order, another
+    /// maker's, or one already canceled is listed in `not_canceled`.
+    ///
+    /// It draws on the signer's cancel bucket like [`Orders::cancel_many`], one
+    /// token per ID.
+    pub async fn cancel_wallet_orders(
+        &self,
+        order_ids: impl Into<Vec<String>>,
+    ) -> Result<BatchCancelResponse, ClobError> {
+        #[derive(Serialize)]
+        struct Body {
+            order_ids: Vec<String>,
+        }
+
+        let order_ids: Vec<String> = order_ids.into();
+        Request::<BatchCancelResponse, ClobError>::new(
+            self.http_client.clone(),
+            "/cancel-wallet-orders",
+        )
+        .method(Method::DELETE)
+        .authenticator(self.l2.clone())
+        .with_cost(signer_cost(TradingRequest::CancelOrders {
+            count: order_ids.len() as u32,
+        }))
+        .body(&Body { order_ids })?
+        .send()
+        .await
+    }
+
+    /// Cancel every order resting on the caller's Deposit Wallet, across every
+    /// API key (`DELETE /cancel-wallet-orders` with `all: true`).
+    ///
+    /// The owner-only rule of [`Orders::cancel_wallet_orders`] applies. It draws
+    /// on the signer's cancel bucket like [`Orders::cancel_all`]: one token up
+    /// front, then one per order canceled.
+    pub async fn cancel_all_wallet_orders(&self) -> Result<BatchCancelResponse, ClobError> {
+        #[derive(Serialize)]
+        struct Body {
+            all: bool,
+        }
+
+        Request::<BatchCancelResponse, ClobError>::new(
+            self.http_client.clone(),
+            "/cancel-wallet-orders",
+        )
+        .method(Method::DELETE)
+        .authenticator(self.l2.clone())
+        .with_cost(signer_cost(TradingRequest::CancelAll))
+        .body(&Body { all: true })?
+        .send()
+        .await
+    }
 }
 
 /// Request builder for canceling an order
@@ -254,7 +332,8 @@ pub struct OrderScoringResponse {
 /// Response from cancel and batch cancel operations.
 ///
 /// The Polymarket API returns this shape for all cancel endpoints:
-/// `DELETE /order`, `DELETE /orders`, `DELETE /cancel-all`, `DELETE /cancel-market-orders`.
+/// `DELETE /order`, `DELETE /orders`, `DELETE /cancel-all`, `DELETE /cancel-market-orders`
+/// and `DELETE /cancel-wallet-orders`.
 ///
 /// `not_canceled` is read from `not_canceled`, the spelling of the spec's
 /// `CancelOrdersResponse` and of both official SDKs (py-sdk's and ts-sdk's
@@ -317,6 +396,97 @@ impl ListOrders {
     /// # Ok(())
     /// # }
     /// ```
+    pub async fn send_raw(self) -> Result<polyoxide_core::Response, ClobError> {
+        self.request.send_raw().await
+    }
+}
+
+/// A live order on a Deposit Wallet, as `GET /data/wallet-open-orders` lists it
+/// ([`Orders::wallet_open_orders`]).
+///
+/// The shape of [`OpenOrder`] less `associate_trades`, plus the signer that
+/// placed the order. Field names are snake_case on the wire. The fields the
+/// spec's `WalletOpenOrder` requires are non-optional; `owner` is not required.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletOpenOrder {
+    /// Order ID (`0x`-prefixed hash).
+    pub id: String,
+    /// Order status; the route lists only `LIVE` orders.
+    pub status: String,
+    /// Owning API key (a UUID), present only for an order placed with the
+    /// caller's own key.
+    #[serde(default)]
+    pub owner: Option<String>,
+    /// The EOA whose key placed the order: the wallet's owner or a session
+    /// signer.
+    pub signer_address: String,
+    /// Maker address, the Deposit Wallet.
+    pub maker_address: String,
+    /// Market condition ID.
+    pub market: String,
+    /// Asset (token) ID for the outcome being traded.
+    pub asset_id: String,
+    /// `BUY` or `SELL`.
+    pub side: String,
+    /// Original order size in shares, as a decimal string.
+    pub original_size: String,
+    /// Size matched so far in shares, as a decimal string.
+    pub size_matched: String,
+    /// Limit price, as a decimal string.
+    pub price: String,
+    /// Expiration as a Unix timestamp string; `"0"` means no expiry.
+    pub expiration: String,
+    /// Order type: `GTC`, `FOK`, `GTD` or `FAK`.
+    pub order_type: String,
+    /// Creation time as a Unix timestamp in seconds, an integer on the wire.
+    pub created_at: i64,
+    /// Outcome label, e.g. `YES`.
+    pub outcome: String,
+}
+
+/// A page of `GET /data/wallet-open-orders`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletOpenOrdersResponse {
+    /// The page's orders, newest first; can be empty while `next_cursor` is set.
+    pub data: Vec<WalletOpenOrder>,
+    /// The cursor of the next page, empty after the last.
+    pub next_cursor: String,
+}
+
+/// Request builder for [`Orders::wallet_open_orders`] and
+/// [`Readonly::wallet_open_orders`](crate::clob::api::Readonly::wallet_open_orders),
+/// with optional filters.
+pub struct WalletOpenOrders {
+    request: Request<WalletOpenOrdersResponse, ClobError>,
+}
+
+impl WalletOpenOrders {
+    /// The route under the authenticator of the namespace that opened it.
+    pub(crate) fn new(http_client: HttpClient, auth: Arc<DynAuthenticator<'static>>) -> Self {
+        Self {
+            request: Request::new(http_client, "/data/wallet-open-orders").authenticator(auth),
+        }
+    }
+
+    polyoxide_core::query_setters! {
+        /// Exact-match filter on the market (condition ID).
+        market: impl Into<String> => "market",
+        /// Exact-match filter on the asset (token ID).
+        asset_id: impl Into<String> => "asset_id",
+        /// Only orders placed by these signer addresses, up to 50; each is sent
+        /// as its own `session_keys` pair. An address outside the wallet
+        /// matches nothing.
+        session_keys: many impl IntoIterator<Item = impl ToString> => "session_keys",
+        /// Continue from the previous page's `next_cursor`.
+        cursor: impl Into<String> => "cursor",
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<WalletOpenOrdersResponse, ClobError> {
+        self.request.send().await
+    }
+
+    /// Execute the request and return the raw HTTP response, unparsed.
     pub async fn send_raw(self) -> Result<polyoxide_core::Response, ClobError> {
         self.request.send_raw().await
     }

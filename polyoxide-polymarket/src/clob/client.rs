@@ -13,7 +13,7 @@ use crate::clob::{
         notifications::Notifications,
         orders::OrderResponse,
         rewards::{PublicRewards, Rewards},
-        Health, Markets, Orders,
+        Health, Markets, Orders, Readonly,
     },
     authenticator::L1Signed,
     core::chain::Chain,
@@ -762,6 +762,20 @@ impl Clob {
 
         self.post_order(&signed_order, order_type, false) // Market orders cannot be post_only
             .await
+    }
+
+    /// The routes a read-only API key may call, sent with `key` and `address`
+    /// (`POLY_READONLY_API_KEY` and `POLY_ADDRESS`) in place of L2 auth.
+    ///
+    /// Needs no [`Account`], so it works on [`Clob::public`]. The key is held
+    /// in a [`polyoxide_venue::Secret`] and never printed. `address` is the
+    /// Deposit Wallet's owner or one of its session signers.
+    pub fn readonly(&self, key: impl Into<String>, address: Address) -> Readonly {
+        Readonly {
+            http_client: self.http_client.clone(),
+            key: polyoxide_venue::Secret::new(key.into()),
+            address,
+        }
     }
 }
 
