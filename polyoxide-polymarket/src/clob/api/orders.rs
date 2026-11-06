@@ -255,12 +255,17 @@ pub struct OrderScoringResponse {
 ///
 /// The Polymarket API returns this shape for all cancel endpoints:
 /// `DELETE /order`, `DELETE /orders`, `DELETE /cancel-all`, `DELETE /cancel-market-orders`.
+///
+/// `not_canceled` is read from `not_canceled`, the spelling of the spec's
+/// `CancelOrdersResponse` and of both official SDKs (py-sdk's and ts-sdk's
+/// `CancelOrdersResponse`), and from the camelCase `notCanceled` this struct
+/// read alone before #91, which dropped every refusal reason the venue sent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
 pub struct BatchCancelResponse {
     #[serde(default)]
     pub canceled: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "not_canceled")]
     pub not_canceled: HashMap<String, String>,
 }
 
@@ -473,6 +478,29 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["canceled"], serde_json::json!(["a", "b"]));
         assert_eq!(json["not_canceled"]["c"], "error");
+    }
+
+    /// The spelling the spec's `CancelOrdersResponse` and both official SDKs
+    /// read, here the example body of `DELETE /cancel-wallet-orders`.
+    #[test]
+    fn batch_cancel_response_reads_snake_case_not_canceled() {
+        let json = r#"{
+            "canceled": ["0xabababababababababababababababababababababababababababababababab"],
+            "not_canceled": {
+                "0x0000000000000000000000000000000000000000000000000000000000000000": "order not found on the caller's deposit wallet"
+            }
+        }"#;
+        let resp: BatchCancelResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            resp.canceled,
+            vec!["0xabababababababababababababababababababababababababababababababab"]
+        );
+        assert_eq!(
+            resp.not_canceled
+                .get("0x0000000000000000000000000000000000000000000000000000000000000000")
+                .map(String::as_str),
+            Some("order not found on the caller's deposit wallet")
+        );
     }
 
     #[test]
