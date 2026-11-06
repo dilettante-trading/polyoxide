@@ -319,9 +319,11 @@ async fn a_supervisor_connects_replays_and_reconnects_over_an_injected_transport
             "the supervisor's waits are the injected runtime's sleeps"
         );
         let slept = runtime.slept.lock().unwrap();
+        let step = timing().initial_backoff;
         assert!(
-            slept.contains(&timing().initial_backoff),
-            "the reconnect waits the backoff's first step on the injected runtime: {slept:?}"
+            slept.iter().any(|wait| *wait >= step / 2 && *wait <= step),
+            "the reconnect waits the backoff's first step, jittered, on the injected runtime: \
+             {slept:?}"
         );
     }
     ws.close().await.expect("close");

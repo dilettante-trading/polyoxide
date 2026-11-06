@@ -74,6 +74,7 @@ pub struct SportsWsBuilder {
     connect_timeout: Duration,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for SportsWsBuilder {
@@ -94,6 +95,7 @@ impl SportsWsBuilder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -125,6 +127,8 @@ impl SportsWsBuilder {
     /// Both are raised to at least 1 ms, and an `initial` above `max` is
     /// lowered to `max`. A reconnect refused with a `Retry-After` waits at
     /// least that long, up to `max` (DRIFT R11).
+    /// Each wait is drawn at random from half the step to the step, so
+    /// clients the host dropped together do not all return together.
     ///
     /// A protocol ping counts as receiving something. So a server that
     /// accepts, sends anything at all, and drops the connection resets the
@@ -148,6 +152,11 @@ impl SportsWsBuilder {
         runtime;
         /// How each connect dials. By default the target's.
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// Make the first connection and start supervising.
@@ -199,8 +208,11 @@ enum State {
         stale: BoxFuture<()>,
         received: bool,
     },
-    /// Waiting out a backoff delay.
-    Waiting(BoxFuture<()>),
+    /// Waiting out a backoff delay, and the wake that may cut it short.
+    Waiting {
+        delay: BoxFuture<()>,
+        woken: Option<BoxFuture<()>>,
+    },
     /// A connection attempt in flight.
     Connecting(Attempt),
     /// A reconnect was refused for good. The stream yields nothing more.
@@ -283,8 +295,21 @@ impl SupervisedSportsWs {
         let delay = self.backoff.take();
         tracing::warn!(%reason, ?delay, "lost the sports feed; reconnecting");
         // Replacing the state drops the old connection.
-        self.state = State::Waiting(self.runtime.sleep(delay));
+        self.state = self.waiting(delay, true);
         Event::Disconnected { reason }
+    }
+
+    /// The state that waits out `delay`, which the builder's wake cuts short
+    /// when `wakeable`: a wait a `Retry-After` asked for is not (DRIFT R11).
+    fn waiting(&self, delay: Duration, wakeable: bool) -> State {
+        let woken = match &self.config.wake {
+            Some(wake) if wakeable => Some(Box::pin(wake.notified()) as BoxFuture<()>),
+            _ => None,
+        };
+        State::Waiting {
+            delay: self.runtime.sleep(delay),
+            woken,
+        }
     }
 }
 
@@ -300,9 +325,18 @@ impl Stream for SupervisedSportsWs {
                     stale,
                     received,
                 } => poll_reading(connection, stale, received, this.config.stale_after, cx),
-                State::Waiting(delay) => match delay.as_mut().poll(cx) {
+                State::Waiting { delay, woken } => match delay.as_mut().poll(cx) {
                     Poll::Ready(()) => Step::Attempt,
-                    Poll::Pending => Step::Pending,
+                    // The wake cut the wait short: attempt now, with the
+                    // backoff restarted, since the network changed.
+                    Poll::Pending => match woken.as_mut().map(|woken| woken.as_mut().poll(cx)) {
+                        Some(Poll::Ready(())) => {
+                            tracing::debug!("network wake; reconnecting to the sports feed now");
+                            this.backoff.reset();
+                            Step::Attempt
+                        }
+                        _ => Step::Pending,
+                    },
                 },
                 State::Connecting(attempt) => match attempt.as_mut().poll(cx) {
                     Poll::Ready(Ok(connection)) => Step::Connected(Box::new(connection)),
@@ -339,7 +373,7 @@ impl Stream for SupervisedSportsWs {
                     let asked = error.retry_after().unwrap_or_default();
                     let delay = this.backoff.take_at_least(asked);
                     tracing::warn!(%error, ?delay, "sports feed reconnect failed; retrying");
-                    this.state = State::Waiting(this.runtime.sleep(delay));
+                    this.state = this.waiting(delay, asked.is_zero());
                 }
             }
         }
@@ -529,7 +563,7 @@ mod tests {
     #[test]
     fn backoff_doubles_up_to_its_ceiling() {
         let mut backoff = Backoff::new(MS * 100, MS * 1000);
-        let delays: Vec<Duration> = (0..6).map(|_| backoff.take()).collect();
+        let delays: Vec<Duration> = (0..6).map(|_| backoff.take_with(1.0)).collect();
         assert_eq!(
             delays,
             [MS * 100, MS * 200, MS * 400, MS * 800, MS * 1000, MS * 1000]
@@ -539,22 +573,22 @@ mod tests {
     #[test]
     fn backoff_resets_only_after_a_connection_that_received_something() {
         let mut backoff = Backoff::new(MS * 100, MS * 1000);
-        backoff.take();
-        backoff.take();
+        backoff.take_with(1.0);
+        backoff.take_with(1.0);
         backoff.after_connection_ended(false);
         assert_eq!(
-            backoff.take(),
+            backoff.take_with(1.0),
             MS * 400,
             "a silent connection reset the schedule"
         );
         backoff.after_connection_ended(true);
-        assert_eq!(backoff.take(), MS * 100);
+        assert_eq!(backoff.take_with(1.0), MS * 100);
     }
 
     #[test]
     fn an_initial_delay_above_the_ceiling_is_clamped() {
         let mut backoff = Backoff::new(MS * 5000, MS * 1000);
-        assert_eq!(backoff.take(), MS * 1000);
+        assert_eq!(backoff.take_with(1.0), MS * 1000);
     }
 
     #[test]
@@ -562,8 +596,8 @@ mod tests {
         // Zero doubles to zero, which would retry a dead server on every
         // timer tick for ever.
         let mut backoff = Backoff::new(Duration::ZERO, MS * 1000);
-        assert_eq!(backoff.take(), MS);
-        assert_eq!(backoff.take(), MS * 2);
+        assert_eq!(backoff.take_with(1.0), MS);
+        assert_eq!(backoff.take_with(1.0), MS * 2);
     }
 
     #[test]
@@ -697,6 +731,72 @@ mod tests {
         assert!(
             asked.iter().all(|duration| *duration < Duration::MAX),
             "armed a never-stale timer: {asked:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_wake_cuts_a_reconnect_wait_short_and_restarts_the_backoff() {
+        // The first connection closes at once and four reconnects are
+        // refused, with steps of 100, 200, 400 and 800 ms between them; the
+        // fifth wait's step is 1.6 s, a wait of 0.8 to 1.6 s. The wake lands
+        // 200 ms into it, so the sixth attempt is dialled well before the
+        // wait's bottom. It is refused too, and the wait after it is the
+        // restarted step's (50 to 100 ms), not 3.2 s's.
+        use polyoxide_ws::{
+            test_server::{Script, ScriptedServer},
+            NetworkWake,
+        };
+
+        let mut scripts = vec![Script::close_at_once()];
+        scripts.extend((0..5).map(|_| Script::refuse_upgrade(503)));
+        scripts.push(Script::hold());
+        let server = ScriptedServer::start(scripts).await;
+        let wake = NetworkWake::new();
+        let mut feed = SportsWsBuilder::new()
+            .url(server.url.clone())
+            .backoff(MS * 100, Duration::from_secs(10))
+            .wake(wake.clone())
+            .connect()
+            .await
+            .unwrap();
+        // The feed has no task of its own: it is read while the wake fires.
+        let read = async {
+            let mut events = Vec::new();
+            for _ in 0..2 {
+                let item = tokio::time::timeout(Duration::from_secs(5), feed.next())
+                    .await
+                    .expect("an event within the window")
+                    .expect("the feed is open");
+                events.push(item.expect("not an error"));
+            }
+            events
+        };
+        let fire = async {
+            server
+                .wait_for("the fifth attempt", |s| s.connection_count() >= 5)
+                .await;
+            tokio::time::sleep(MS * 200).await;
+            assert_eq!(server.connection_count(), 5, "the wait ended unwoken");
+            wake.notify();
+        };
+        let (events, ()) = tokio::join!(read, fire);
+        assert!(
+            matches!(
+                events.as_slice(),
+                [Event::Disconnected { .. }, Event::Reconnected]
+            ),
+            "{events:?}"
+        );
+        let accepted = server.accepted_at();
+        let cut = accepted[5] - accepted[4];
+        assert!(
+            cut < MS * 700,
+            "the wake did not cut the wait short: {cut:?}"
+        );
+        let restarted = accepted[6] - accepted[5];
+        assert!(
+            restarted < MS * 700,
+            "the backoff did not restart at its initial step: {restarted:?}"
         );
     }
 }

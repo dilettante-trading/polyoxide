@@ -23,6 +23,7 @@ pub struct PredictionsWsBuilder {
     channels: BTreeSet<Channel>,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for PredictionsWsBuilder {
@@ -49,6 +50,7 @@ impl PredictionsWsBuilder {
             channels: BTreeSet::from([Channel::OrderbookDelta]),
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -88,6 +90,8 @@ impl PredictionsWsBuilder {
         /// Reconnect delay schedule: `initial`, doubling to `max` (default 500 ms to
         /// 60 s). There is no cap on attempts. A refused upgrade's `Retry-After` only
         /// lengthens the wait, up to `max`.
+        /// Each wait is drawn at random from half the step to the step, so
+        /// clients the host dropped together do not all return together.
         backoff;
         /// How long one connection attempt may take: the TCP connect, the TLS handshake
         /// and the upgrade together (default 10 s). A timed out attempt is retried like
@@ -101,6 +105,11 @@ impl PredictionsWsBuilder {
         runtime;
         /// How each attempt dials. By default the target's.
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// Connect, sign the handshake, subscribe to `tickers` on every channel chosen and start
@@ -132,6 +141,7 @@ impl PredictionsWsBuilder {
                 self.socket_transport
                     .unwrap_or_else(default_socket_transport),
             )
+            .wake(self.wake)
             .connect(membership)
             .await
     }

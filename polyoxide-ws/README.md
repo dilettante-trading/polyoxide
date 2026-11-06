@@ -5,7 +5,11 @@ they would otherwise each carry:
 
 - `ensure_crypto_provider` installs the process-default rustls provider a
   `tokio-tungstenite` connect needs.
-- `Backoff` is the reconnect delay schedule, and `Timing` holds a supervised
+- `Backoff` is the reconnect delay schedule, each wait drawn at random from
+  half its step to its step, so clients a host dropped together do not all
+  return together. `NetworkWake` is a handle a caller fires when the network
+  comes back (a browser's `online` event): a supervisor waiting to reconnect
+  redials at once and starts its schedule again. `Timing` holds a supervised
   connection's ping, staleness, backoff, connect and rotation timings, with
   `timing_setters!` for a builder and `next_wait` for the wait until the next
   deadline.
@@ -19,7 +23,7 @@ they would otherwise each carry:
   what the transport's sockets can do (send pings, see the server's pings,
   carry handshake headers). `TungsteniteTransport` is the native dial and
   `default_socket_transport` the target's choice. `transport_setters!` gives a
-  builder its `runtime` and `socket_transport` setters, `Connection::with_runtime`
+  builder its `runtime`, `socket_transport` and `wake` setters, `Connection::with_runtime`
   and the `Supervisor`'s `runtime` and `socket_transport` setters put a
   connection's and a supervisor's clocks, timers and spawns on the injected
   runtime and its dial on the injected transport, and a transport that cannot
@@ -124,10 +128,13 @@ let timing = FeedBuilder::default()
     .backoff(Duration::from_millis(100), Duration::from_millis(300))
     .timing;
 let mut backoff = timing.backoff();
-let waits: Vec<_> = (0..4).map(|_| backoff.take()).collect();
-assert_eq!(waits, [100, 200, 300, 300].map(Duration::from_millis));
+// The steps double to the ceiling; `take_with(1.0)` waits each step exactly.
+let steps: Vec<_> = (0..4).map(|_| backoff.take_with(1.0)).collect();
+assert_eq!(steps, [100, 200, 300, 300].map(Duration::from_millis));
 
-// A connection that delivered something starts the schedule over.
+// A connection that delivered something starts the schedule over, and a
+// supervisor's `take` waits between half the step and the step.
 backoff.after_connection_ended(true);
-assert_eq!(backoff.take(), Duration::from_millis(100));
+let wait = backoff.take();
+assert!(wait >= Duration::from_millis(50) && wait <= Duration::from_millis(100));
 ```

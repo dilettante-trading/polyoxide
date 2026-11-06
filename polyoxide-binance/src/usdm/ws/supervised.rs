@@ -108,6 +108,7 @@ pub struct UsdmWsBuilder {
     streams: Vec<StreamName>,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for UsdmWsBuilder {
@@ -129,6 +130,7 @@ impl UsdmWsBuilder {
             streams: Vec::new(),
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -160,6 +162,8 @@ impl UsdmWsBuilder {
         /// delivered an update. Both are raised to at least 1 ms, and an
         /// `initial` above `max` is lowered to `max`. A reconnect refused with
         /// a `Retry-After` waits at least that long, up to `max` (DRIFT R11).
+        /// Each wait is drawn at random from half the step to the step, so
+        /// clients the host dropped together do not all return together.
         backoff;
         /// How long one connection attempt may take to open.
         connect_timeout;
@@ -176,6 +180,11 @@ impl UsdmWsBuilder {
         runtime;
         /// How each path's connection dials. By default the target's.
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// The streams to open with.
@@ -197,6 +206,7 @@ impl UsdmWsBuilder {
             streams: self.streams,
             runtime: self.runtime,
             socket_transport: self.socket_transport,
+            wake: self.wake,
         })
         .await?;
         Ok(SupervisedUsdmWs { inner })
@@ -362,23 +372,23 @@ mod tests {
     #[test]
     fn backoff_doubles_to_the_ceiling_and_resets_after_a_working_connection() {
         let mut b = Backoff::new(Duration::from_millis(100), Duration::from_millis(350));
-        assert_eq!(b.take(), Duration::from_millis(100));
-        assert_eq!(b.take(), Duration::from_millis(200));
-        assert_eq!(b.take(), Duration::from_millis(350));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(100));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(200));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(350));
         b.after_connection_ended(true);
-        assert_eq!(b.take(), Duration::from_millis(100));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(100));
         b.after_connection_ended(false);
-        assert_eq!(b.take(), Duration::from_millis(200));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(200));
     }
 
     #[test]
     fn a_zero_initial_delay_still_grows_and_a_huge_one_saturates() {
         let mut b = Backoff::new(Duration::ZERO, Duration::from_secs(1));
-        assert_eq!(b.take(), Duration::from_millis(1));
-        assert_eq!(b.take(), Duration::from_millis(2));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(1));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(2));
         let mut b = Backoff::new(Duration::MAX, Duration::MAX);
-        assert_eq!(b.take(), Duration::MAX);
-        assert_eq!(b.take(), Duration::MAX);
+        assert_eq!(b.take_with(1.0), Duration::MAX);
+        assert_eq!(b.take_with(1.0), Duration::MAX);
     }
 
     /// A runtime that counts its spawns and runs them on tokio's.

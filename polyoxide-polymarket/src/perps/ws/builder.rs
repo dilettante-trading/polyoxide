@@ -17,6 +17,7 @@ pub struct PerpsWsBuilder {
     timing: Timing,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for PerpsWsBuilder {
@@ -35,6 +36,7 @@ impl PerpsWsBuilder {
             timing: Timing::default(),
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -62,6 +64,8 @@ impl PerpsWsBuilder {
         /// are raised to at least 1 ms, and an `initial` above `max` is lowered
         /// to `max`. A reconnect refused with a `Retry-After` waits at least
         /// that long, up to `max` (DRIFT R11).
+        /// Each wait is drawn at random from half the step to the step, so
+        /// clients the host dropped together do not all return together.
         ///
         /// The same schedule spaces the three retries of a rate-limited
         /// subscribe, and those retries share the change's `stale_after`
@@ -83,6 +87,11 @@ impl PerpsWsBuilder {
         runtime;
         /// How each attempt dials. By default the target's.
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// Open the connection, subscribe, and start supervising.
@@ -105,6 +114,7 @@ impl PerpsWsBuilder {
                 self.socket_transport
                     .unwrap_or_else(default_socket_transport),
             )
+            .wake(self.wake)
             .connect(channels)
             .await
     }
@@ -168,13 +178,13 @@ mod tests {
     #[test]
     fn backoff_doubles_to_the_ceiling_and_resets_after_a_working_connection() {
         let mut b = Backoff::new(Duration::from_millis(100), Duration::from_millis(350));
-        assert_eq!(b.take(), Duration::from_millis(100));
-        assert_eq!(b.take(), Duration::from_millis(200));
-        assert_eq!(b.take(), Duration::from_millis(350));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(100));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(200));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(350));
         b.after_connection_ended(true);
-        assert_eq!(b.take(), Duration::from_millis(100));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(100));
         b.after_connection_ended(false);
-        assert_eq!(b.take(), Duration::from_millis(200));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(200));
     }
 
     #[test]
@@ -182,15 +192,15 @@ mod tests {
         // Zero doubles to zero, which would retry a dead server on every
         // timer tick for ever.
         let mut b = Backoff::new(Duration::ZERO, Duration::from_secs(1));
-        assert_eq!(b.take(), Duration::from_millis(1));
-        assert_eq!(b.take(), Duration::from_millis(2));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(1));
+        assert_eq!(b.take_with(1.0), Duration::from_millis(2));
     }
 
     #[test]
     fn a_huge_delay_saturates_instead_of_panicking() {
         let mut b = Backoff::new(Duration::MAX, Duration::MAX);
-        assert_eq!(b.take(), Duration::MAX);
-        assert_eq!(b.take(), Duration::MAX);
+        assert_eq!(b.take_with(1.0), Duration::MAX);
+        assert_eq!(b.take_with(1.0), Duration::MAX);
     }
 
     #[tokio::test]

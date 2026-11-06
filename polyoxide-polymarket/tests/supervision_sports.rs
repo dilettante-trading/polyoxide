@@ -187,9 +187,10 @@ async fn backoff_grows_while_connections_receive_nothing() {
         .await;
     reader.abort();
     let gaps = gaps(&server.accepted_at()[..6]);
-    // Tokio sleeps never finish early, so each gap is at least its delay.
+    // Tokio sleeps never finish early, so each gap is at least its delay,
+    // which is drawn from no lower than half its step (the jitter).
     for (k, gap) in gaps.iter().enumerate() {
-        let floor = Duration::from_millis(40) * 2u32.pow(k as u32);
+        let floor = Duration::from_millis(20) * 2u32.pow(k as u32);
         assert!(
             *gap >= floor,
             "gap {k} was {gap:?}, under its {floor:?} delay: {gaps:?}"

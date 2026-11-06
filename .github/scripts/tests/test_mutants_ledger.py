@@ -85,22 +85,26 @@ SNIPPETS = {
     ("polyoxide-polymarket/tests/mock_clob.rs", 3530): "fn fak_unmatched_maps_to_typed_error_not_generic_validation(",
     ("polyoxide-polymarket/tests/mock_clob.rs", 3564): "fn fok_unfilled_maps_to_typed_error_not_generic_validation(",
     ("polyoxide-polymarket/tests/mock_clob.rs", 3628): "fn fak_prose_on_non_400_status_is_not_reclassified(",
-    ("polyoxide-ws/src/backoff.rs", 84): "self.take().max(floor.min(self.max))",
-    ("polyoxide-ws/src/backoff.rs", 207): "fn a_floor_extends_the_delay_and_never_shortens_it_drift_r11(",
-    ("polyoxide-ws/src/backoff.rs", 223): "fn a_floor_past_the_ceiling_waits_the_ceiling_drift_r11(",
+    ("polyoxide-ws/src/backoff.rs", 122): "self.take_with(unit).max(floor.min(self.max))",
+    ("polyoxide-ws/src/backoff.rs", 277): "fn a_floor_extends_the_delay_and_never_shortens_it_drift_r11(",
+    ("polyoxide-ws/src/backoff.rs", 296): "fn a_floor_past_the_ceiling_waits_the_ceiling_drift_r11(",
+    ("polyoxide-ws/src/backoff.rs", 421):
+        "fn a_floor_raises_a_low_draw_and_stays_under_the_ceiling_drift_r11(",
     ("polyoxide-ws/src/supervisor/tests.rs", 753):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
     ("polyoxide-ws/src/supervisor/tests.rs", 775):
         "async fn a_retry_after_past_the_ceiling_waits_the_ceiling_drift_r11(",
     ("polyoxide-ws/src/supervisor/tests.rs", 795):
         "async fn a_start_in_an_outage_waits_out_the_first_refusals_retry_after_drift_r11(",
-    ("polyoxide-polymarket/src/perps/ws/builder.rs", 730):
+    ("polyoxide-ws/src/supervisor/tests.rs", 1705):
+        "async fn a_wake_does_not_cut_a_wait_a_retry_after_asked_for_drift_r11(",
+    ("polyoxide-polymarket/src/perps/ws/builder.rs", 740):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-binance/tests/supervision_usdm_kit.rs", 437):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-polymarket/tests/supervision_rtds.rs", 327):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
-    ("polyoxide-polymarket/src/sports/supervised.rs", 484):
+    ("polyoxide-polymarket/src/sports/supervised.rs", 518):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
     ("polyoxide-binance/src/spot/api/market.rs", 167): ".route(Route::Depth { limit: Some(limit) })",
     ("polyoxide-binance/src/spot/ws/mod.rs", 85): "pub const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(500);",

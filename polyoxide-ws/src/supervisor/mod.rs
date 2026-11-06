@@ -19,7 +19,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::{
     default_socket_transport,
     tungstenite::{self, handshake::client::Request, Message},
-    BoxSocket, Connection, SocketTransport, Timing, WsError,
+    BoxSocket, Connection, NetworkWake, SocketTransport, Timing, WsError,
 };
 use task::{Command, Receiver, Start, Task};
 
@@ -379,6 +379,7 @@ pub struct Supervisor<P: Protocol> {
     timing: Timing,
     runtime: Option<Arc<dyn Runtime>>,
     transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<NetworkWake>,
 }
 
 impl<P: Protocol> Supervisor<P> {
@@ -391,6 +392,7 @@ impl<P: Protocol> Supervisor<P> {
             timing,
             runtime: None,
             transport: None,
+            wake: None,
         }
     }
 
@@ -403,6 +405,16 @@ impl<P: Protocol> Supervisor<P> {
     /// Dial every attempt through `transport`.
     pub fn socket_transport(mut self, transport: Arc<dyn SocketTransport>) -> Self {
         self.transport = Some(transport);
+        self
+    }
+
+    /// Cut a reconnect wait short when `wake` fires: the task redials at once
+    /// and starts its backoff again from the initial delay. A wait that a
+    /// refusal's `Retry-After` asked for is waited in full (DRIFT R11). Takes
+    /// a [`NetworkWake`] or an `Option` of one, so a builder passes its own
+    /// unset field through; `None`, the default, is no wake.
+    pub fn wake(mut self, wake: impl Into<Option<NetworkWake>>) -> Self {
+        self.wake = wake.into();
         self
     }
 
@@ -479,7 +491,8 @@ impl<P: Protocol> Supervisor<P> {
             commands_rx,
             Arc::clone(&runtime),
             transport,
-        );
+        )
+        .wake(self.wake);
         Supervised {
             events: receiver,
             commands,

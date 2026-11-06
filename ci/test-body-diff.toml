@@ -1998,3 +1998,93 @@ file = "polyoxide-polymarket/tests/polymarket_limits.rs"
 item = "documented_data_limits::measured_v2"
 row = "R27"
 sha256 = "3f27a9e9b43e266e47d82e368e17e50af03db973dd06b53e773a4d66fd88fde1"
+
+[[drift]]
+file = "polyoxide-binance/src/usdm/ws/supervised.rs"
+item = "tests::a_zero_initial_delay_still_grows_and_a_huge_one_saturates"
+row = "R28"
+sha256 = "0725bed3c994e0c7a1ab06b9253a23181d08da2722cdd56c82758b45c452a440"
+
+[[drift]]
+file = "polyoxide-binance/src/usdm/ws/supervised.rs"
+item = "tests::backoff_doubles_to_the_ceiling_and_resets_after_a_working_connection"
+row = "R28"
+sha256 = "507c3b3e7a186b54835da4f82aec1b355c923d76057ee7fcd0fbf30b5dad46de"
+
+[[drift]]
+file = "polyoxide-polymarket/src/perps/ws/builder.rs"
+item = "tests::a_huge_delay_saturates_instead_of_panicking"
+row = "R28"
+sha256 = "154dd294c7d98ac97932eca6632fd8749333b8a2b11f871cacc5201e92c2fe04"
+
+[[drift]]
+file = "polyoxide-polymarket/src/perps/ws/builder.rs"
+item = "tests::a_zero_initial_delay_still_grows"
+row = "R28"
+sha256 = "0674de726a8868510b6144da5f1dc693ce3f987caa343424d297b2cb0ecf965c"
+
+[[drift]]
+file = "polyoxide-polymarket/src/perps/ws/builder.rs"
+item = "tests::backoff_doubles_to_the_ceiling_and_resets_after_a_working_connection"
+row = "R28"
+sha256 = "507c3b3e7a186b54835da4f82aec1b355c923d76057ee7fcd0fbf30b5dad46de"
+
+[[drift]]
+file = "polyoxide-polymarket/src/rtds/supervisor.rs"
+item = "tests::against_a_local_server::delays_while_running"
+row = "R28"
+sha256 = "b0d6b53e576db317301b5f294387ab6cab616c34c78098f083ac82632114fd0d"
+
+[[drift]]
+file = "polyoxide-polymarket/src/sports/supervised.rs"
+item = "tests::a_zero_initial_delay_still_grows"
+row = "R28"
+sha256 = "3265519b4a7ac8dd10f6a25b720967bd6a2f253874ed52f602d50d8f6e3bb323"
+
+[[drift]]
+file = "polyoxide-polymarket/src/sports/supervised.rs"
+item = "tests::an_initial_delay_above_the_ceiling_is_clamped"
+row = "R28"
+sha256 = "a12af52a1390560790e29a3bbdd042ed1346b7008e4e6e683e964d2a04db6c63"
+
+[[drift]]
+file = "polyoxide-polymarket/src/sports/supervised.rs"
+item = "tests::backoff_doubles_up_to_its_ceiling"
+row = "R28"
+sha256 = "969c200827e108eb9a5a26ee194f66dc2fa7aeadbb7ddf20b51deed817a0b90d"
+
+[[drift]]
+file = "polyoxide-polymarket/src/sports/supervised.rs"
+item = "tests::backoff_resets_only_after_a_connection_that_received_something"
+row = "R28"
+sha256 = "68af6a3fafd372bf71ed2cd4158ca19d3eef3319f88a24bf736bd86740d0968a"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/supervision_sports.rs"
+item = "backoff_grows_while_connections_receive_nothing"
+row = "R28"
+sha256 = "f12d7fb0c561a458ea50b4f80f2c26892eeda74660225caa7800a09d3beee459"
+
+[[drift]]
+file = "polyoxide-ws/src/backoff.rs"
+item = "tests::backoff_schedule::a_floor_extends_the_delay_and_never_shortens_it_drift_r11"
+row = "R28"
+sha256 = "0a82b746ff774a965bf0a07fc2b97e69060e10d3d3251e466731f0b2bb2c3374"
+
+[[drift]]
+file = "polyoxide-ws/src/backoff.rs"
+item = "tests::backoff_schedule::only_a_connection_that_delivered_something_resets_the_schedule"
+row = "R28"
+sha256 = "018af1d4359d2732247b8e4622d9f5954568ba6d5c3813741382420e77c04681"
+
+[[drift]]
+file = "polyoxide-ws/src/backoff.rs"
+item = "tests::backoff_schedule::take_n"
+row = "R28"
+sha256 = "9c16c3f25b6d75bbbd140ed840ac4a8bba3d0c05bab7a397a84cab73a81c5b80"
+
+[[drift]]
+file = "polyoxide-ws/src/timing.rs"
+item = "tests::each_setter_writes_its_own_field"
+row = "R28"
+sha256 = "1e43cf83bd5d3ac17d414a6c193109fd8ea8f6d76c3cd987a73eb87394901add"

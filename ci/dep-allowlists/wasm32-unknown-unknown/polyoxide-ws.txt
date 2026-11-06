@@ -10,6 +10,7 @@ cfg-if
 crypto-common
 data-encoding
 digest
+fastrand
 futures-channel
 futures-core
 futures-macro
