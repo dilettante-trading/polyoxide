@@ -25,8 +25,10 @@ paths:
   pins the owner's and the session key's signatures (py-sdk 0.12.0).
 - The role (owner or session key) is never inferred from addresses:
   `SigningTarget::DepositWallet { wallet, role }` carries it.
-- **No mirror.** The published OpenAPI omits almost all of it (the relay mirror documents only
-  `GET /deployed?type=WALLET`). `docs/specs/session-keys/` holds the contract (`README.md`) and the
+- **No mirror.** The published OpenAPI omits most of it: the relay mirror documents only
+  `GET /deployed?type=WALLET`, and the CLOB mirror (since #91) only `signatureType` 3 and the
+  wallet-wide `GET /data/wallet-open-orders` and `DELETE /cancel-wallet-orders`, which the crate
+  does not implement yet. `docs/specs/session-keys/` holds the contract (`README.md`) and the
   SDK behaviours the pages omit (`OBSERVED.md`): signature type 3,
   `GET /v1/user/session-signers`, and the relayer's `type: WALLET` dialect with
   `/v1/session-signers/*` and `/v1/account/transactions/*`.

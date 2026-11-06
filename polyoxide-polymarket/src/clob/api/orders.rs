@@ -19,8 +19,10 @@ impl Orders {
     /// List the user's live orders (`GET /data/orders`).
     ///
     /// Canceled and fully matched orders are not listed, with one exception
-    /// upstream documents: filtering with [`ListOrders::id`] returns that order
-    /// whatever its status. [`Orders::get`] does the same for a single ID.
+    /// upstream documents: filtering with [`ListOrders::id`] also returns a
+    /// canceled or fully matched order, but only within an hour of it ending.
+    /// [`Orders::get`] reads a single ID whatever its status, and upstream states
+    /// no such window for it; past fills are on `GET /data/trades`.
     ///
     /// Results are cursor-paginated; feed `next_cursor` from the response back
     /// via [`ListOrders::next_cursor`] to fetch the next page.
@@ -278,8 +280,8 @@ impl ListOrders {
     polyoxide_core::query_setters! {
         /// Filter by a specific order ID.
         ///
-        /// This lifts the live-only restriction: the order is returned whatever its
-        /// status, including canceled or fully matched.
+        /// This lifts the live-only restriction, for an hour: a canceled or fully
+        /// matched order is returned only within an hour of it ending.
         id: impl Into<String> => "id",
         /// Filter by market (condition ID).
         market: impl Into<String> => "market",

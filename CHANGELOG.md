@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+- **CLOB OpenAPI drift (#91).** Mirror and docs, with no code change. Upstream enumerates
+  `signatureType` 3 (`POLY_1271`, a Deposit Wallet) on `Order` and on the `signature_type`
+  parameter of `/balance-allowance`, `/balance-allowance/update`, `/notifications` and the
+  `/rewards/user*` routes; `SignatureType::Poly1271` already sends 3 on every one. Upstream also
+  adds two Deposit Wallet routes the client does not implement yet, `GET /data/wallet-open-orders`
+  (every live order on the wallet, whichever key placed it) and `DELETE /cancel-wallet-orders`
+  (the owner cancels across every key), and warns that `ListOrders::id` returns a canceled or
+  fully matched order only within the last hour, which its doc now says.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host

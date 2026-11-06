@@ -3,9 +3,13 @@
 **There is no machine-readable mirror for this surface.** Polymarket's published
 OpenAPI documents (`../clob/openapi.yaml`, `../relay/openapi.yaml`) barely touch it.
 The relay mirror documents only `GET /deployed?type=WALLET`, and its `/submit`
-`type` enumerates `SAFE` and `PROXY` only. The CLOB mirror's `signatureType` still
-enumerates 0–2. None of `/v1/user/session-signers`, `/v1/session-signers/*`,
-`/v1/account/transactions/params` or `/v1/account/transactions/{id}` appears.
+`type` enumerates `SAFE` and `PROXY` only. Since #91 (2026-11) the CLOB mirror
+enumerates `signatureType` 3 (`POLY_1271`) on `Order` and on every `signature_type`
+query parameter, says that a session signer posts `/order` with the Deposit Wallet as
+both `maker` and `signer`, and documents two Deposit Wallet routes (see
+[L2 auth and visibility](#l2-auth-and-visibility)). None of `/v1/user/session-signers`,
+`/v1/session-signers/*`, `/v1/account/transactions/params` or
+`/v1/account/transactions/{id}` appears.
 `nightly-schema.yml` therefore has nothing
 to diff and deliberately excludes this directory (see the "Deliberately absent"
 comment in the workflow). This file is the contract record; [OBSERVED.md](OBSERVED.md)
@@ -93,7 +97,21 @@ L2 is unchanged (HMAC over `timestamp + method + path [+ body]`). Visibility is 
 by the submitting key **in both directions**: a session key lists only its own orders
 and trades, and *"A Deposit Wallet Owner cannot fetch orders submitted by its
 authorized Session Keys"* (session-keys.md, Considerations). A caller who needs a
-whole-wallet view must query with every key it holds.
+whole-wallet view must query with every key it holds, or use the two wallet-wide routes
+the CLOB OpenAPI added in #91 (2026-11), which no SDK calls yet:
+
+- `GET /data/wallet-open-orders` lists every live order on the caller's Deposit Wallet,
+  whichever signer or key placed it, newest first in pages of about 500 (`market`,
+  `asset_id`, up to 50 `session_keys`, `cursor`; page until `next_cursor` is empty, even
+  past an empty page). L2 headers, or `POLY_READONLY_API_KEY` with `POLY_ADDRESS`; the
+  address must be the owner or a non-revoked session signer.
+- `DELETE /cancel-wallet-orders` (also `/v1/gateway/cancel-wallet-orders`) cancels across
+  every key, expired session signers' included, with exactly one of `order_ids` (up to
+  1000) or `all: true`, answering `CancelOrdersResponse`. Owner credentials only; a session
+  signer gets `403`. It shares the cancel bucket with `DELETE /orders` and `/cancel-all`.
+
+A wallet holds at most 15 non-revoked session signers, expired ones counting, and an
+authorization or revocation takes up to about 5 seconds to show on either route.
 
 ## Session-signers list
 
@@ -186,7 +204,8 @@ asking `GET /deployed` for each; `resolve_wallet` does so (four requests on Poly
 | Trading approvals | `RelayClient::deposit_wallet_trading_approvals` | `relay_vectors.json` (`trading_approvals`) |
 
 Not covered: creating a Deposit Wallet (`WALLET_CREATE`), Combos with a session key
-(both SDKs refuse it), the Python bindings and the CLI.
+(both SDKs refuse it), `GET /data/wallet-open-orders` and `DELETE /cancel-wallet-orders`,
+the Python bindings and the CLI.
 
 ## Live verification
 
