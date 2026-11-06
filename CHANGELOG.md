@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+- **CLOB market-socket AsyncAPI drift (#92).** Upstream rewords `SubscriptionRequest.initial_dump`:
+  later subscriptions ignore it. Probed live: the flag governs only a connection's first
+  subscription frame, and every later `subscribe` update sends a book for each asset it adds, even
+  when the first frame turned the dump off or the update itself sends `initial_dump: false`
+  (`docs/specs/clob/OBSERVED.md`). No code change: the supervised socket's replay is each
+  connection's first frame, and nothing waits on a snapshot. The docs of
+  `MarketSubscriptionOptions::initial_dump`, `MarketSubscriptionUpdate`, `MarketWsBuilder::options`
+  and `MarketEvent::Reconnected` now say so.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host
