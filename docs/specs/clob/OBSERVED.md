@@ -55,3 +55,32 @@ Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly 
   subscription (measured 2026-11-02 with `PING`), so the nightly job opens with the empty
   subscription `{"assets_ids":[],"type":"market"}`, which the host keeps open, and holds the
   socket until the first data frame or 20 s.
+
+## Market socket: `initial_dump` governs only the first subscription frame
+
+Probed 2026-11-06 (#92), unauthenticated, on `wss://ws-subscriptions-clob.polymarket.com/ws/market`,
+each case on a fresh socket and run twice on different tokens. The mirror's
+`SubscriptionRequest.initial_dump` now says "Subsequent subscriptions ignore this"; the host
+goes further than that wording:
+
+| First frame (`{"type":"market",…}`) | Then | Book snapshot |
+|---|---|---|
+| `[a1]`, `initial_dump: false` | — | none for `a1` |
+| `[a1]`, `initial_dump: false` | `{"operation":"subscribe","assets_ids":[a2]}` | `a2`, ~157 ms |
+| `[a1]`, `initial_dump: false` | the same update with `"initial_dump": false` | yes, ~157 ms |
+| `[a1]`, default | the same update with `"initial_dump": false` | yes, ~160 ms |
+| `[]`, `initial_dump: false` | update subscribe `[a1]` | `a1`, ~157 ms |
+| `[a1]`, `initial_dump: false` | unsubscribe `a1`, then subscribe `a1` | `a1`, ~157 ms |
+| `[a1]`, `initial_dump: false` | a second full frame `[a1, a2]`, `initial_dump: true` | none |
+| `[a1]`, `initial_dump: true` | a second full frame `[a2]`, `initial_dump: false` | none (and `a1`'s ~160 ms) |
+
+- The flag is honoured only in a connection's first subscription frame.
+- Every `subscribe` update sends a book for each newly added asset, whatever the first frame's
+  `initial_dump` and whatever `initial_dump` the update carries, which `SubscriptionRequestUpdate`
+  does not list anyway.
+- A second full subscription frame on a live socket changes nothing and sends no book either way
+  (as found 2026-09-09: it is not additive).
+
+So the client's `MarketSubscriptionOptions::initial_dump` applies to the subscribe frame a socket
+opens with, which the supervised market socket replays as each fresh connection's first frame; a
+later membership change cannot turn the snapshot off.
