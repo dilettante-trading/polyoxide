@@ -248,7 +248,10 @@ mod tests {
                 max_connection_age: Some(secs(6)),
             }
         );
-        assert_eq!(builder.timing.backoff().take(), Duration::from_millis(3));
+        assert_eq!(
+            builder.timing.backoff().take_with(1.0),
+            Duration::from_millis(3)
+        );
     }
 
     #[test]

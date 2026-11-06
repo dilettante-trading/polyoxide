@@ -14,8 +14,8 @@ use std::{
 use futures_util::StreamExt;
 use polyoxide_rt::{default_runtime, spawn, Runtime, Task};
 use polyoxide_ws::{
-    default_socket_transport, MembershipHandle as PathHandle, SocketTransport, Supervised,
-    Supervisor, Timing,
+    default_socket_transport, MembershipHandle as PathHandle, NetworkWake, SocketTransport,
+    Supervised, Supervisor, Timing,
 };
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -37,16 +37,19 @@ pub(crate) struct Settings<S: StreamSet> {
     pub(crate) runtime: Option<Arc<dyn Runtime>>,
     /// How each path's connection dials; the target's when `None`.
     pub(crate) socket_transport: Option<Arc<dyn SocketTransport>>,
+    /// What cuts every path's reconnect wait short, if anything does.
+    pub(crate) wake: Option<NetworkWake>,
 }
 
 impl<S: StreamSet> Settings<S> {
-    /// The supervisor for one path's connection, on the settings' runtime and
-    /// transport when they are set.
+    /// The supervisor for one path's connection, on the settings' runtime,
+    /// transport and wake when they are set.
     fn supervisor(&self, path: S::Path) -> Supervisor<BinanceProtocol<S>> {
         let supervisor = Supervisor::new(
             BinanceProtocol::new(self.base_url.clone(), path),
             self.timing,
-        );
+        )
+        .wake(self.wake.clone());
         let supervisor = match &self.runtime {
             Some(runtime) => supervisor.runtime(Arc::clone(runtime)),
             None => supervisor,

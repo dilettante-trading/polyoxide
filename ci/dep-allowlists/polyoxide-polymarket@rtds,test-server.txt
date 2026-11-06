@@ -12,6 +12,7 @@ crypto-common
 data-encoding
 digest
 displaydoc
+fastrand
 form_urlencoded
 futures-channel
 futures-core

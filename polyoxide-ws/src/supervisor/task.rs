@@ -13,7 +13,7 @@ use polyoxide_rt::{timeout, Instant, Runtime};
 use tokio::sync::{mpsc, oneshot};
 
 use super::{Decoded, Offline, Outage, Protocol, Queue, Recovery};
-use crate::{Backoff, Connection, Kind, Mode, SocketTransport, Timing, WsError};
+use crate::{Backoff, Connection, Kind, Mode, NetworkWake, SocketTransport, Timing, WsError};
 
 /// How long a polite close may take before the connection is dropped: a peer
 /// that has stopped reading would otherwise hold it.
@@ -279,6 +279,34 @@ async fn close_politely(runtime: &dyn Runtime, connection: &mut Connection) {
     let _ = timeout(runtime, CLOSE_WAIT, connection.close()).await;
 }
 
+/// One wait before a reconnect attempt, and whether a wake may cut it short.
+#[derive(Debug, Clone, Copy)]
+struct Wait {
+    delay: Duration,
+    wakeable: bool,
+}
+
+impl Wait {
+    /// A wait that is not the backoff's, such as a rotation's zero: no wake
+    /// cuts it.
+    fn fixed(delay: Duration) -> Self {
+        Self {
+            delay,
+            wakeable: false,
+        }
+    }
+
+    /// The backoff's `delay` after a failure that `asked` for a wait (zero
+    /// for none). A wake cuts it only when nothing was asked: a `Retry-After`
+    /// is waited in full (DRIFT R11).
+    fn after(asked: Duration, delay: Duration) -> Self {
+        Self {
+            delay,
+            wakeable: asked.is_zero(),
+        }
+    }
+}
+
 pub(super) struct Task<P: Protocol> {
     protocol: P,
     timing: Timing,
@@ -297,6 +325,8 @@ pub(super) struct Task<P: Protocol> {
     runtime: Arc<dyn Runtime>,
     /// How each attempt dials.
     transport: Arc<dyn SocketTransport>,
+    /// What cuts a reconnect wait short, if anything does.
+    wake: Option<NetworkWake>,
 }
 
 impl<P: Protocol> Task<P> {
@@ -320,7 +350,14 @@ impl<P: Protocol> Task<P> {
             held: VecDeque::new(),
             runtime,
             transport,
+            wake: None,
         }
+    }
+
+    /// Cut a reconnect wait short when `wake` fires.
+    pub(super) fn wake(mut self, wake: Option<NetworkWake>) -> Self {
+        self.wake = wake;
+        self
     }
 
     /// The time since `at` on the task's runtime.
@@ -349,10 +386,14 @@ impl<P: Protocol> Task<P> {
             let mut connection = match up.take() {
                 Some(connection) => connection,
                 None => {
-                    let delay = next_delay.take().unwrap_or_else(|| {
-                        self.backoff.take_at_least(asked.take().unwrap_or_default())
-                    });
-                    match self.reconnect(delay).await {
+                    let wait = match next_delay.take() {
+                        Some(delay) => Wait::fixed(delay),
+                        None => {
+                            let asked = asked.take().unwrap_or_default();
+                            Wait::after(asked, self.backoff.take_at_least(asked))
+                        }
+                    };
+                    match self.reconnect(wait).await {
                         Recovered::Up(connection) => {
                             let event = self.protocol.reconnected();
                             self.pending.push_back(Ok(event));
@@ -448,16 +489,27 @@ impl<P: Protocol> Task<P> {
         }
     }
 
-    /// Wait out `delay`, then connect and replay, repeating with the backoff
+    /// Wait out `wait`, then connect and replay, repeating with the backoff
     /// while recovery retries. Pending items are queued meanwhile, and
     /// changes go to [`Protocol::record`] during the wait; one made during an
-    /// attempt waits for it.
-    async fn reconnect(&mut self, mut delay: Duration) -> Recovered<P::Error> {
+    /// attempt waits for it. A wake cuts a wait that it may cut short, and
+    /// starts the backoff again.
+    async fn reconnect(&mut self, mut wait: Wait) -> Recovered<P::Error> {
         loop {
             if !P::wanted(&self.membership) {
                 return Recovered::NotWanted;
             }
-            let mut sleep = self.runtime.sleep(delay);
+            let mut sleep = self.runtime.sleep(wait.delay);
+            let notified = match &self.wake {
+                Some(wake) if wait.wakeable => Some(wake.notified()),
+                _ => None,
+            };
+            let mut woken = std::pin::pin!(async move {
+                match notified {
+                    Some(notified) => notified.await,
+                    None => std::future::pending().await,
+                }
+            });
             loop {
                 tokio::select! {
                     biased;
@@ -480,6 +532,11 @@ impl<P: Protocol> Task<P> {
                         }
                     },
                     () = &mut sleep => break,
+                    () = &mut woken => {
+                        tracing::debug!("network wake; reconnecting now");
+                        self.backoff.reset();
+                        break;
+                    }
                 }
             }
             let attempted = tokio::select! {
@@ -501,7 +558,8 @@ impl<P: Protocol> Task<P> {
                         // A refusal's `Retry-After` only extends the wait,
                         // up to the ceiling (DRIFT R11).
                         let asked = self.protocol.retry_after(&err).unwrap_or_default();
-                        delay = self.backoff.take_at_least(asked);
+                        wait = Wait::after(asked, self.backoff.take_at_least(asked));
+                        let delay = wait.delay;
                         tracing::warn!(%err, ?delay, "WebSocket reconnect failed, retrying");
                     }
                 },

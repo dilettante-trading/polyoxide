@@ -15,6 +15,9 @@ categories = ["api-bindings", "web-programming::websocket"]
 # `polyoxide-venue`. `ci/dep-allowlists/polyoxide-ws*.txt` pins the whole
 # normal tree, and CI's scripts job fails on any crate outside it.
 [dependencies]
+# The reconnect jitter's draw (`Backoff::take`), as polyoxide-core's HTTP
+# retry jitter draws it.
+fastrand = { workspace = true }
 futures-util = { workspace = true, features = ["sink"] }
 # `Box<S>: Sink` is behind futures-sink's `alloc`, which futures-util does not
 # turn on, and `BoxSocket` is a boxed sink.
@@ -41,7 +44,10 @@ tokio-tungstenite = { workspace = true }
 
 # The browser's transport (`WebSocketTransport`, D8): its `WebSocket`, the
 # callbacks it needs and the wrapper that keeps their handles on one thread.
+# fastrand's `js` feature seeds the reconnect jitter from the browser, which
+# otherwise has one fixed seed on wasm32, so every page would draw alike.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+fastrand = { workspace = true, features = ["js"] }
 js-sys = { workspace = true }
 send_wrapper = { workspace = true, features = ["futures"] }
 wasm-bindgen = { workspace = true }
@@ -62,5 +68,5 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "syn
 # CLAUDE.md's crate list carries. Run `python3 scripts/gen_registry.py --write`
 # after an edit.
 [package.metadata.polyoxide]
-readme = "The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`)"
-notes = ["depends on neither `polyoxide-core` nor `polyoxide-venue`; on a host it builds tokio, tokio-tungstenite and rustls, and on `wasm32` the browser's `WebSocket` through web-sys, with polyoxide-rt, tungstenite, futures-util, thiserror and tracing on both"]
+readme = "The socket kit: the TLS install, `Backoff` (jittered) and `NetworkWake`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`)"
+notes = ["depends on neither `polyoxide-core` nor `polyoxide-venue`; on a host it builds tokio, tokio-tungstenite and rustls, and on `wasm32` the browser's `WebSocket` through web-sys, with polyoxide-rt, tungstenite, fastrand (the reconnect jitter; its `js` seed on `wasm32`), futures-util, thiserror and tracing on both"]

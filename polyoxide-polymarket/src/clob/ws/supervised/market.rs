@@ -300,6 +300,7 @@ pub struct MarketWsBuilder {
     timing: Timing,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for MarketWsBuilder {
@@ -317,6 +318,7 @@ impl MarketWsBuilder {
             timing: default_timing(),
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -356,6 +358,8 @@ impl MarketWsBuilder {
         /// are raised to at least 1 ms, and an `initial` above `max` is lowered
         /// to `max`. A reconnect refused with a `Retry-After` waits at least
         /// that long, up to `max` (DRIFT R11).
+        /// Each wait is drawn at random from half the step to the step, so
+        /// clients the host dropped together do not all return together.
         backoff;
         /// How long one step of a connection attempt may take, for each
         /// address the host resolves to: the TCP connect, and then the TLS
@@ -371,6 +375,11 @@ impl MarketWsBuilder {
         /// How each attempt dials. By default the kit's per-address dial,
         /// which tries every address the host resolves to (D20).
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// Open the connection, subscribe to `asset_ids`, and start supervising.
@@ -387,6 +396,7 @@ impl MarketWsBuilder {
         Supervisor::new(ClobMarketProtocol::new(self.url, self.options), self.timing)
             .runtime(self.runtime.unwrap_or_else(default_runtime))
             .socket_transport(clob_transport(self.socket_transport))
+            .wake(self.wake)
             .connect(membership)
             .await
     }

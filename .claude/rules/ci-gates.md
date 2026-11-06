@@ -291,7 +291,7 @@ stage does not hold, printing each one's key to copy there.
   S3's way, since the manifest is S2's and final; an entry gives exactly one); and on any
   `[files]`, `[fixtures]`, `[literals]`, `[paths]` or `[gates]` entry that pairs or rewrites
   nothing.
-- **The 77 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
+- **The 136 `[[drift]]` entries:** `mock_gamma`'s `get_many_fans_out_closed_true_and_false`
   (DRIFT R13); `spec_agreement_data_v2`'s `NOT_MODELLED`, `ROUTES`, `SPEC` and `agreement!#1`,
   which adopting a spec change moves (R14); `polyoxide-ws`'s scripted test server's
   `struct Recorder`, `fn handshake` and `fn serve`, changed to record each handshake's request
@@ -362,6 +362,12 @@ stage does not hold, printing each one's key to copy there.
   sha256 pins the whole diff, cites R27. The `[[retired]]` entries (lost v1 tests) each cite
   their subject's `docs/s3-removals.md` key, and `[files]`, `[paths]` and `[literals]` hold the
   flatten's file merges, path rewrites and fixture directory.
+  R28 is the reconnect jitter (issue #93): the 15 tests of the socket `Backoff`'s exact schedule
+  (`polyoxide-ws`'s `backoff` and `timing` tests, Binance's, perps' and sports' builder tests)
+  call `take_with(1.0)` or `take_at_least_with(floor, 1.0)` where they called `take` or
+  `take_at_least`, `supervision_sports`' `backoff_grows_while_connections_receive_nothing` floors
+  each gap at half its step, and rtds' `delays_while_running` reads the logged `step` for the
+  `delay` it read; no assertion changes.
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.

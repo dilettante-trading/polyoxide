@@ -305,9 +305,11 @@ async fn dial_addresses(
 
 /// Generates the transport setters a socket builder offers, each writing a
 /// field of the builder: `runtime(Arc<dyn Runtime>)` writes `self.runtime`, an
-/// `Option<Arc<dyn polyoxide_rt::Runtime>>`, and `socket_transport(Arc<dyn
+/// `Option<Arc<dyn polyoxide_rt::Runtime>>`, `socket_transport(Arc<dyn
 /// SocketTransport>)` writes `self.socket_transport`, an
-/// `Option<Arc<dyn SocketTransport>>`.
+/// `Option<Arc<dyn SocketTransport>>`, and `wake(NetworkWake)` writes
+/// `self.wake`, an `Option<`[`NetworkWake`](crate::NetworkWake)`>`, for a
+/// supervised builder.
 ///
 /// Invoke it in the builder's `impl` as [`timing_setters!`](crate::timing_setters)
 /// is, listing the setters wanted, each with its own doc comment. The
@@ -359,6 +361,14 @@ macro_rules! transport_setters {
             transport: ::std::sync::Arc<dyn $crate::SocketTransport>,
         ) -> Self {
             self.socket_transport = ::core::option::Option::Some(transport);
+            self
+        }
+        $crate::transport_setters! { $($rest)* }
+    };
+    ($(#[$meta:meta])* wake; $($rest:tt)*) => {
+        $(#[$meta])*
+        pub fn wake(mut self, wake: $crate::NetworkWake) -> Self {
+            self.wake = ::core::option::Option::Some(wake);
             self
         }
         $crate::transport_setters! { $($rest)* }
@@ -495,6 +505,27 @@ mod tests {
             .runtime(default_runtime())
             .socket_transport(default_socket_transport());
         assert!(set.runtime.is_some() && set.socket_transport.is_some());
+    }
+
+    #[test]
+    fn the_wake_setter_writes_the_builders_wake() {
+        #[derive(Default)]
+        struct Builder {
+            wake: Option<crate::NetworkWake>,
+        }
+
+        impl Builder {
+            crate::transport_setters! {
+                /// The wake.
+                wake;
+            }
+        }
+
+        assert!(Builder::default().wake.is_none());
+        assert!(Builder::default()
+            .wake(crate::NetworkWake::new())
+            .wake
+            .is_some());
     }
 }
 

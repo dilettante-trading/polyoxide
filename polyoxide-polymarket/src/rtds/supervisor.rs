@@ -40,6 +40,7 @@ pub struct RtdsBuilder {
     connect_timeout: Duration,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for RtdsBuilder {
@@ -60,6 +61,7 @@ impl RtdsBuilder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -97,6 +99,8 @@ impl RtdsBuilder {
     /// Both are raised to at least 1 ms, and an `initial` above `max` is
     /// lowered to `max`. A reconnect refused with a `Retry-After` waits at
     /// least that long, up to `max` (DRIFT R11).
+    /// Each wait is drawn at random from half the step to the step, so
+    /// clients the host dropped together do not all return together.
     pub fn backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
@@ -118,6 +122,11 @@ impl RtdsBuilder {
         runtime;
         /// How each connect dials. By default the target's.
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// Connect and subscribe.
@@ -248,9 +257,27 @@ impl SupervisedRtds {
                         // spelling reported the wrong number twice over — the
                         // value before the reset, then the already-doubled one
                         // on a retry.
-                        let delay = backoff.take_at_least(asked.take().unwrap_or_default());
-                        tracing::debug!(?delay, "waiting before the next RTDS connection attempt");
-                        self.runtime.sleep(delay).await;
+                        let floor = asked.take().unwrap_or_default();
+                        // The schedule's step and the wait drawn from it.
+                        let step = backoff.step();
+                        let delay = backoff.take_at_least(floor);
+                        tracing::debug!(
+                            ?step,
+                            ?delay,
+                            "waiting before the next RTDS connection attempt"
+                        );
+                        let sleep = self.runtime.sleep(delay);
+                        // A wake cuts the backoff short and restarts it, but
+                        // not a wait a `Retry-After` asked for (DRIFT R11).
+                        match self.config.wake.as_ref().filter(|_| floor.is_zero()) {
+                            Some(wake) => {
+                                if wake.cut_short(sleep).await {
+                                    tracing::debug!("network wake; reconnecting to RTDS now");
+                                    backoff.reset();
+                                }
+                            }
+                            None => sleep.await,
+                        }
 
                         let attempt = Rtds::open_with(
                             &self.config.url,
@@ -387,8 +414,9 @@ mod tests {
             Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"])
         }
 
-        /// Run against `scripts` until it returns, collecting the delays it
-        /// waited between connection attempts.
+        /// Run against `scripts` until it returns, collecting the schedule's
+        /// steps between connection attempts. Each wait is drawn from below
+        /// its step (`Backoff`'s jitter), so the steps are what escalates.
         ///
         /// Every script list must end in a frame that ends the run, so the
         /// delays observed are a complete sequence rather than however many
@@ -417,7 +445,7 @@ mod tests {
                 Err(RtdsError::Server { .. }) => {}
                 other => panic!("expected the run to end on the rejection, got {other:?}"),
             }
-            (logs.field_values("delay"), server.connection_count())
+            (logs.field_values("step"), server.connection_count())
         }
 
         #[tokio::test]

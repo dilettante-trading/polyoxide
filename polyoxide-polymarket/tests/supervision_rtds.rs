@@ -431,3 +431,67 @@ async fn the_builders_connect_timeout_bounds_the_first_connect_drift_r2() {
         "{err:?}"
     );
 }
+
+#[tokio::test]
+async fn a_wake_cuts_a_reconnect_wait_short_and_restarts_the_backoff() {
+    // The first connection delivers and closes, and five reconnects are
+    // refused, with steps of 100, 200, 400 and 800 ms between them; the fifth
+    // wait's step is 1.6 s, a wait of 0.8 to 1.6 s. The wake lands 200 ms
+    // into it, so the sixth attempt is dialled well before the wait's bottom.
+    // It is refused too, and the wait after it is the restarted step's (50
+    // to 100 ms), not 3.2 s's. The run ends on the last connection's
+    // rejection.
+    let mut scripts = vec![Script::frames(&[TWAP_UPDATE])
+        .after_first_frame()
+        .then_close()];
+    scripts.extend((0..5).map(|_| Script::refuse_upgrade(503)));
+    scripts.push(
+        Script::frames(&[polyoxide_polymarket::rtds::fixtures::REJECTED_SUBSCRIPTION])
+            .after_first_frame(),
+    );
+    let server = ScriptedServer::start(scripts).await;
+    let wake = polyoxide_ws::NetworkWake::new();
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(100), Duration::from_secs(10))
+        .wake(wake.clone())
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let run = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    );
+    let fire = async {
+        server
+            .wait_for("the fifth attempt", |s| s.connection_count() >= 5)
+            .await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(server.connection_count(), 5, "the wait ended unwoken");
+        wake.notify();
+    };
+    let (outcome, ()) = tokio::join!(run, fire);
+    let outcome = outcome.expect("run must return on the rejection rather than hang");
+    assert!(
+        matches!(
+            outcome,
+            Err(polyoxide_polymarket::rtds::RtdsError::Server { .. })
+        ),
+        "the run must end on the rejection, got {outcome:?}"
+    );
+    let accepted = server.accepted_at();
+    assert_eq!(accepted.len(), 7);
+    let cut = accepted[5] - accepted[4];
+    assert!(
+        cut < Duration::from_millis(700),
+        "the wake did not cut the wait short: {cut:?}"
+    );
+    let restarted = accepted[6] - accepted[5];
+    assert!(
+        restarted < Duration::from_millis(700),
+        "the backoff did not restart at its initial step: {restarted:?}"
+    );
+}

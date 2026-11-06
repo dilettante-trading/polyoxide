@@ -6,7 +6,9 @@
 //!
 //! - [`ensure_crypto_provider`] installs the process-default rustls provider
 //!   a `tokio-tungstenite` connect needs.
-//! - [`Backoff`] is the reconnect delay schedule.
+//! - [`Backoff`] is the reconnect delay schedule, each wait jittered, and
+//!   [`NetworkWake`] a handle that cuts a reconnect wait short when the
+//!   network comes back.
 //! - [`Timing`] holds a supervised connection's ping, staleness, backoff,
 //!   connect and rotation timings, [`timing_setters!`] gives a builder its
 //!   setters, and [`next_wait`] is the wait until the first deadline.
@@ -16,7 +18,7 @@
 //! - [`SocketTransport`] is how a connection is dialled, giving a
 //!   [`BoxSocket`] and reporting its [`Capabilities`]; `TungsteniteTransport`
 //!   is the native one, and [`transport_setters!`] gives a builder its
-//!   `runtime` and `socket_transport` setters.
+//!   `runtime`, `socket_transport` and `wake` setters.
 //! - [`connect`] opens a connection within a timeout, `connect_over`
 //!   upgrades a TCP connection a venue opened itself, [`with_timeout`] bounds
 //!   a venue's own connect, and [`retrying_can_fix`] says whether a
@@ -65,6 +67,7 @@ mod timing;
 #[cfg(not(target_arch = "wasm32"))]
 mod tls;
 mod transport;
+mod wake;
 
 pub use backoff::{Backoff, MIN_BACKOFF};
 pub use bare::{Connection, Mode};
@@ -88,6 +91,7 @@ pub use transport::{default_socket_transport, BoxSocket, Capabilities, SocketIo,
 /// The WebSocket library the kit is built on, re-exported so a venue names
 /// its types (`Message`, `CloseFrame`, `http`) through this crate.
 pub use tungstenite;
+pub use wake::NetworkWake;
 
 /// The runtime seam, for `transport_setters!` to name: a crate invoking it
 /// needs no `polyoxide-rt` dependency of its own.

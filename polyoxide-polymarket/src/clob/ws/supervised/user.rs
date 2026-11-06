@@ -362,6 +362,7 @@ pub struct UserWsBuilder {
     timing: Timing,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for UserWsBuilder {
@@ -380,6 +381,7 @@ impl UserWsBuilder {
             timing: default_timing(),
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -403,6 +405,8 @@ impl UserWsBuilder {
         /// Reconnect delay schedule: `initial`, doubling to `max`. There is no
         /// cap on attempts; only the delay is capped, at `max`. A reconnect
         /// refused with a `Retry-After` waits at least that long, up to `max`.
+        /// Each wait is drawn at random from half the step to the step, so
+        /// clients the host dropped together do not all return together.
         backoff;
         /// How long each address, and each step on it (the TCP connect, then the
         /// TLS handshake and the WebSocket upgrade), may take.
@@ -416,6 +420,11 @@ impl UserWsBuilder {
         /// How each attempt dials. By default the kit's per-address dial,
         /// which tries every address the host resolves to (D20).
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// Run on `runtime` unless `runtime(..)` already chose one.
@@ -480,6 +489,7 @@ impl UserWsBuilder {
         Supervisor::new(protocol, self.timing)
             .runtime(self.runtime.unwrap_or_else(default_runtime))
             .socket_transport(clob_transport(self.socket_transport))
+            .wake(self.wake)
     }
 }
 

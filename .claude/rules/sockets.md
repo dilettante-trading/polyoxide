@@ -14,18 +14,44 @@ paths:
 `polyoxide-ws` is the socket kit. It depends on neither `polyoxide-core` nor `polyoxide-venue`. On a
 host it builds tokio, tokio-tungstenite and rustls; on `wasm32` it builds the browser's `WebSocket`
 through web-sys instead (the dependencies are per target, in `Cargo.toml`'s target tables). On both
-it builds `polyoxide-rt` and `tungstenite`, which it declares directly and re-exports, futures-util,
+it builds `polyoxide-rt` and `tungstenite`, which it declares directly and re-exports, fastrand
+(the reconnect jitter, with its `js` seed on `wasm32`, as core's HTTP jitter has), futures-util,
 thiserror and tracing. `polyoxide_venue::impl_ws_classification!` classifies its `WsError` in each
 venue crate (`errors.md`).
 
 ## Blocks
 
-One copy of each block the socket clients share: `ensure_crypto_provider`, `Backoff`, `Timing`
-with `timing_setters!` and `next_wait`, `WsError` read through its `#[non_exhaustive]` `Kind`,
-`connect`, `connect_over` (native only: the upgrade of a TCP connection a venue dialled itself),
+One copy of each block the socket clients share: `ensure_crypto_provider`, `Backoff`,
+`NetworkWake`, `Timing` with `timing_setters!` and `next_wait`, `WsError` read through its
+`#[non_exhaustive]` `Kind`, `connect`, `connect_over` (native only: the upgrade of a TCP connection
+a venue dialled itself),
 `with_timeout`, `retrying_can_fix` (the status rule injected), the bare tier `Connection`
 (`Mode::Data` or `Mode::All`; the server's close captured and its RFC 6455 reply flushed,
 DRIFT R3) with request/answer correlation, and the scripted test server.
+
+## Backoff and the wake (issue #93)
+
+- `Backoff`'s step doubles exactly from `initial_backoff` to `max_backoff` and resets after a
+  connection that delivered (D6), but each wait is equal jitter: drawn uniformly from
+  `[step / 2, step]` (never under `MIN_BACKOFF`), so clients a venue dropped together do not
+  return together, and a down host is never retried in a near-zero loop. `take_at_least` raises
+  the draw to its floor, then clamps to the ceiling (DRIFT R11). `take_with(unit)` and
+  `take_at_least_with(floor, unit)` are the deterministic forms (`unit` 0 is half the step, 1 the
+  step), which a test pins the schedule with; `step()` reads the schedule, which rtds logs beside
+  each drawn `delay`. Core's HTTP `RetryConfig::backoff` stays a separate schedule, jittered around
+  its step (D13). No `Timing` switch turns the jitter off.
+- `NetworkWake` (an `Arc<tokio::sync::Notify>`; `notify` is `notify_waiters`) is the optional
+  handle a caller fires when the network comes back, such as from a browser's `online` event. Each
+  supervised builder takes it through `transport_setters!`' `wake;` arm (a `wake:
+  Option<NetworkWake>` field), and `Supervisor::wake` takes one or an `Option` of one. While a
+  reconnect wait is in progress, the kit's task, rtds and sports race it against the wake: a wake
+  redials at once and `Backoff::reset`s the schedule. Only a wait in progress is cut (a notify
+  while connected or dialling does nothing, and one just before a wait starts is missed), and a
+  wait a refusal's `Retry-After` asked for is waited in full (R11). Without a wake nothing changes.
+- A test of a wake races a long escalated wait (steps of 100 ms up to 1.6 s, a wait of at least
+  800 ms) and asserts both gaps around the cut are under 700 ms, so the jitter cannot blur the
+  cut or the restart: `a_wake_cuts_a_reconnect_wait_short_and_restarts_the_backoff` in the kit's
+  `supervisor/tests.rs`, sports' `supervised.rs` and `tests/supervision_rtds.rs`.
 
 ## Transports and the runtime
 
@@ -43,14 +69,14 @@ Every dial goes through a `SocketTransport` and every timer, clock read and spaw
 - `Kind::Unsupported` is an operation the transport cannot perform, read from an I/O error of kind
   `std::io::ErrorKind::Unsupported`. Reconnecting never fixes it, and the socket table classes it
   `InvalidRequest`.
-- A builder's `runtime(..)` and `socket_transport(..)` come from `polyoxide_ws::transport_setters!`,
-  beside `timing_setters!` (it names the runtime through the kit's doc-hidden `__rt` re-export of
+- A builder's `runtime(..)`, `socket_transport(..)` and, on a supervised builder, `wake(..)` come
+  from `polyoxide_ws::transport_setters!`, beside `timing_setters!` (it names the runtime through the kit's doc-hidden `__rt` re-export of
   `polyoxide-rt`, so an invoking crate needs no dependency on it for that), and its connect falls
   back to the target's defaults. The CLOB's default transport is
   `TungsteniteTransport::per_address()` on a host target and `default_socket_transport` on
   `wasm32`.
-- `Supervisor::new` keeps its signature and gains `.runtime(..)` and `.socket_transport(..)`.
-  `Connection::new` runs on the default runtime and `Connection::with_runtime` on the one given,
+- `Supervisor::new` keeps its signature and gains `.runtime(..)`, `.socket_transport(..)` and
+  `.wake(..)`. `Connection::new` runs on the default runtime and `Connection::with_runtime` on the one given,
   which `Connection::runtime()` returns for a protocol's own timers.
 
 ## The `Supervisor` (`src/supervisor/`)
@@ -84,8 +110,9 @@ What the task guarantees (`src/supervisor/tests.rs` pins each rule):
 - it closes politely and ends when the membership stops being wanted on a healthy connection, and
   rotates at `max_connection_age`;
 - it waits out a refusal's `Retry-After` before the next attempt, never less than the backoff's
-  step and never past its ceiling (`Backoff::take_at_least`, DRIFT R11, which rtds and sports
-  apply at their own reconnect waits);
+  draw and never past its ceiling (`Backoff::take_at_least`, DRIFT R11, which rtds and sports
+  apply at their own reconnect waits), and no wake cuts that wait;
+- a wake cuts any other reconnect wait short and restarts the backoff;
 - it bounds `replay` and `apply` by `stale_after` and replaces a connection whose request
   outlived it;
 - it ends promptly when the consumer drops the stream.
@@ -143,7 +170,7 @@ it; each venue keeps only its protocol's answer and its fixtures.
   (`handshake_headers`: names lowercase, values as lossy UTF-8, in the order handshakes completed;
   a refused upgrade takes no slot, so an index is not a connection's index), closes, close
   replies, pongs, pings received, accept times and end counts. `wait_for` polls for 5 s.
-- Helpers: `fast()` (a `Timing` of 50 ms pings, 300 ms staleness and 10 to 20 ms backoff),
+- Helpers: `fast()` (a `Timing` of 50 ms pings, 300 ms staleness and 10 to 20 ms backoff steps),
   `next_item`, `next_event` and `drain`.
 - `browser_like()` (`BrowserLike`) is the one test transport that behaves as the browser's does:
   it dials as `TungsteniteTransport` does, reports all-`false` capabilities, drops the server's

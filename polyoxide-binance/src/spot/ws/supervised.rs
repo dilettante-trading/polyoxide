@@ -103,6 +103,7 @@ pub struct SpotWsBuilder {
     streams: Vec<StreamName>,
     runtime: Option<Arc<dyn Runtime>>,
     socket_transport: Option<Arc<dyn SocketTransport>>,
+    wake: Option<polyoxide_ws::NetworkWake>,
 }
 
 impl Default for SpotWsBuilder {
@@ -125,6 +126,7 @@ impl SpotWsBuilder {
             streams: Vec::new(),
             runtime: None,
             socket_transport: None,
+            wake: None,
         }
     }
 
@@ -157,6 +159,8 @@ impl SpotWsBuilder {
         /// delivered an update. Both are raised to at least 1 ms, and an
         /// `initial` above `max` is lowered to `max`. A reconnect refused with
         /// a `Retry-After` waits at least that long, up to `max` (DRIFT R11).
+        /// Each wait is drawn at random from half the step to the step, so
+        /// clients the host dropped together do not all return together.
         backoff;
         /// How long one connection attempt may take to open.
         connect_timeout;
@@ -173,6 +177,11 @@ impl SpotWsBuilder {
         runtime;
         /// How each path's connection dials. By default the target's.
         socket_transport;
+        /// Cut a reconnect wait short when `wake` fires, as a browser page's
+        /// `online` listener would: the stream redials at once and its backoff
+        /// starts again. A wait a refusal's `Retry-After` asked for is waited
+        /// in full. None by default.
+        wake;
     }
 
     /// The streams to open with.
@@ -193,6 +202,7 @@ impl SpotWsBuilder {
             streams: self.streams,
             runtime: self.runtime,
             socket_transport: self.socket_transport,
+            wake: self.wake,
         })
         .await?;
         Ok(SupervisedSpotWs { running })

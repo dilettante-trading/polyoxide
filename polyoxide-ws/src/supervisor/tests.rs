@@ -1651,3 +1651,99 @@ async fn follow_up_send_that_outlives_the_staleness_window_replaces_the_connecti
     assert_eq!(server.connection_count(), 2);
     ws.close().await.expect("close");
 }
+
+/// Steps from 100 ms under a 10 s ceiling: four refusals raise the step to
+/// 1.6 s, a wait long enough to cut, and a restarted step of 100 ms is far
+/// enough under it to tell the two apart through the jitter.
+fn escalating() -> Timing {
+    Timing {
+        initial_backoff: Duration::from_millis(100),
+        max_backoff: Duration::from_secs(10),
+        ..fast()
+    }
+}
+
+#[tokio::test]
+async fn a_wake_cuts_a_reconnect_wait_short_and_restarts_the_backoff() {
+    // The first attempt and four more are refused, with steps of 100, 200,
+    // 400 and 800 ms between them; the fifth wait's step is 1.6 s, a wait of
+    // 0.8 to 1.6 s. The wake lands 200 ms into it, so the sixth attempt is
+    // dialled well before the wait's bottom. It is refused too, and the wait
+    // after it is the restarted step's (50 to 100 ms), not 3.2 s's.
+    let mut scripts: Vec<Script> = (0..6).map(|_| Script::refuse_upgrade(503)).collect();
+    scripts.push(after_replay(data([1])));
+    let server = server(scripts).await;
+    let wake = NetworkWake::new();
+    let mut ws = Supervisor::new(feed(&server), escalating())
+        .wake(wake.clone())
+        .start(topics(&["a"]))
+        .await
+        .expect("a retriable first failure starts in an outage");
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("error"));
+    server
+        .wait_for("the fifth attempt", |s| s.connection_count() >= 5)
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(server.connection_count(), 5, "the wait ended unwoken");
+    wake.notify();
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    let cut = gap(&server, 5);
+    assert!(
+        cut < Duration::from_millis(700),
+        "the wake did not cut a wait of at least 800 ms short: {cut:?}"
+    );
+    let restarted = gap(&server, 6);
+    assert!(
+        restarted < Duration::from_millis(700),
+        "the backoff did not restart at its initial step: {restarted:?}"
+    );
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_wake_does_not_cut_a_wait_a_retry_after_asked_for_drift_r11() {
+    let server = server(vec![
+        after_replay(data([1])).then_close(),
+        refused_for("0.6"),
+        after_replay(data([2])),
+    ])
+    .await;
+    let wake = NetworkWake::new();
+    let mut ws = Supervisor::new(feed(&server), ceiling(Duration::from_secs(5)))
+        .wake(wake.clone())
+        .connect(topics(&["a"]))
+        .await
+        .expect("connect");
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    server
+        .wait_for("the refused attempt", |s| s.connection_count() >= 2)
+        .await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    wake.notify();
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(2));
+    let waited = gap(&server, 2);
+    assert!(
+        waited >= Duration::from_millis(600),
+        "a wake cut the Retry-After short: {waited:?}"
+    );
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_wake_on_a_healthy_connection_does_nothing() {
+    let server = server(vec![after_replay(data([1]))]).await;
+    let wake = NetworkWake::new();
+    let mut ws = Supervisor::new(feed(&server), fast())
+        .wake(wake.clone())
+        .connect(topics(&["a"]))
+        .await
+        .expect("connect");
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    wake.notify();
+    quiet(&mut ws, Duration::from_millis(200)).await;
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}

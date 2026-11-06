@@ -63,6 +63,21 @@
   `MarketSubscriptionOptions::initial_dump`, `MarketSubscriptionUpdate`, `MarketWsBuilder::options`
   and `MarketEvent::Reconnected` now say so.
 
+Reconnect waits are now jittered, and a caller can cut one short when the network comes back
+(#93). Nothing breaks: the new items are additions, so a patch or minor bump serves.
+
+- **Jittered reconnects.** `polyoxide_ws::Backoff` draws each wait uniformly from
+  `[step / 2, step]` (equal jitter) while its step doubles as before, so the clients a venue drops
+  together no longer all return at 0.5, 1, 2, 4 s, …. A `Retry-After` floor is still waited in
+  full, up to the ceiling. Every supervised socket waits this way: the CLOB's market and user
+  sockets, perps, Binance USDⓈ-M and spot, Kalshi, rtds and sports. A wait is now up to half
+  shorter than the step it is drawn from. `take_with(unit)` and `take_at_least_with(floor, unit)`
+  are the deterministic forms, and `step()` reads the schedule.
+- **`NetworkWake`.** A cloneable handle each supervised builder takes through `wake(..)` (and
+  `Supervisor::wake`). Fire `notify()` from a browser's `online` listener: a socket waiting to
+  reconnect redials at once and starts its backoff again from `initial_backoff`. Only a wait in
+  progress is cut, and a wait a `Retry-After` asked for is not. Without a wake nothing changes.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host
