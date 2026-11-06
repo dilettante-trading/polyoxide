@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+- **Kalshi OpenAPI drift (#88).** Mirror only, with no code change (3.35.0 to 3.36.0).
+  `Settlement.market_result` gains `""`, which `Market.result` already listed; the client decodes
+  `Market.result` as a string, and 15,000 settled and archived markets read on 2026-11-06 all
+  carried `yes` or `no`. `MarketPosition` requires a new `netting_enabled`, and
+  `Market.market_type` gains Go `x-enumNames` for its `binary` and `scalar` values; the client
+  models no positions and reads `market_type` as a string. The rest is surface the client does not
+  implement: two block-trade routes (cancel and reject), an OAuth scheme on
+  `/portfolio/settlements`, and reworded positions, block-trade, quote and RFQ descriptions.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host
