@@ -803,6 +803,54 @@ def test_two_crates_may_not_share_a_runner_job(tmp_path: Path) -> None:
         build(tmp_path, twice)
 
 
+# --- manual targets ------------------------------------------------------------
+
+MANUAL = "spends money on every run"
+
+
+def _with_manual_target(metadata, workspace, manifests):
+    table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+    table["live_fills"] = {**live(features=["ws"], secrets=["A_KEY"]), "manual": MANUAL}
+
+
+def test_a_manual_target_makes_no_job(tmp_path: Path) -> None:
+    registry = build(tmp_path, _with_manual_target)
+    jobs = registry.jobs()
+    assert [job.id for job in jobs] == [
+        "live-polyoxide-alpha-live", "live-polyoxide-alpha-slow", "live-polyoxide-omega-live"]
+    omega = next(job for job in jobs if job.id == "live-polyoxide-omega-live")
+    assert [t.target for t in omega.targets] == ["live_api"]
+    assert omega.secrets == ()
+    assert "live_fills" not in "\n".join(gen_registry.nightly_live_jobs(registry))
+    assert "live_fills" not in "\n".join(gen_registry.selfheal_behavioral(registry))
+
+
+def test_a_manual_target_is_listed_as_manual(tmp_path: Path) -> None:
+    registry = build(tmp_path, _with_manual_target)
+    assert gen_registry.claude_nightly(registry)[-1] == (
+        "- Manual, never in the nightly: `live_fills` in `polyoxide-omega` with `--features ws`: "
+        f"{MANUAL}. Run it by hand with `-- --ignored`.")
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"manual": ""}, "manual must say why"),
+        ({"manual": "   "}, "manual must say why"),
+        ({"manual": True}, "manual must say why"),
+        ({"runner": "wasm-bindgen", "secrets": []}, "is manual and names a runner"),
+    ],
+)
+def test_a_bad_manual_entry_fails(tmp_path: Path, change: dict, message: str) -> None:
+    def bad(metadata, workspace, manifests):
+        _with_manual_target(metadata, workspace, manifests)
+        table = manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["live"]
+        table["live_fills"].update(change)
+
+    with pytest.raises(RegistryError, match=message):
+        build(tmp_path, bad)
+
+
 # --- the renderers -----------------------------------------------------------
 
 EXPECTED = {
