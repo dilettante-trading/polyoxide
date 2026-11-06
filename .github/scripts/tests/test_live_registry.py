@@ -156,7 +156,17 @@ def test_the_generated_jobs_equal_the_registered_entries() -> None:
         # The crate's defaults never widen a job beyond its targets' declared features.
         assert inputs["flags"].split()[0] == "--no-default-features", job.id
         selected |= {(job.crate, test) for test in tests}
-    assert selected == set(registered(REGISTRY))
+    assert selected == {key for key, live in registered(REGISTRY).items() if live.manual is None}
+
+
+def test_a_manual_target_makes_no_job_and_is_named_in_claude_md() -> None:
+    manual = {key: live for key, live in registered(REGISTRY).items() if live.manual}
+    assert set(manual) == {("polyoxide-polymarket", "live_clob_fills")}
+    workflow = (REPO / ".github/workflows/nightly-behavioral.yml").read_text()
+    claude = (REPO / "CLAUDE.md").read_text()
+    for crate, target in manual:
+        assert target not in workflow, f"{target} is manual, but the nightly names it"
+        assert f"`{target}` in `{crate}`" in claude, f"CLAUDE.md does not name manual {target}"
 
 
 def test_each_job_carries_only_its_declared_secrets() -> None:

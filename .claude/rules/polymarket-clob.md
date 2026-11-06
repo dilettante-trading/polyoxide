@@ -83,6 +83,17 @@ heartbeat_id}` body is `ClobError::HeartbeatIdMismatch { expected }`, a `VenueRe
 not a fault, recognised by that body's shape. `live_heartbeat` arms the deadline of the key it
 runs under, so every order that key has resting is cancelled some 10 to 15 seconds later.
 
+## The manual fill test
+
+`tests/live_clob_fills.rs` buys up to about $7 of one outcome token (a partial FAK and a FOK through
+`Trading::place`), sells everything back with a native FAK, and checks each order against
+`GET /data/order`, `/data/trades`, the user channel's `Fill`s, the positions and the pUSD balance,
+the cost read from the trades' maker entries (`1 - price` for a maker on the complementary
+outcome). It spends about the spread, so its live entry is `manual` and the nightly never runs it;
+on any failure a guard sells what is held, and prints `STRANDED:` with the token for what it could
+not sell. None of its orders rest, so it and `live_heartbeat` cannot cancel each other's orders.
+Spec: `docs/superpowers/specs/2026-11-06-clob-live-fills-design.md`.
+
 ## `clob::venue`: the market-data traits
 
 `MarketData` and `Candles` on `Clob` with `clob` alone, `Trades` with `data` as well and

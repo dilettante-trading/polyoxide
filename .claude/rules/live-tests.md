@@ -19,6 +19,11 @@ Live suites hit the real upstream APIs: `tests/live_<module>[_<suite>].rs` in ea
 the CLI's `tests/live_api.rs` and the umbrella's `tests/live_venue.rs` (the venue-neutral example
 against each venue). All are `#[ignore]`d so CI skips them; run with `-- --ignored`.
 
+A live entry with `manual = "<why>"` is registered and checked like any other (its features, its
+secrets, its `#[ignore]`s, `live_unwraps.py`), but `gen_registry.py` makes no nightly job of it,
+and CLAUDE.md's generated nightly list names it as manual; it may not name a `runner`. Today's one
+is `polyoxide-polymarket`'s `live_clob_fills`, which spends real money (`polymarket-clob.md`).
+
 `nightly-behavioral.yml` runs them, one job per crate and suite (the generated list in
 CLAUDE.md), each built with `--no-default-features` and its targets' declared features alone, and
 each job's `env:` holding only the secrets its tests read. An unset repository secret arrives as

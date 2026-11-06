@@ -53,6 +53,9 @@ The crate table:
     runner = "wasm-bindgen"   # optional: the target is not a nextest `live_*` test but a wasm32
                               # browser test, run by the runner's script (RUNNERS); its job is
                               # `live-<word>-<suite>`, holds no secrets, and no suite mixes runners
+    manual = "..."            # optional: why the target runs only by hand. It is registered
+                              # and checked like any other, but makes no nightly job, and
+                              # CLAUDE.md's nightly list names it as manual; no runner
 
 The workspace table:
 
@@ -126,7 +129,7 @@ EXCEPTION_KEYS = {"path", "term", "reason"}
 # (CAP-7), which scripts/venue_gate.py reads.
 FOUNDATION = ("polyoxide-venue", "polyoxide-core", "polyoxide-ws", "polyoxide-rt",
               "polyoxide-test-support")
-LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note", "runner"}
+LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note", "runner", "manual"}
 # The runners a live entry may name: the word in the job's id (`live-<word>-<suite>`), and the
 # script that runs the target and writes libtest-json for the classifier.
 RUNNERS = {"wasm-bindgen": ("wasm", "scripts/wasm_live.sh")}
@@ -174,6 +177,8 @@ class Live:
     secrets: tuple[str, ...] = ()
     note: str | None = None
     runner: str | None = None
+    # Why the target runs only by hand; such a target makes no nightly job.
+    manual: str | None = None
 
 
 @dataclass(frozen=True)
@@ -294,7 +299,8 @@ class Registry:
         for crate in self.crates:
             suites: dict[str, list[Live]] = {}
             for live in crate.live:
-                suites.setdefault(live.suite, []).append(live)
+                if live.manual is None:
+                    suites.setdefault(live.suite, []).append(live)
             jobs += [Job(crate.name, suite, tuple(targets)) for suite, targets in suites.items()]
         return jobs
 
@@ -511,8 +517,15 @@ def _live(where: str, target: str, entry: dict) -> Live:
     if runner and secrets:
         raise RegistryError(f"{where} names a runner, whose job holds no secrets; a target that "
                             f"reads them is a native live test")
+    manual = entry.get("manual")
+    if manual is not None and (not isinstance(manual, str) or not manual.strip()):
+        raise RegistryError(f"{where} manual must say why the target is run only by hand, "
+                            f"not {manual!r}")
+    if manual is not None and runner is not None:
+        raise RegistryError(f"{where} is manual and names a runner; a runner exists only to run "
+                            f"a target in the nightly")
     return Live(target, _id(f"{where} suite", entry["suite"]), timeout,
-                _strings(f"{where} features", entry["features"]), secrets, note, runner)
+                _strings(f"{where} features", entry["features"]), secrets, note, runner, manual)
 
 
 def _default_closure(features: dict[str, tuple[str, ...]]) -> set[str]:
@@ -1118,6 +1131,11 @@ def claude_nightly(r: Registry) -> list[str]:
             for t in sorted(job.targets, key=lambda t: t.target))
         line = f"- `{job.id}` ({job.timeout} min): {targets}"
         lines.append(line + (f"; secrets {_code_list(job.secrets)}" if job.secrets else ""))
+    for crate in r.crates:
+        for t in sorted((t for t in crate.live if t.manual), key=lambda t: t.target):
+            features = f" with `--features {','.join(t.features)}`" if t.features else ""
+            lines.append(f"- Manual, never in the nightly: `{t.target}` in `{crate.name}`"
+                         f"{features}: {t.manual}. Run it by hand with `-- --ignored`.")
     return lines
 
 
