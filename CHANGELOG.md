@@ -35,6 +35,25 @@
   - `Ticker::open_interest`'s doc says what upstream now does: it is one-sided, the total long
     size, equal to the total short size.
 
+- **CLOB OpenAPI drift (#91).** Upstream enumerates `signatureType` 3 (`POLY_1271`, a Deposit
+  Wallet) on `Order` and on the `signature_type` parameter of `/balance-allowance`,
+  `/balance-allowance/update`, `/notifications` and the `/rewards/user*` routes;
+  `SignatureType::Poly1271` already sends 3 on every one. It warns that `ListOrders::id` returns a
+  canceled or fully matched order only within the last hour, which its doc now says.
+- **Deposit Wallet open orders and cancels (#91).** `Orders::wallet_open_orders` reads
+  `GET /data/wallet-open-orders`, every live order on the caller's Deposit Wallet whichever signer
+  or API key placed it, through `WalletOpenOrders` (`market`, `asset_id`, `session_keys`, `cursor`)
+  into `WalletOpenOrdersResponse` of `WalletOpenOrder`s. `Clob::readonly(key, address)` opens the
+  same builder under a read-only API key (`POLY_READONLY_API_KEY` and `POLY_ADDRESS`, no L2
+  signature), with no account and on `Clob::public()`; it keeps the key in a `Secret` its `Debug`
+  never prints. `Orders::cancel_wallet_orders(ids)` and
+  `Orders::cancel_all_wallet_orders()` send `DELETE /cancel-wallet-orders`, with which the owner
+  cancels across every key, an expired session signer's included; they draw on the signer's cancel
+  bucket as `cancel_many` and `cancel_all` do.
+- **Cancel refusal reasons (fix).** `BatchCancelResponse::not_canceled` now reads `not_canceled`,
+  the spec's and both official SDKs' spelling, as well as `notCanceled`. Before, every reason the
+  cancel routes gave was dropped, and `Trading::cancel` said the CLOB "did not answer".
+
 - **CLOB market-socket AsyncAPI drift (#92).** Upstream rewords `SubscriptionRequest.initial_dump`:
   later subscriptions ignore it. Probed live: the flag governs only a connection's first
   subscription frame, and every later `subscribe` update sends a book for each asset it adds, even

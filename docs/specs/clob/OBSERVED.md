@@ -56,6 +56,18 @@ Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly 
   subscription `{"assets_ids":[],"type":"market"}`, which the host keeps open, and holds the
   socket until the first data frame or 20 s.
 
+## The Deposit Wallet routes are routed in production (2026-11-06)
+
+`openapi.yaml` (#91) says `DELETE /cancel-wallet-orders` "currently returns an nginx 404
+page until load-balancer routing is enabled". Probed 2026-11-06 with unauthenticated `GET`s
+only (no cancel was sent): `GET /cancel-wallet-orders` and `GET /v1/gateway/cancel-wallet-orders`
+both answer `405` with no body, so both paths now reach the application rather than nginx;
+whether the production feature flag is on was not probed. `GET /data/wallet-open-orders`
+answers `401 {"error":"Unauthorized/Invalid api key"}`, a JSON answer from the application.
+`Orders::wallet_open_orders`, `Readonly::wallet_open_orders`, `cancel_wallet_orders` and
+`cancel_all_wallet_orders` implement the two routes from the mirror alone; neither has been
+called with credentials or a read-only key.
+
 ## Market socket: `initial_dump` governs only the first subscription frame
 
 Probed 2026-11-06 (#92), unauthenticated, on `wss://ws-subscriptions-clob.polymarket.com/ws/market`,

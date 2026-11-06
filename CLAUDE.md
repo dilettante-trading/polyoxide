@@ -177,7 +177,7 @@ Two workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
   <!-- generated:begin claude-schema-exclusions -->
   - Sports (`docs/specs/sports/`): Upstream's AsyncAPI documents a `slug`-keyed payload and a text ping/pong that the server never sends, so the mirror is modelled on captured wire frames, and diffing it would report drift forever.
   - RTDS (`docs/specs/rtds/`): Upstream publishes no AsyncAPI for `ws-live-data`; the mirror is modelled on captured wire frames, so there is nothing to diff it against.
-  - Deposit Wallets and session keys (`docs/specs/session-keys/`): The surface is almost entirely absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the SDK-generated fixtures are the drift check.
+  - Deposit Wallets and session keys (`docs/specs/session-keys/`): The surface is mostly absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET`, signature type 3 and the CLOB's two wallet-wide order routes appear, and those are diffed in the CLOB mirror), so there is no mirror to diff; the SDK-generated fixtures are the drift check.
   - Binance USDⓈ-M and spot (`docs/specs/binance/`): Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; spot's `spot_api.yaml` (in `binance-api-swagger`) was last released on 2024-10-08 and lacks fields the wire sends today, so a diff of it would never fire. The live suites in `polyoxide-binance` are the drift check.
   <!-- generated:end claude-schema-exclusions -->
 
