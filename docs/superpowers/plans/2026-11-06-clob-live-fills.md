@@ -419,7 +419,7 @@ fn fok_size(least: Decimal, ask: Decimal) -> Decimal {
 /// The lowest ask price at which the asks up to it hold `size` shares.
 fn fok_limit(book: &OrderBook, size: Decimal) -> Option<Decimal> {
     let mut asks: Vec<&OrderLevel> = book.asks.iter().collect();
-    asks.sort_by(|a, b| a.price.cmp(&b.price));
+    asks.sort_by_key(|level| level.price);
     let mut held = Decimal::ZERO;
     for level in asks {
         held += level.size;

@@ -330,6 +330,10 @@ required-features = ["clob", "relay", "gamma"]
 name = "live_clob_trading"
 required-features = ["clob-ws", "data", "gamma"]
 
+[[test]]
+name = "live_clob_fills"
+required-features = ["clob-ws", "data", "gamma"]
+
 # `live_clob_ws.rs` is `#![cfg(feature = "clob-ws")]`. Without this stanza a
 # build without the feature compiles it to an empty binary that runs no tests.
 [[test]]
@@ -561,6 +565,18 @@ secrets = [
   "POLYMARKET_API_SECRET",
   "POLYMARKET_PRIVATE_KEY",
 ]
+
+[package.metadata.polyoxide.live.live_clob_fills]
+suite = "clob"
+timeout = 15
+features = ["clob-ws", "data", "gamma"]
+secrets = [
+  "POLYMARKET_API_KEY",
+  "POLYMARKET_API_PASSPHRASE",
+  "POLYMARKET_API_SECRET",
+  "POLYMARKET_PRIVATE_KEY",
+]
+manual = "spends real money: buys about $3 of one outcome token in two marketable orders and sells it back, at a cost of about the spread"
 
 [package.metadata.polyoxide.live.live_clob_session_keys]
 suite = "clob-session-keys"
