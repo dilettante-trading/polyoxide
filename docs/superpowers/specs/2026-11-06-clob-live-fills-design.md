@@ -137,18 +137,25 @@ pUSD `total` is read again just before the first order: the baseline.
   each `price` at or better than its limit (`<=` for a buy, `>=` for the sale); `liquidity`
   `Taker`; `client_order_id` the request's for orders 1 and 2 and `None` for the native sale;
   `fee` `None` or zero; `FillExt::taker_order_id` the order's id.
-- **Trades.** The account's `/data/trades` lists a trade whose taker order id is each order's id,
+- **Trades.** The account's `/data/trades` (queried with the proxy wallet's address, the read-back's
+  `maker_address`; polled every 3 s for up to 30 s) lists a trade whose taker order id is each order's id,
   with `owner` the API key (a UUID, not an address), `side` the order's, in status `MATCHED`,
   `MINED` or `CONFIRMED`.
 - **Credit.** Before the sale, the token's `balance_allowance` balance is polled (every 3 s, up to
-  90 s, else `transient`) until it reaches the sum of the two buys' fills.
+  90 s, refreshing it with `update_balance_allowance` first, else `transient`) until it reaches the
+  sum of the two buys' fills.
 - **Positions.** `Trading::positions()` (Data v2, `max-age=5`) is polled every 5 s for up to 60 s:
   after the buys it lists the token with size equal to the credited balance (within 0.01); after
   the sale it no longer lists it (what is left is under 0.01 share, which v2 serves only as
   `CLOSED`). Not seen in 60 s fails `real`.
-- **Cost.** After the sale, pUSD `total` is polled (every 3 s, up to 90 s) until it differs from
-  the baseline by the fills' net notional (`sum(buy size * price) - sum(sell size * price)`), within
-  0.01; else `real`. The cost is printed.
+- **Cost.** The cost is read from the three orders' trades, not from the `Fill` events: a taker
+  `Fill` carries the trade's one `price`, but a marketable order can match several makers, and a
+  maker on the complementary outcome (a NO buyer at 0.70 filling a YES buy at 0.30). For each
+  maker entry of each of the three trades, the price per share of the test's token is the maker's
+  `price` when its `asset_id` is the token and `1 - price` otherwise; the cost is the buys'
+  `sum(matched_amount * per-share price)` less the sale's. After the sale, pUSD `total` is polled
+  (every 3 s, up to 90 s, refreshing it with `update_balance_allowance` first) until it has fallen
+  from the baseline by that cost, within 0.01; else `real`. The cost is printed.
 
 ### When something fails after money moves
 
