@@ -248,7 +248,7 @@ pub fn relay_limits_on(runtime: Arc<dyn Runtime>) -> RateLimiter {
 /// 2026-09-30 and recorded in `docs/specs/perps/OBSERVED.md`; the table
 /// reserves a tenth. The four routes throttle at different rates (a 429
 /// on one arrived while the others kept being served), so each has its
-/// own row. The 17 routes that were not soaked share a `/v1/info`
+/// own row. The routes that were not soaked share a `/v1/info`
 /// catch-all at the lowest measured rate, so an unmeasured route cannot
 /// be driven harder than any measured one. The general bucket is a
 /// client-wide cap measured separately: the budget is partly shared

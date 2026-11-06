@@ -51,6 +51,26 @@ const EXPECTED_ABSENT: &[(&str, &str, &str)] = &[
         "sent only on the authenticated account's own fills",
     ),
     (
+        "position_fills",
+        "/data[]/liquidation_details",
+        "sent only on a backstop liquidation fill",
+    ),
+    (
+        "competition_leaderboard",
+        "/entries[]/qualified",
+        "sent only with include_unqualified",
+    ),
+    (
+        "competition_leaderboard",
+        "/entries[]/instruments_traded",
+        "written by hand from the spec, which omits it",
+    ),
+    (
+        "competition_leaderboard",
+        "/entries[]/top_instrument_ids",
+        "written by hand from the spec, which omits it",
+    ),
+    (
         "instruments",
         "[]/settlement",
         "sent only for a settled instrument, which the listing leaves out",
@@ -167,6 +187,100 @@ fn every_fixture_agrees_with_its_type() {
     check::<CompetitionAccount>("competition_account", &mut used);
     check::<CompetitionWidget>("competition_widget", &mut used);
 
+    let stale: Vec<_> = used.stale().into_iter().map(|(f, p, _)| (f, p)).collect();
+    assert!(
+        stale.is_empty(),
+        "allowance entries no fixture needs: {stale:?}"
+    );
+}
+
+/// `(fixture, path, reason)` the 2026-11-06 captures sent that no type models.
+const IGNORED_2026_11_06: &[(&str, &str, &str)] = &[
+    (
+        "competition_leaderboard_unqualified",
+        "/cohort",
+        "undocumented; recorded in OBSERVED.md, not yet modelled",
+    ),
+    (
+        "competition_leaderboard_unqualified",
+        "/next_update_at",
+        "undocumented; recorded in OBSERVED.md, not yet modelled",
+    ),
+];
+
+/// `(fixture, path, reason)` a type emits that the 2026-11-06 captures lack.
+const EXPECTED_ABSENT_2026_11_06: &[(&str, &str, &str)] = &[
+    (
+        "fills",
+        "/data[]/builder",
+        "sent only on the authenticated account's own fills",
+    ),
+    (
+        "fills",
+        "/data[]/liquidation_details",
+        "sent only on a backstop liquidation fill",
+    ),
+    (
+        "competition_leaderboard_unqualified",
+        "/entries[]/prize",
+        "no row on the page is in the prize zone",
+    ),
+    (
+        "competition_leaderboard_unqualified",
+        "/entries[]/paid_at",
+        "the competition is live, so nothing is paid",
+    ),
+    (
+        "competition_leaderboard_unqualified",
+        "/entries[]/payout_tx_hash",
+        "the competition is live, so nothing is paid",
+    ),
+];
+
+/// The fill history and the leaderboard page across the entry gate, each
+/// captured live on 2026-11-06, checked as `every_fixture_agrees_with_its_type`
+/// checks the rest, against tables of their own.
+#[test]
+fn the_fill_history_and_unqualified_board_captures_agree() {
+    let text = |fixture| fixtures!("perps").text(fixture);
+    let mut used = Ledger::new(&[IGNORED_2026_11_06, EXPECTED_ABSENT_2026_11_06]);
+    for (fixture, emitted) in [
+        (
+            "fills",
+            serde_json::to_value(serde_json::from_str::<PositionFills>(&text("fills")).unwrap())
+                .unwrap(),
+        ),
+        (
+            "competition_leaderboard_unqualified",
+            serde_json::to_value(
+                serde_json::from_str::<CompetitionLeaderboard>(&text(
+                    "competition_leaderboard_unqualified",
+                ))
+                .unwrap(),
+            )
+            .unwrap(),
+        ),
+    ] {
+        let wire: Value = serde_json::from_str(&text(fixture)).unwrap();
+        assert_values_agree(fixture, "", &wire, &emitted);
+        let mut sent = BTreeSet::new();
+        key_paths(&wire, "", &mut sent);
+        let mut modelled = BTreeSet::new();
+        key_paths(&emitted, "", &mut modelled);
+        for p in sent.difference(&modelled) {
+            if used.excuse(IGNORED_2026_11_06, fixture, p).is_none() {
+                panic!("{fixture}: server sent {p}, which the type does not model");
+            }
+        }
+        for p in modelled.difference(&sent) {
+            if used
+                .excuse(EXPECTED_ABSENT_2026_11_06, fixture, p)
+                .is_none()
+            {
+                panic!("{fixture}: the type emits {p}, which the server did not send");
+            }
+        }
+    }
     let stale: Vec<_> = used.stale().into_iter().map(|(f, p, _)| (f, p)).collect();
     assert!(
         stale.is_empty(),
