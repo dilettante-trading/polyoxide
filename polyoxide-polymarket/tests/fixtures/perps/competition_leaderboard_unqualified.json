@@ -1,0 +1,78 @@
+{
+  "competition_id": 1,
+  "cohort": "leaderboard",
+  "status": "live",
+  "updated_at": 1793970652434,
+  "next_update_at": 1793970661795,
+  "total": 2990,
+  "offset": 74,
+  "final_results": false,
+  "entries": [
+    {
+      "rank": 75,
+      "account": "0x878EccACa3ae1e0923966A1fdAd2672195c8bD95",
+      "score": "1584.772844",
+      "pnl": "4.533351188469017300000000067",
+      "realized_pnl": "50.027390000000000000000000067",
+      "unrealized_pnl": "0",
+      "volume": "122206.78331",
+      "boosted_volume": "122206.78331",
+      "first_fill_at": 1793641727328,
+      "instruments_traded": 1,
+      "top_instrument_ids": [
+        7
+      ],
+      "qualified": true,
+      "row_state": "live"
+    },
+    {
+      "rank": 76,
+      "account": "0x7Fd85FB5913E8345413344b7f415A8A6Cd844A0a",
+      "score": "759.980932",
+      "pnl": "1.20071990919641148235099935",
+      "realized_pnl": "107.07618999999999999999999935",
+      "unrealized_pnl": "-5.29575",
+      "volume": "400610.167920",
+      "boosted_volume": "400610.167920",
+      "first_fill_at": 1793631491821,
+      "instruments_traded": 1,
+      "top_instrument_ids": [
+        6
+      ],
+      "qualified": true,
+      "row_state": "live"
+    },
+    {
+      "account": "0xa519A1202f403167ef2Bd94d3f58d5Ec74481c8D",
+      "score": "1500649.091908",
+      "pnl": "4746.5292692697667550000000000",
+      "realized_pnl": "0",
+      "unrealized_pnl": "5019.779807",
+      "volume": "99955.333604",
+      "boosted_volume": "99955.333604",
+      "first_fill_at": 1793905037098,
+      "instruments_traded": 1,
+      "top_instrument_ids": [
+        27
+      ],
+      "qualified": false,
+      "row_state": "live"
+    },
+    {
+      "account": "0x7653Da0B5E10E1dA1DC5235eF43969CA1415f087",
+      "score": "1004880.686553",
+      "pnl": "3188.3699833913235580000000000",
+      "realized_pnl": "0",
+      "unrealized_pnl": "3261.393188",
+      "volume": "99332.547804",
+      "boosted_volume": "99332.547804",
+      "first_fill_at": 1793923879542,
+      "instruments_traded": 1,
+      "top_instrument_ids": [
+        19
+      ],
+      "qualified": false,
+      "row_state": "live"
+    }
+  ]
+}

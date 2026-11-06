@@ -1,5 +1,25 @@
 ## [Unreleased]
 
+- **Perps spec drift (#90).** Fill history, liquidation details and unqualified competition rows
+  (DRIFT R31). Additive: both structs that gain fields are `#[non_exhaustive]`.
+  - New route: `perps.public().fills(address)`, `GET /v1/info/fills`, a registered account's
+    fill history (`PositionFills`, as `position_fills` returns), with `start`, `end`,
+    `instrument_id`, `cursor` and `sort`. Filtered by instrument, it pages only by the returned
+    `cursor`: a trade id there is a `400`.
+  - `PositionFill` gains `liquidation_details: Option<LiquidationDetails>` (`mark`, a
+    `LiquidationMethod` and `liquidated_user`), which the host sends only on a backstop
+    liquidation fill. `LiquidationMethod` (`perps::types`) is an open enum, `market` or
+    `backstop`.
+  - `GetCompetitionLeaderboard` gains `include_unqualified(bool)`, which lists the accounts still
+    short of the entry gate after the ranked rows, and `CompetitionEntry` gains
+    `qualified: Option<bool>`, sent only then. `CompetitionEntry` also gains the undocumented
+    `instruments_traded` and `top_instrument_ids` that the live board sends.
+  - Upstream's order status `st` now points at the terminal order outcomes. Only the
+    unimplemented order routes return it, so nothing changes in code; `docs/specs/perps/OBSERVED.md`
+    lists the statuses, and the undocumented fields a 2026-11-06 capture showed on other routes.
+  - `Ticker::open_interest`'s doc says what upstream now does: it is one-sided, the total long
+    size, equal to the total short size.
+
 ## [0.48.0] - 2026-11-05
 
 `polyoxide_rt::Runtime` gains a required `yield_now`, which hands the thread back to the host
