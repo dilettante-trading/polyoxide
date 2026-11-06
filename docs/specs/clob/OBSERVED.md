@@ -55,3 +55,28 @@ Probed with `Origin: https://prader.example` on 2026-11-02, and checked nightly 
   subscription (measured 2026-11-02 with `PING`), so the nightly job opens with the empty
   subscription `{"assets_ids":[],"type":"market"}`, which the host keeps open, and holds the
   socket until the first data frame or 20 s.
+
+## Marketable orders and their fills (2026-11-06)
+
+Measured by `tests/live_clob_fills.rs`'s first passing run on 2026-11-06 (a proxy wallet, a
+0.01-tick market): a FAK BUY of 6 at 0.36 against a 5-share top level, a FOK BUY of 5 at 0.37, and
+a FAK SELL of 10 limited at 0.32 into a 0.35 bid.
+
+- `POST /order` answers a matched marketable order with `status: "matched"`, `success: true`,
+  `errorMsg: ""` (an empty string, not absent) and `makingAmount`/`takingAmount` as decimal
+  strings in whole units, not the signed order's six-decimal raw amounts: the SELL's were
+  `"10"` (shares given) and `"3.5"` (pUSD received).
+- A FAK that matches part of its size is a 200 `matched`, not the 400 kill: the partial BUY's
+  `GET /data/order/{id}` read back `size_matched` 5 of 6, so `Trading::place` reports
+  `Killed { Unmatched }` with 5 filled.
+- The user channel sent each taker trade's `MATCHED` message within the run, with `owner` the API
+  key (a UUID) and no maker entry of the account's, so each yielded one taker `Fill` at or inside
+  the order's limit.
+- `GET /data/trades?maker_address=<proxy wallet>` lists the proxy wallet's taker trades, each with
+  `owner` the API key, within seconds of the match.
+- The CLOB's `CONDITIONAL` balance and Data v2's `/v2/positions` showed the 10 shares, and both
+  dropped them after the sale, within the 25 s run; pUSD fell by 0.15, exactly the trades' net
+  cost (5 at 0.36 and 5 at 0.37 bought, 10 at 0.35 sold).
+- `GET /balance-allowance?asset_type=CONDITIONAL` lists three spenders (the two exchanges and the
+  neg-risk adapter), each with the unlimited `2^256 - 1` approval a Polymarket proxy wallet is
+  created with.
