@@ -38,6 +38,8 @@ exclusions are generated into CLAUDE.md.
 
 - It creates no branches and opens no PRs: Actions cannot open PRs here (org policy: 12 refusals,
   0 PRs in run 31811673456), and adopting a drift is one `curl`, which the issue body spells out.
+  The drift heal loop (`heal.md`) adopts it from the owner's dev box instead, in a PR that closes
+  the issue.
   The workflow holds `contents: read` and `issues: write` only.
 - The issue is found by label intersection, never by title: `gh issue list --search "<title> in:title"`
   is a tokenized full-text search, so `perps` also matches `perps-ws`. That collision let one
