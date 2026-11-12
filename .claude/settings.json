@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/heal_drift.py publish:*)",
+      "Bash(python3 scripts/heal_drift.py escalate:*)"
+    ]
+  }
+}
