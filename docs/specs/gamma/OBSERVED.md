@@ -91,8 +91,18 @@ AMM fields stay `Option`, and `ListMarkets::market_maker_address`,
 until the server says otherwise, and the nightly checks for that:
 `live_market_maker_address_filter_is_still_applied` in
 `polyoxide-polymarket/tests/live_gamma.rs` fails if any of the three routes stops
-applying the filter. Deserialization of every live-market test fails if
-`marketMakerAddress` disappears from the wire.
+applying the filter.
+
+**2026-11-12: the field became optional on the wire.** The served
+`Market.json` dropped `marketMakerAddress` from `required` (now `id`,
+`conditionId`, `feeType`, `resolutionMechanism`, `tradingEligible`; the
+property itself is still listed), and the server omits the field where it was
+`""`: it was absent from 99 of the 100 newest open markets, and present only on
+`560317`, the AMM market, while 100/100 closed markets sampled still sent it.
+Every `GET /events/keyset` page carrying a new market failed to decode
+(`missing field marketMakerAddress`). `Market::market_maker_address` is now
+`#[serde(default)]`, so an absent field reads as `""`, the value it replaced.
+The filter is unchanged: an unknown address still returns `[]`.
 
 ## `include_markets` on `GET /events`: undocumented, applied
 

@@ -169,10 +169,10 @@ pub struct Market {
     /// The AMM contract address, or `""` for a market that never had one —
     /// which is nearly every market listed today.
     ///
-    /// Required because the server's own `Market.json` schema requires it,
-    /// even though upstream's published OpenAPI dropped the field in 2026-09
-    /// (see `docs/specs/gamma/OBSERVED.md`). If the server ever follows the
-    /// published spec, every `Market` fails to deserialize here.
+    /// The server omits the field on a market with no AMM, and its served
+    /// `Market.json` no longer requires it (2026-11-12), so an absent field
+    /// decodes as `""` (see `docs/specs/gamma/OBSERVED.md`).
+    #[serde(default)]
     pub market_maker_address: String,
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub created_by: Option<i64>,
@@ -1160,6 +1160,20 @@ mod tests {
         assert!(market.tags.is_empty()); // #[serde(default)]
         assert!(market.slug.is_none());
         assert!(market.volume_24hr.is_none());
+    }
+
+    #[test]
+    fn test_market_without_market_maker_address_deserializes_as_empty() {
+        // Since 2026-11 the server omits `marketMakerAddress` on markets with
+        // no AMM, and the served `Market.json` no longer requires it.
+        let json = r#"{
+            "id": "12345",
+            "conditionId": "0xabc",
+            "question": "Will X happen by end of 2025?"
+        }"#;
+        let market: Market = serde_json::from_str(json)
+            .expect("market without marketMakerAddress should deserialize");
+        assert_eq!(market.market_maker_address, "");
     }
 
     #[test]
