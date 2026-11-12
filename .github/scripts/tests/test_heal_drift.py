@@ -582,3 +582,39 @@ def test_main_reports_a_refusal_and_exits_2(tmp_path, capsys):
     assert heal.main(["escalate", "--issue", "96", "--body-file", str(body)], shell=shell) == 2
     assert "refused" in capsys.readouterr().err
     assert shell.commands("gh") == []
+
+
+# --- install -------------------------------------------------------------------------------
+
+
+def test_install_writes_the_hourly_timer_and_its_service(tmp_path):
+    checkout = Path("/home/u/Source/polyoxide")
+    written = heal.install(checkout, tmp_path, "/usr/bin:/bin", "/usr/bin/direnv")
+    assert [p.name for p in written] == ["polyoxide-heal.service", "polyoxide-heal.timer"]
+    assert (tmp_path / "polyoxide-heal.service").read_text() == (
+        "[Unit]\n"
+        "Description=polyoxide drift heal poller (scripts/heal_drift.py run)\n"
+        "\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "WorkingDirectory=/home/u/Source/polyoxide\n"
+        'Environment="PATH=/usr/bin:/bin"\n'
+        "ExecStart=/usr/bin/direnv exec /home/u/Source/polyoxide python3 scripts/heal_drift.py run\n")
+    assert (tmp_path / "polyoxide-heal.timer").read_text() == (
+        "[Unit]\n"
+        "Description=Run the polyoxide drift heal poller hourly\n"
+        "\n"
+        "[Timer]\n"
+        "OnCalendar=hourly\n"
+        "Persistent=true\n"
+        "RandomizedDelaySec=120\n"
+        "\n"
+        "[Install]\n"
+        "WantedBy=timers.target\n")
+
+
+def test_install_refuses_a_loom_worktree(tmp_path):
+    with pytest.raises(heal.Refused):
+        heal.install(Path("/home/u/polyoxide/.loom/worktrees/aidanb/x"), tmp_path, "/usr/bin",
+                     "/usr/bin/direnv")
+    assert list(tmp_path.iterdir()) == []

@@ -456,6 +456,63 @@ def publish(shell: Shell, *, issue: int, title: str, body: str, sha: str, row: s
                       "--body-file", "-"], cwd=top, input=text).strip()
 
 
+# --- install -------------------------------------------------------------------------------
+
+SERVICE = """\
+[Unit]
+Description=polyoxide drift heal poller (scripts/heal_drift.py run)
+
+[Service]
+Type=oneshot
+WorkingDirectory={checkout}
+Environment="PATH={path}"
+ExecStart={direnv} exec {checkout} python3 scripts/heal_drift.py run
+"""
+
+TIMER = """\
+[Unit]
+Description=Run the polyoxide drift heal poller hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
+"""
+
+
+def install(checkout: Path, unit_dir: Path, path: str, direnv: str) -> list[Path]:
+    """Write the service and its timer into `unit_dir`. The service runs `checkout`'s copy of
+    this script through `direnv exec`, so the poller is main's version on CI's tools."""
+    if "/.loom/worktrees/" in checkout.resolve().as_posix():
+        raise Refused(f"{checkout} is a loom worktree, which loom deletes with its session; "
+                      "install from the main checkout")
+    unit_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for name, text in (("polyoxide-heal.service",
+                        SERVICE.format(checkout=checkout, path=path, direnv=direnv)),
+                       ("polyoxide-heal.timer", TIMER)):
+        (unit_dir / name).write_text(text)
+        written.append(unit_dir / name)
+    return written
+
+
+def cmd_install(shell: Shell, *, unit_dir: Path, enable: bool) -> int:
+    direnv = shutil.which("direnv")
+    if direnv is None:
+        raise Refused("direnv is not on PATH, and the service runs the poller through "
+                      "`direnv exec`")
+    for written in install(REPO, unit_dir, os.environ.get("PATH", ""), direnv):
+        print(f"wrote {written}")
+    if enable:
+        shell.run(["systemctl", "--user", "daemon-reload"])
+        shell.run(["systemctl", "--user", "enable", "--now", "polyoxide-heal.timer"])
+        print("enabled polyoxide-heal.timer; `journalctl --user -u polyoxide-heal` is its log")
+    return 0
+
+
 # --- execute, snapshot, run ----------------------------------------------------------------
 
 START_PROMPT = """\
@@ -642,6 +699,10 @@ def main(argv: Sequence[str] | None = None, shell: Shell | None = None) -> int:
     esc = sub.add_parser("escalate", help="comment on this heal session's issue, label it needs-human")
     esc.add_argument("--issue", type=int, required=True)
     esc.add_argument("--body-file", required=True, help="the comment, from outside the worktree")
+    ins = sub.add_parser("install", help="write and enable the systemd user timer")
+    ins.add_argument("--unit-dir", default="~/.config/systemd/user")
+    ins.add_argument("--no-enable", dest="enable", action="store_false",
+                     help="write the units without enabling the timer")
     args = parser.parse_args(argv)
     shell = shell or Shell()
     try:
@@ -653,10 +714,12 @@ def main(argv: Sequence[str] | None = None, shell: Shell | None = None) -> int:
                           body=Path(args.body_file).read_text(), sha=args.diff_sha256,
                           row=args.drift_row, cwd=Path.cwd(), now=now, workspace=args.workspace))
             return 0
-        own_session(shell, args.issue, toplevel(shell, Path.cwd()), args.workspace)
-        escalate_issue(shell, args.issue, Path(args.body_file).read_text().strip())
-        print(f"escalated #{args.issue}")
-        return 0
+        if args.command == "escalate":
+            own_session(shell, args.issue, toplevel(shell, Path.cwd()), args.workspace)
+            escalate_issue(shell, args.issue, Path(args.body_file).read_text().strip())
+            print(f"escalated #{args.issue}")
+            return 0
+        return cmd_install(shell, unit_dir=Path(args.unit_dir).expanduser(), enable=args.enable)
     except Refused as refusal:
         print(f"heal_drift: refused: {refusal}", file=sys.stderr)
         return 2
