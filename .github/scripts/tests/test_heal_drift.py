@@ -413,3 +413,172 @@ def test_a_snapshot_reads_both_issue_lists_the_heal_prs_the_sessions_and_the_tab
     [closed] = [args for args, _ in shell.commands("gh", "issue", "list") if "closed" in args]
     assert closed[closed.index("--search") + 1] == "updated:>=2026-10-29"
     assert [args[3] for args, _ in shell.commands("gh", "issue", "view")] == ["80"]
+
+
+# --- publish: spec §4.1 --------------------------------------------------------------------
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                           *args], cwd=cwd, check=True, capture_output=True, text=True).stdout
+
+
+def write(root, path, text):
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text)
+
+
+def commit(work, path, text):
+    write(work, path, text)
+    git(work, "add", path)
+    git(work, "commit", "--quiet", "-m", f"touch {path}")
+
+
+def guarded_file(path):
+    return path + "SKILL.md" if path.endswith("/") else path
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    """A heal branch one commit ahead of a bare origin's main, as a heal session leaves it."""
+    for key in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(key, "heal test")
+    for key in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(key, "heal@example.com")
+    origin, work = tmp_path / "origin.git", tmp_path / "work"
+    git(tmp_path, "init", "--quiet", "--bare", "--initial-branch=main", str(origin))
+    git(tmp_path, "init", "--quiet", "--initial-branch=main", str(work))
+    git(work, "remote", "add", "origin", str(origin))
+    write(work, "Cargo.toml", '[workspace.package]\nversion = "0.48.0"\n')
+    write(work, "docs/specs/kalshi/asyncapi.yaml", "channels: {}\n")
+    for path in heal.GUARDED:
+        write(work, guarded_file(path), "guarded\n")
+    git(work, "add", ".")
+    git(work, "commit", "--quiet", "-m", "base")
+    git(work, "push", "--quiet", "origin", "main")
+    git(work, "switch", "--quiet", "-c", BRANCH)
+    commit(work, "docs/specs/kalshi/asyncapi.yaml", "channels: {ebattle_scores: {}}\n")
+    return work, origin
+
+
+def publish_shell(work, *, session_issue=96, title=TITLE_96, branch=BRANCH, state="OPEN",
+                  open_prs="[]"):
+    row = {**SESSION, "title": title, "issue": session_issue, "branch": branch,
+           "worktree": str(work)}
+    return FakeShell({
+        ("loom", "session", "list"): json.dumps([row]),
+        ("gh", "issue", "view"): json.dumps({**ISSUE_96, "state": state}),
+        ("gh", "pr", "list"): open_prs,
+        ("gh", "pr", "create"): "https://github.com/dilettante-trading/polyoxide/pull/200\n",
+    })
+
+
+def publish(shell, work, *, sha=SHA_96, row="R32"):
+    return heal.publish(shell, issue=96, title="docs(spec): adopt kalshi-ws drift",
+                        body="Adopted the ebattle_scores channel.", sha=sha, row=row, cwd=work,
+                        now=NOW)
+
+
+def heads(origin):
+    return git(origin, "for-each-ref", "--format=%(refname)", "refs/heads").split()
+
+
+def refused(work, origin, shell, **kwargs):
+    with pytest.raises(heal.Refused):
+        publish(shell, work, **kwargs)
+    assert heads(origin) == ["refs/heads/main"]
+    assert shell.commands("gh", "pr", "create") == shell.commands("gh", "pr", "edit") == []
+
+
+def test_publish_pushes_the_heal_branch_and_opens_a_pr_that_closes_the_issue(repo):
+    work, origin = repo
+    shell = publish_shell(work)
+    assert publish(shell, work) == "https://github.com/dilettante-trading/polyoxide/pull/200"
+    assert heads(origin) == [f"refs/heads/{BRANCH}", "refs/heads/main"]
+    assert git(origin, "rev-parse", BRANCH) == git(work, "rev-parse", "HEAD")
+    [(create, body)] = shell.commands("gh", "pr", "create")
+    assert create[3:] == ["--base", "main", "--head", BRANCH, "--title",
+                          "docs(spec): adopt kalshi-ws drift", "--body-file", "-"]
+    assert "\n\nCloses #96\n\n" in body
+    assert heal.Marker.parse(body) == heal.Marker(96, "kalshi-ws", SHA_96, "R32", NOW)
+
+
+def test_publish_updates_an_open_pr_in_place(repo):
+    work, _ = repo
+    url = "https://github.com/dilettante-trading/polyoxide/pull/200"
+    shell = publish_shell(work, open_prs=json.dumps([{"number": 200, "url": url}]))
+    assert publish(shell, work) == url
+    assert shell.commands("gh", "pr", "create") == []
+    [(edit, body)] = shell.commands("gh", "pr", "edit")
+    assert edit[3] == "200" and "Closes #96" in body
+
+
+@pytest.mark.parametrize("path", heal.GUARDED)
+def test_publish_refuses_a_heal_that_changes_a_guarded_path(repo, path):
+    work, origin = repo
+    commit(work, guarded_file(path), "changed\n")
+    refused(work, origin, publish_shell(work))
+
+
+TREE_REFUSALS = {
+    "a bumped version": lambda work: commit(
+        work, "Cargo.toml", '[workspace.package]\nversion = "0.49.0"\n'),
+    "an untracked file": lambda work: write(work, "scratch.md", "notes\n"),
+    "a guarded file moved away": lambda work: (
+        git(work, "mv", "scripts/publish_order.py", "scripts/order.py"),
+        git(work, "commit", "--quiet", "-m", "move it")),
+    "a detached head": lambda work: git(work, "switch", "--quiet", "--detach"),
+}
+
+
+@pytest.mark.parametrize("break_it", TREE_REFUSALS.values(), ids=TREE_REFUSALS.keys())
+def test_publish_refuses_a_tree_a_heal_must_never_push(repo, break_it):
+    work, origin = repo
+    break_it(work)
+    refused(work, origin, publish_shell(work))
+
+
+SESSION_REFUSALS = {
+    "a session linked to another issue": dict(session_issue=94, title="heal kalshi-ws 94 R32"),
+    "a closed issue": dict(state="CLOSED"),
+    "another session's branch": dict(branch="aidanb/other"),
+    "a row the title did not reserve": dict(title="heal kalshi-ws 96 R31"),
+}
+
+
+@pytest.mark.parametrize("kwargs", SESSION_REFUSALS.values(), ids=SESSION_REFUSALS.keys())
+def test_publish_refuses_a_session_or_issue_that_does_not_match(repo, kwargs):
+    work, origin = repo
+    refused(work, origin, publish_shell(work, **kwargs))
+
+
+@pytest.mark.parametrize("sha,row", [("not-hex", "R32"), (SHA_96, "R-32")], ids=["sha", "row"])
+def test_publish_refuses_a_malformed_marker(repo, sha, row):
+    work, origin = repo
+    refused(work, origin, publish_shell(work), sha=sha, row=row)
+
+
+def test_publish_refuses_main_itself(repo):
+    work, origin = repo
+    git(work, "switch", "--quiet", "main")
+    commit(work, "docs/specs/kalshi/asyncapi.yaml", "channels: {x: {}}\n")
+    refused(work, origin, publish_shell(work, branch="main"))
+
+
+def test_publish_refuses_outside_a_session_worktree(repo, tmp_path):
+    work, origin = repo
+    shell = publish_shell(work)
+    shell.answers[("loom", "session", "list")] = json.dumps([{
+        **SESSION, "title": TITLE_96, "issue": 96, "branch": BRANCH,
+        "worktree": str(tmp_path / "elsewhere")}])
+    refused(work, origin, shell)
+
+
+def test_main_reports_a_refusal_and_exits_2(tmp_path, capsys):
+    body = tmp_path / "body.md"
+    body.write_text("The drift is gone.\n")
+    shell = FakeShell({("loom", "session", "list"): "[]"})
+    assert heal.main(["escalate", "--issue", "96", "--body-file", str(body)], shell=shell) == 2
+    assert "refused" in capsys.readouterr().err
+    assert shell.commands("gh") == []

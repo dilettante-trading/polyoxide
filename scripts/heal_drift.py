@@ -368,6 +368,94 @@ def nudge_for(issue: Issue, pr: Pr, session: Session) -> Action | None:
                 jobs=pr.failing if kind == "ci" else ())
 
 
+# --- publish and escalate (spec §4) --------------------------------------------------------
+
+
+class Refused(Exception):
+    """A publish, escalate or install the guard will not make; nothing was pushed or written."""
+
+
+def toplevel(shell: Shell, cwd: Path) -> Path:
+    return Path(shell.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd).strip())
+
+
+def own_session(shell: Shell, issue: int, top: Path, workspace: str) -> tuple[Session, Issue]:
+    """Step 1 of publish and escalate: the caller is the session whose worktree this is, linked
+    to `issue`, an open drift issue. samefile, since /tb/Source and /home/aidanb/Source name one
+    tree."""
+    mine = [s for s in sessions_of(shell, workspace)
+            if os.path.exists(s.worktree) and os.path.samefile(s.worktree, top)]
+    if len(mine) != 1:
+        raise Refused(f"{len(mine)} loom sessions have {top} as their worktree; run this from a "
+                      "heal session's worktree")
+    session = mine[0]
+    if session.issue != issue:
+        raise Refused(f"this session is linked to #{session.issue}, not #{issue}")
+    found = Issue.from_gh(json.loads(shell.run(["gh", "issue", "view", str(issue), "--json",
+                                                ISSUE_FIELDS])))
+    if not found.open or DRIFT_LABEL not in found.labels:
+        raise Refused(f"#{issue} is not an open {DRIFT_LABEL} issue")
+    return session, found
+
+
+def guarded(paths: Sequence[str]) -> list[str]:
+    """The paths among `paths` a heal may not change."""
+    return [p for p in paths
+            if any(p == g or (g.endswith("/") and p.startswith(g)) for g in GUARDED)]
+
+
+def workspace_version(shell: Shell, rev: str, top: Path) -> str:
+    manifest = tomllib.loads(shell.run(["git", "show", f"{rev}:Cargo.toml"], cwd=top))
+    return manifest["workspace"]["package"]["version"]
+
+
+def publish(shell: Shell, *, issue: int, title: str, body: str, sha: str, row: str, cwd: Path,
+            now: dt.datetime, workspace: str = WORKSPACE) -> str:
+    """Push the heal session's branch and open or update its PR (spec §4.1); return the PR's
+    URL. Every refusal comes before the push, so a refused publish leaves nothing behind."""
+    top = toplevel(shell, cwd)
+    session, found = own_session(shell, issue, top, workspace)
+    if found.spec is None:
+        raise Refused(f"#{issue} carries no single spec:<id> label")
+    if not SHA.match(sha):
+        raise Refused(f"--diff-sha256 {sha!r} is not 64 lowercase hex digits")
+    if not ROW.match(row) or row not in ("none", session.row):
+        raise Refused(f"--drift-row {row!r} is neither `none` nor the row this session's title "
+                      f"reserved ({session.row})")
+    if shell.run(["git", "status", "--porcelain"], cwd=top).strip():
+        raise Refused("the worktree has uncommitted or untracked files; commit by path, and keep "
+                      "scratch files outside it")
+    try:
+        branch = shell.run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"], cwd=top).strip()
+    except subprocess.CalledProcessError:
+        raise Refused("HEAD is detached; publish from the heal session's branch") from None
+    if branch == "main" or branch != session.branch:
+        raise Refused(f"the branch is {branch!r}; a heal publishes only its session's own branch "
+                      f"({session.branch!r}), never main")
+    shell.run(["git", "fetch", "--quiet", "origin", "main"], cwd=top)
+    here = workspace_version(shell, "HEAD", top)
+    there = workspace_version(shell, "origin/main", top)
+    if here != there:
+        raise Refused(f"the workspace version is {here} here and {there} on origin/main; a heal "
+                      "never bumps it")
+    base = shell.run(["git", "merge-base", "HEAD", "origin/main"], cwd=top).strip()
+    changed = shell.run(["git", "diff", "--no-renames", "--name-only", base, "HEAD"],
+                        cwd=top).splitlines()
+    if hit := guarded(changed):
+        raise Refused(f"a heal may not change {', '.join(hit)}")
+    shell.run(["git", "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}"], cwd=top)
+    text = (f"{body.rstrip()}\n\nCloses #{issue}\n\n"
+            f"{Marker(issue, found.spec, sha, row, now).render()}\n")
+    existing = json.loads(shell.run(["gh", "pr", "list", "--head", branch, "--state", "open",
+                                     "--json", "number,url"], cwd=top))
+    if existing:
+        shell.run(["gh", "pr", "edit", str(existing[0]["number"]), "--title", title,
+                   "--body-file", "-"], cwd=top, input=text)
+        return existing[0]["url"]
+    return shell.run(["gh", "pr", "create", "--base", "main", "--head", branch, "--title", title,
+                      "--body-file", "-"], cwd=top, input=text).strip()
+
+
 # --- execute, snapshot, run ----------------------------------------------------------------
 
 START_PROMPT = """\
@@ -545,9 +633,33 @@ def main(argv: Sequence[str] | None = None, shell: Shell | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="poll once and act: the timer's command")
     run.add_argument("--dry-run", action="store_true", help="print the actions, take none")
+    pub = sub.add_parser("publish", help="push this heal session's branch and open or update its PR")
+    pub.add_argument("--issue", type=int, required=True)
+    pub.add_argument("--title", required=True, help="the PR's title")
+    pub.add_argument("--body-file", required=True, help="the PR's body, from outside the worktree")
+    pub.add_argument("--diff-sha256", required=True, help="the fingerprint the heal adopted")
+    pub.add_argument("--drift-row", required=True, help="the reserved DRIFT row, or none")
+    esc = sub.add_parser("escalate", help="comment on this heal session's issue, label it needs-human")
+    esc.add_argument("--issue", type=int, required=True)
+    esc.add_argument("--body-file", required=True, help="the comment, from outside the worktree")
     args = parser.parse_args(argv)
     shell = shell or Shell()
-    return cmd_run(shell, dry_run=args.dry_run, workspace=args.workspace)
+    try:
+        if args.command == "run":
+            return cmd_run(shell, dry_run=args.dry_run, workspace=args.workspace)
+        if args.command == "publish":
+            now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+            print(publish(shell, issue=args.issue, title=args.title,
+                          body=Path(args.body_file).read_text(), sha=args.diff_sha256,
+                          row=args.drift_row, cwd=Path.cwd(), now=now, workspace=args.workspace))
+            return 0
+        own_session(shell, args.issue, toplevel(shell, Path.cwd()), args.workspace)
+        escalate_issue(shell, args.issue, Path(args.body_file).read_text().strip())
+        print(f"escalated #{args.issue}")
+        return 0
+    except Refused as refusal:
+        print(f"heal_drift: refused: {refusal}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
