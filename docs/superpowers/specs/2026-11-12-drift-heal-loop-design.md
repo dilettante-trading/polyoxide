@@ -53,8 +53,11 @@ workflow keeps `contents: read` and `issues: write` and still pushes nothing.
 | A heal session | `loom session new "heal <spec-id> <N>" --issue N --model opus --effort high --permission-mode auto --prompt "<prompt>"`, where the prompt names the skill, the issue, its `diff_sha256` and the DRIFT row reserved for it | Its own worktree and branch, and GitHub only through `publish` and `escalate` |
 | `.claude/settings.json` | New, tracked. It allows exactly `Bash(python3 scripts/heal_drift.py publish:*)` and `Bash(python3 scripts/heal_drift.py escalate:*)` | — |
 
-A session is found by the `issue` field of `loom session list --json` (with `-w polyoxide`), never
-by its title or branch name. A heal PR is found by its marker (§3.2), never by title.
+A heal session is one whose title the poller wrote, `heal <spec-id> <N> <R<k>|none>`, and whose
+`issue` field in `loom session list --json` (with `-w polyoxide`) is that `N`; the title also
+carries the DRIFT row reserved for it (§3.3). Only heal sessions are messaged or killed. Any other
+session linked to the issue (one the owner started by hand) is left alone, and keeps the poller
+from starting a heal for that issue. A heal PR is found by its marker (§3.2), never by title.
 
 ## 3. The poller (`heal_drift.py run`)
 
@@ -79,20 +82,21 @@ The rules are tried in this order for each issue, and the first that matches win
 | 1 | A heal PR for the issue was merged | Kills the session if one is left; `Closes #N` closed the issue |
 | 2 | The issue carries `needs-human` | Nothing, whether or not a session or PR exists; the owner inspects them |
 | 3 | The issue is open and a heal PR for it was closed unmerged, with no `kind=rejected` marker | Adds `needs-human` to the issue with a comment ("the heal PR was closed unmerged"), leaves a `kind=rejected` marker comment on the PR, kills the session. The owner's "no" stands until they remove the label; the marker keeps that PR from firing this rule again afterwards |
-| 4 | The issue is closed (the nightly found the drift gone) and a heal PR is open | Closes the PR with a comment naming the nightly run, kills the session |
+| 4 | The issue is closed (the nightly found the drift gone) and a heal PR is open | Closes the PR with a comment linking the issue, kills the session |
 | 5 | The issue is closed and no heal PR is open | Kills the session if one is left |
-| 6 | A heal PR is open and no session exists for the issue | Starts a session on the PR's branch (`loom session new … --branch <headRefName>`) with a resume prompt, if under the cap; later runs then apply rules 7 to 10 to it |
-| 7 | A session exists and has waited on a dialog for over 2 hours | Escalates (§4.2) with "the heal session is stuck at a prompt since <time>" |
-| 8 | A heal PR is open and the issue's `diff_sha256` differs from the PR marker's | Messages the session: upstream moved to `<sha>`, re-adopt and re-publish |
-| 9 | A heal PR is open and `mergeable` is `CONFLICTING` | Messages the session: merge `origin/main`, re-gate, re-publish |
-| 10 | A heal PR is open, a check concluded `FAILURE`, and the session is idle | Messages the session the failing jobs and their log tails (`gh run view --log-failed`, last 200 lines each) |
-| 11 | No session and no heal PR | If fewer than 2 heal sessions exist, reserves a DRIFT row (§3.3) and starts a session; otherwise waits for a slot |
+| 6 | A heal PR is open and no session is linked to the issue | Starts a heal session on the PR's branch (`loom session new … --branch <headRefName>`) with a resume prompt, if under the cap; later runs then apply rules 7 to 10 to it |
+| 7 | A heal session has been `Prompting` (waiting at a permission dialog) for over 2 hours, or `Ready` (idle) with no heal PR for over 2 hours | Escalates (§4.2): the session is stuck at a prompt, or ended its turn without publishing or escalating |
+| 8 | A heal PR is open, the session is `Ready`, the issue's `diff_sha256` differs from the PR marker's, and the issue was updated after the marker's `published` time | Messages the session: upstream moved to `<sha>`, re-adopt and re-publish. The time test keeps a session that adopted a newer upstream than the issue's snapshot from being sent back to the older one |
+| 9 | A heal PR is open, the session is `Ready`, and `mergeable` is `CONFLICTING` | Messages the session: merge `origin/main`, re-gate, re-publish |
+| 10 | A heal PR is open, the session is `Ready`, and a check concluded `FAILURE` or `TIMED_OUT` | Messages the session the failing jobs and their log tails (`gh run view --job <id> --log-failed`, last 200 lines each) |
+| 11 | No session is linked to the issue and no heal PR is open | If fewer than 2 heal sessions exist, reserves a DRIFT row (§3.3) and starts a heal session; otherwise waits for a slot |
 
 Each message in rules 8 to 10 is also left on the PR as a comment carrying a nudge marker,
 `<!-- polyoxide-heal-nudge: kind=<redrift|conflict|ci> n=<k> -->`, so the count lives on GitHub.
-The third nudge of one kind on one PR escalates instead of messaging. A session is idle when loom
-reports it not running a turn; the exact `status` and `wait_reason` strings that mean idle and
-waiting on a dialog are pinned from captured `loom session list --json` output in the plan.
+The third nudge of one kind on one PR escalates instead of messaging. The statuses are loom's
+(`session/instance.go`): `Ready` is idle, waiting for input; `Prompting` is waiting at a permission
+dialog; a `Running`, `Loading` or `Paused` heal session is left alone, a paused one because the
+owner paused it.
 
 The issues the poller reads are the open `schema-drift` issues, those closed in the last 14 days,
 and any issue a heal session names; the PRs are those carrying a heal marker and updated in the
@@ -108,10 +112,11 @@ sessions drain a night's issues within the day.
 `publish` writes this line at the end of every heal PR's body, and the poller reads it back:
 
 ```
-<!-- polyoxide-heal: issue=96 spec=kalshi-ws diff_sha256=7a09…8464 drift_row=R32 -->
+<!-- polyoxide-heal: issue=96 spec=kalshi-ws diff_sha256=7a09…8464 drift_row=R32 published=2026-11-12T09:00:00Z -->
 ```
 
-`diff_sha256` is the fingerprint of the drift the PR adopts. The poller reads the issue's current
+`diff_sha256` is the fingerprint of the drift the PR adopts, and `published` the UTC time of the
+`publish` that wrote it. The poller reads the issue's current
 fingerprint from the one `"diff_sha256": "<64 hex>"` the nightly writes into the issue body's
 acknowledgement block; an issue body without exactly one is an error that the run logs and skips,
 never a reason to act. `drift_row` is `none` for a heal that moves no test-context item.
@@ -121,8 +126,9 @@ never a reason to act. `drift_row` is `none` for a heal that moves no test-conte
 DRIFT rows are numbered in sequence in
 `_bmad-output/specs/spec-venue-extensibility/divergences.md`, and two branches that each take the
 next number collide. The poller reserves one per new session: one past the highest row on
-`origin/main` and every row named by an open heal PR's marker or reserved by a running heal
-session. The reservation is passed in the session's prompt and recorded in its PR's marker; a heal
+`origin/main` and every row named by an open heal PR's marker or by a heal session's title. Gaps
+in the sequence (R29 and R30 on 2026-11-12) are never filled, since another branch may hold
+them. The reservation is passed in the session's prompt and recorded in its PR's marker; a heal
 that needs no row leaves the number unused, and a gap in the sequence is harmless.
 
 ## 4. Publishing and escalating
@@ -131,11 +137,13 @@ that needs no row leaves the number unused, and a gap in the sequence is harmles
 
 A session calls it when its heal is committed. In this order it:
 
-1. finds the session whose `worktree` is the current directory and requires that its `issue` is
-   `N` and that `N` is an open `schema-drift` issue;
+1. finds the session whose `worktree` is the current directory (by `os.path.samefile`, since
+   `/tb/Source` and `/home/aidanb/Source` name the same tree) and requires that its `issue` is `N`
+   and that `N` is an open `schema-drift` issue;
 2. requires a clean tree (`git status --porcelain` prints nothing);
-3. runs `git fetch origin main` and requires that the workspace version (`scripts/publish_order.py
-   version`) is the same at `HEAD` and at `origin/main`;
+3. runs `git fetch origin main` and requires that the workspace version (`[workspace.package]
+   version` in the root `Cargo.toml`) is the same at `HEAD` and at `origin/main`, and that the
+   `--drift-row` given is `none` or the row the session's title reserved;
 4. requires that the diff from the merge base with `origin/main` touches none of
    `.github/workflows/release.yml`, `scripts/finish_release.sh`, `scripts/publish_order.py`,
    `scripts/heal_drift.py`, `.claude/settings.json` or `.claude/skills/heal-drift/`: a heal may
