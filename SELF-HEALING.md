@@ -24,8 +24,11 @@ for USDⓈ-M and none current for spot, so its live suites are its only drift ch
                open at a time)  nightly-behavioral)        spec:<id>), with the curl
                                  │                         that adopts it
                                  │                  │
-              clean night ──► issue auto-closed  drift gone or ──► issue
-                              "Recovered"        acknowledged      auto-closed
+                                 │      hourly heal poller (dev box) ──► one loom
+                                 │      session per issue ──► PR that closes it
+                                 │                  │
+              clean night ──► issue auto-closed  drift gone, adopted ──► issue
+                              "Recovered"        or acknowledged      auto-closed
 ```
 
 Both workflows are idempotent across nights: re-runs update the same issue
@@ -164,12 +167,50 @@ Actions open pull requests anyway.
   suites in `polyoxide-binance` are the drift check.
 <!-- generated:end selfheal-exclusions -->
 
+## Repair — `scripts/heal_drift.py`
+
+The nightly reports a drift; the heal loop adopts it. A systemd user timer on the owner's dev
+box (`polyoxide-heal.timer`, hourly, catching up at boot) runs `scripts/heal_drift.py run` from
+the main checkout. For each open `schema-drift` issue it starts one loom session (opus at high
+effort, two at a time), which follows `.claude/skills/heal-drift/SKILL.md`: adopt the mirror, or
+acknowledge an upstream regression; keep the SDK's types, fixtures and tests agreeing; gate,
+review, and publish a PR whose `Closes #N` closes the issue. The owner reviews and merges. A new
+endpoint or channel is listed in the PR as a follow-up, not built.
+
+- **Nothing leaves the box but through `publish`.** A heal session never pushes or writes to
+  GitHub itself. `heal_drift.py publish` refuses a dirty tree, a branch that is not the session's
+  own, a version bump, and any change to a workflow (a PR's CI runs its branch's workflows with
+  the repository's secrets), the release machinery or the loop's own guard; then it pushes the
+  branch and opens the PR. Only PRs and marker comments the owner's account wrote count, since
+  the repository is public. Merging stays the owner's, so a heal can never land on
+  `main` or publish a crate.
+- **It follows each PR to a close.** Later polls message the session when upstream moves again,
+  the PR conflicts with `main`, or a check fails. The third nudge of one kind, a session stuck at
+  a permission prompt for two hours, or one idle with nothing published, labels the issue
+  `needs-human` with a comment. Merging the PR kills the session; closing it unmerged labels the
+  issue `needs-human`, and the poller leaves a `needs-human` issue alone until the label is
+  removed.
+- **It keeps no state.** The poller reads GitHub and `loom session list --json` and writes no
+  file, so a re-run or a dry run never acts twice.
+
+Operations:
+
+- **Install:** from the main checkout, `direnv exec . python3 scripts/heal_drift.py install`
+  writes the two units to `~/.config/systemd/user/` and enables the timer (`--no-enable` only
+  writes them). It refuses a loom worktree, which loom deletes with its session.
+- **See what it would do:** `direnv exec . python3 scripts/heal_drift.py run --dry-run`.
+- **Its log:** `journalctl --user -u polyoxide-heal`.
+- **Pause:** `systemctl --user stop polyoxide-heal.timer` (and `disable` to keep it off across
+  boots). Running heal sessions finish their turn and stay as they are.
+- **Hand an issue back to the loop:** remove its `needs-human` label.
+
 ## Failure taxonomy — what goes where
 
 | Category | Surface | Label |
 |----------|---------|-------|
 | API behavioral drift | Tracking issue | `nightly-behavioral` |
 | Schema drift | Tracking issue, one per spec | `schema-drift` and `spec:<id>` |
+| A heal that stopped | Comment on the drift issue | `needs-human` |
 | Our own tooling broke | Red workflow run only — **never** an issue | (none) |
 
 The third row is load-bearing: infrastructure failures (upstream unreachable,
@@ -185,11 +226,11 @@ file a false-positive issue.
 - **Permissions**: `GITHUB_TOKEN` only — behavioral needs `contents: read`
   and `issues: write`; schema needs `contents: read` and `issues: write`. No
   external secrets beyond the live suites' own.
-- **Adopting a schema drift** is a maintainer's commit: run the `curl` the
-  issue spells out, review the diff, and commit the mirror. The workflow opens
-  no PR because the organization forbids Actions from opening pull requests
-  (the repository-level setting answers `409 Conflict` while the org policy
-  stands), and because one `curl` is all an adoption needs.
+- **Adopting a schema drift** is a heal PR (Repair, above) or a maintainer's commit: run the
+  `curl` the issue spells out, review the diff, and commit the mirror. The nightly itself opens
+  no PR, because the organization forbids Actions from opening pull requests (the
+  repository-level setting answers `409 Conflict` while the org policy stands); the heal loop
+  opens its PRs from the dev box, as the owner.
 - **Enabling authenticated coverage** (CLOB's authenticated tests, the
   session-key round trip, relay's credentialed tests and Kalshi's demo-host tests): set the
   `POLYMARKET_*`, `BUILDER_*`, `RELAYER_*` and `KALSHI_DEMO_*` repo secrets each target declares.
@@ -224,7 +265,8 @@ file a false-positive issue.
 
 The helper scripts are a `uv` project with a pytest suite
 (`.github/scripts/tests/`) that runs on every PR via the
-`CI Scripts` job in `ci.yml`. The design history — including the latent bugs
+`CI Scripts` job in `ci.yml`. `test_heal_drift.py` holds the heal loop's rules, its `publish`
+refusals and its timer to the design, on captured `gh` and loom output. The design history — including the latent bugs
 found before first deployment (nextest's experimental-JSON opt-in, the
 binary-qualified name mismatch) — is recorded in
 `docs/superpowers/specs/2026-05-08-nightly-api-smoketest-design.md`.
