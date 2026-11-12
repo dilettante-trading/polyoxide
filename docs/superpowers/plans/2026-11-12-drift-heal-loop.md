@@ -44,11 +44,11 @@ gh issue view 96 --json number,state,labels,body,updatedAt > "$F/issue_96.json"
 gh pr view 65 --json number,state,body,headRefName,mergeable,statusCheckRollup,comments > "$F/pr_65.json"
 gh pr view 29 --json comments -q '.comments[0]' > "$F/comment.json"
 loom session list --json -w polyoxide > "$F/sessions.json"
-grep -o '"diff_sha256": "[0-9a-f]*"' "$F/issue_96.json"
+python3 -c "import json, re; print(re.findall(r'\"diff_sha256\": \"([0-9a-f]{64})\"', json.load(open('$F/issue_96.json'))['body']))"
 python3 -c "import json; r = json.load(open('$F/pr_65.json'))['statusCheckRollup']; print(r[1]['name'], sorted({c.get('conclusion') or c.get('state') for c in r}))"
 ```
 
-Expected: the grep prints exactly one line, `"diff_sha256": "7a09009f7ccff02c68ebab5b80141459b655586bb68f8bdf293fedc25b428464"` (if the nightly has refiled #96 with another fingerprint, use the printed one as `SHA_96` below), and the last line prints `Lint & Test` followed by a set holding none of `FAILURE`, `TIMED_OUT` or `ERROR` (the tests make check 1 fail themselves, so the rest must not).
+Expected: the first line is a one-element list, `['7a09009f7ccff02c68ebab5b80141459b655586bb68f8bdf293fedc25b428464']` (the file is JSON, so the body's quotes are escaped and a grep of the raw file finds nothing) (if the nightly has refiled #96 with another fingerprint, use the printed one as `SHA_96` below), and the last line prints `Lint & Test` followed by a set holding none of `FAILURE`, `TIMED_OUT` or `ERROR` (the tests make check 1 fail themselves, so the rest must not).
 
 - [ ] **Step 2: Write the failing parser tests**
 
@@ -1448,7 +1448,7 @@ Expected: `66 passed` (45 + 2 accepted + 6 guarded + 4 tree + 4 session + 2 mark
 
 - [ ] **Step 6: Prove one refusal is load-bearing**
 
-Temporarily change `"--no-renames", ` to nothing in `publish`'s `git diff` call, run `loom job run -d "heal mutation" -- sh -c 'cd .github/scripts && uv run pytest tests/test_heal_drift.py -q -k "moved_away"'`, expect `1 failed` (git reports only the new name of a rename), then restore the flag and re-run to `1 passed`.
+Temporarily change `"--no-renames", ` to nothing in `publish`'s `git diff` call, run `loom job run -d "heal mutation" -- sh -c 'cd .github/scripts && uv run pytest tests/test_heal_drift.py -q -k moved'`, expect `1 failed` (git reports only the new name of a rename; `-k` matches the id "a guarded file moved away", spaces and all), then restore the flag and re-run to `1 passed`.
 
 - [ ] **Step 7: Commit**
 
