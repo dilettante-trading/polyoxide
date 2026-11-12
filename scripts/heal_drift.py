@@ -196,3 +196,173 @@ class Session:
         """The DRIFT row the poller reserved for a heal session, from its title."""
         m = TITLE.match(self.title)
         return m["row"] if m is not None and self.heal else None
+
+
+# --- actions and decide (spec §3.1) --------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class Start:
+    issue: int
+    spec: str
+    sha: str
+    row: str
+    branch: str | None = None  # resume on this branch (rule 6), else a new one (rule 11)
+    pr: int | None = None
+
+    @property
+    def title(self) -> str:
+        return f"heal {self.spec} {self.issue} {self.row}"
+
+
+@dataclasses.dataclass(frozen=True)
+class Send:
+    session: Session
+    pr: int
+    kind: str  # redrift, conflict or ci
+    n: int
+    text: str
+    jobs: tuple[tuple[str, str], ...] = ()  # (name, details URL) whose log tails go with a ci nudge
+
+
+@dataclasses.dataclass(frozen=True)
+class Escalate:
+    issue: int
+    reason: str
+    reject_pr: int | None = None  # leave the kind=rejected marker on this PR (rule 3)
+
+
+@dataclasses.dataclass(frozen=True)
+class Kill:
+    session: Session
+
+
+@dataclasses.dataclass(frozen=True)
+class ClosePr:
+    pr: int
+    issue: int
+
+
+@dataclasses.dataclass(frozen=True)
+class Wait:
+    issue: int
+    reason: str
+
+
+Action = Start | Send | Escalate | Kill | ClosePr | Wait
+HAND_STARTED = "a session the poller did not start is linked to it"
+NO_SLOT = f"all {CAP} heal slots are taken"
+
+
+def decide(issues: Sequence[Issue], prs: Sequence[Pr], sessions: Sequence[Session],
+           divergences: str, now: dt.datetime) -> list[Action]:
+    """One poll's actions (spec §3.1): for each issue, in number order, the first rule that
+    matches. Pure, so `run --dry-run` and the tests see exactly what `run` would do."""
+    heal: dict[int, Session] = {}
+    for s in sessions:
+        if s.heal:
+            heal.setdefault(s.issue, s)
+    linked = {s.issue for s in sessions if s.issue}
+    by_issue: dict[int, list[Pr]] = {}
+    for p in sorted(prs, key=lambda p: p.number):
+        by_issue.setdefault(p.marker.issue, []).append(p)
+    held = [highest_row(divergences)]
+    held += [int(s.row[1:]) for s in heal.values() if s.row and s.row != "none"]
+    held += [int(p.marker.row[1:]) for p in prs if p.state == "OPEN" and p.marker.row != "none"]
+    next_row = max(held) + 1
+    slots = CAP - len(heal)
+    actions: list[Action] = []
+    for issue in sorted(issues, key=lambda i: i.number):
+        session = heal.get(issue.number)
+        kill: list[Action] = [Kill(session)] if session else []
+        its = by_issue.get(issue.number, [])
+        open_pr = next((p for p in reversed(its) if p.state == "OPEN"), None)
+        closed = [p for p in its if p.state == "CLOSED" and not p.settled]
+        if open_pr is None and any(p.state == "MERGED" for p in its):  # rule 1
+            actions += kill
+        elif HUMAN_LABEL in issue.labels:  # rule 2
+            pass
+        elif issue.open and open_pr is None and closed:  # rule 3
+            number = closed[-1].number
+            actions.append(Escalate(
+                issue.number, f"The heal PR #{number} was closed unmerged; the poller will not "
+                f"heal this issue again until `{HUMAN_LABEL}` is removed.", reject_pr=number))
+            actions += kill
+        elif not issue.open and open_pr:  # rule 4
+            actions.append(ClosePr(open_pr.number, issue.number))
+            actions += kill
+        elif not issue.open:  # rule 5
+            actions += kill
+        elif open_pr and session is None:  # rule 6
+            if issue.number in linked:
+                actions.append(Wait(issue.number, HAND_STARTED))
+            elif slots <= 0:
+                actions.append(Wait(issue.number, NO_SLOT))
+            else:
+                slots -= 1
+                m = open_pr.marker
+                actions.append(Start(issue.number, m.spec, m.sha, m.row, branch=open_pr.branch,
+                                     pr=open_pr.number))
+        elif session:
+            if stuck := stuck_reason(session, open_pr, now):  # rule 7
+                actions.append(Escalate(issue.number, stuck))
+            elif open_pr and session.status == "Ready":  # rules 8 to 10
+                if nudge := nudge_for(issue, open_pr, session):
+                    actions.append(nudge)
+        elif issue.number in linked:  # rule 11, from here on
+            actions.append(Wait(issue.number, HAND_STARTED))
+        elif issue.fingerprint is None:
+            actions.append(Wait(issue.number, "its body holds no single diff_sha256"))
+        elif issue.spec is None:
+            actions.append(Wait(issue.number, "it carries no single spec:<id> label"))
+        elif slots <= 0:
+            actions.append(Wait(issue.number, NO_SLOT))
+        else:
+            slots -= 1
+            actions.append(Start(issue.number, issue.spec, issue.fingerprint, f"R{next_row}"))
+            next_row += 1
+    return actions
+
+
+def stuck_reason(session: Session, open_pr: Pr | None, now: dt.datetime) -> str | None:
+    """Rule 7: a heal session at a permission prompt, or idle with nothing published, for over
+    STUCK."""
+    if now - session.since <= STUCK:
+        return None
+    since = session.since.astimezone(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    if session.status == "Prompting":
+        return (f"The heal session `{session.title}` has waited at a permission prompt "
+                f"since {since}.")
+    if session.status == "Ready" and open_pr is None:
+        return (f"The heal session `{session.title}` has been idle since {since} without "
+                "publishing a PR or escalating.")
+    return None
+
+
+def nudge_for(issue: Issue, pr: Pr, session: Session) -> Action | None:
+    """Rules 8 to 10 for an idle heal session with an open PR: the first that applies, as a
+    message, or as an escalation once its kind has been sent NUDGE_LIMIT - 1 times."""
+    sha = issue.fingerprint
+    if sha and sha != pr.marker.sha and issue.updated > pr.marker.published:
+        kind = "redrift"
+        text = (f"Upstream moved: issue #{issue.number}'s fingerprint is now diff_sha256={sha} "
+                f"(the nightly of {issue.updated:%Y-%m-%d}), and PR #{pr.number} adopted "
+                f"{pr.marker.sha}. Re-adopt from step 2 of heal-drift and publish again.")
+    elif pr.mergeable == "CONFLICTING":
+        kind = "conflict"
+        text = (f"PR #{pr.number} conflicts with main. Merge origin/main (never rebase), "
+                "resolve, re-run step 7's gates and publish again.")
+    elif pr.failing:
+        kind = "ci"
+        names = ", ".join(name for name, _ in pr.failing)
+        text = (f"PR #{pr.number} has failing checks: {names}. Fix forward, re-run step 7's "
+                "gates and publish again. The failed steps' log tails follow.")
+    else:
+        return None
+    n = pr.nudges.get(kind, 0) + 1
+    if n >= NUDGE_LIMIT:
+        return Escalate(issue.number, f"The heal session `{session.title}` was nudged {n - 1} "
+                        f"times for `{kind}` on PR #{pr.number} and has not resolved it.")
+    return Send(session, pr.number, kind, n,
+                f"{text} (nudge {n} of {NUDGE_LIMIT - 1}; the next escalates to the owner)",
+                jobs=pr.failing if kind == "ci" else ())
