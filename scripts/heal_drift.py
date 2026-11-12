@@ -366,3 +366,189 @@ def nudge_for(issue: Issue, pr: Pr, session: Session) -> Action | None:
     return Send(session, pr.number, kind, n,
                 f"{text} (nudge {n} of {NUDGE_LIMIT - 1}; the next escalates to the owner)",
                 jobs=pr.failing if kind == "ci" else ())
+
+
+# --- execute, snapshot, run ----------------------------------------------------------------
+
+START_PROMPT = """\
+Invoke the heal-drift skill for schema-drift issue #{issue} (spec `{spec}`).
+
+- The issue's fingerprint at the last nightly is diff_sha256={sha}.
+- Your reserved DRIFT row is {row}: use it only if a test-context item moves, and pass \
+`--drift-row {row}` to publish if you do, `--drift-row none` if not.
+- Publish only with `python3 scripts/heal_drift.py publish`, and escalate only with \
+`python3 scripts/heal_drift.py escalate`. Never run `git push` or a `gh` write yourself.
+"""
+
+RESUME_PROMPT = """\
+Invoke the heal-drift skill to resume schema-drift issue #{issue} (spec `{spec}`). Its heal PR \
+#{pr} is open on this branch, and its marker records diff_sha256={sha} and DRIFT row {row}. \
+Read the PR, its comments and its checks, then continue from the skill's step 10.
+
+- Publish only with `python3 scripts/heal_drift.py publish`, and escalate only with \
+`python3 scripts/heal_drift.py escalate`. Never run `git push` or a `gh` write yourself.
+"""
+
+
+class Shell:
+    """Runs a command and returns its stdout; a non-zero exit raises CalledProcessError, with
+    stderr."""
+
+    def run(self, args: Sequence[str], *, cwd: Path | None = None,
+            input: str | None = None) -> str:
+        done = subprocess.run(list(args), cwd=cwd, input=input, capture_output=True, text=True)
+        if done.returncode != 0:
+            raise subprocess.CalledProcessError(done.returncode, list(args), done.stdout,
+                                                done.stderr)
+        return done.stdout
+
+
+def prompt(start: Start) -> str:
+    template = RESUME_PROMPT if start.pr else START_PROMPT
+    return template.format(issue=start.issue, spec=start.spec, sha=start.sha, row=start.row,
+                           pr=start.pr)
+
+
+def nudge_marker(kind: str, n: int) -> str:
+    return f"<!-- polyoxide-heal-nudge: kind={kind} n={n} -->"
+
+
+def log_tail(shell: Shell, url: str) -> str:
+    """The last LOG_TAIL lines of a failed job's failed steps, or why there are none."""
+    m = JOB_URL.search(url)
+    if m is None:
+        return f"(no job log: {url or 'the check has no details URL'})"
+    try:
+        log = shell.run(["gh", "run", "view", "--job", m[1], "--log-failed"])
+    except subprocess.CalledProcessError as err:
+        return f"(gh run view failed: {(err.stderr or '').strip()[:500]})"
+    return "\n".join(log.splitlines()[-LOG_TAIL:])
+
+
+def escalate_issue(shell: Shell, issue: int, reason: str) -> None:
+    """Comment on the issue and label it needs-human, creating the label if need be."""
+    shell.run(["gh", "label", "create", HUMAN_LABEL, "--color", "D93F0B", "--description",
+               "The drift heal loop stopped; the owner decides", "--force"])
+    shell.run(["gh", "issue", "comment", str(issue), "--body-file", "-"], input=f"heal: {reason}\n")
+    shell.run(["gh", "issue", "edit", str(issue), "--add-label", HUMAN_LABEL])
+
+
+def execute(action: Action, shell: Shell, *, workspace: str = WORKSPACE) -> None:
+    """Take one action. Each touches only its issue, its heal PR or its heal session."""
+    match action:
+        case Start():
+            args = ["loom", "session", "new", action.title, "-w", workspace,
+                    "--issue", str(action.issue), "--model", "opus", "--effort", "high",
+                    "--permission-mode", "auto", "--prompt", prompt(action)]
+            if action.branch:
+                args += ["--branch", action.branch]
+            shell.run(args)
+        case Send():
+            text = action.text + "".join(
+                f"\n\n### {name}\n\n```\n{log_tail(shell, url)}\n```" for name, url in action.jobs)
+            shell.run(["loom", "session", "send", action.session.title, "--id",
+                       str(action.session.id), "-w", workspace, "--from", SENDER], input=text)
+            shell.run(["gh", "pr", "comment", str(action.pr), "--body",
+                       f"{nudge_marker(action.kind, action.n)}\nheal: sent the session a "
+                       f"`{action.kind}` nudge ({action.n} of {NUDGE_LIMIT - 1}; the next "
+                       "escalates)."])
+        case Escalate():
+            escalate_issue(shell, action.issue, action.reason)
+            if action.reject_pr is not None:
+                shell.run(["gh", "pr", "comment", str(action.reject_pr), "--body",
+                           f"{nudge_marker('rejected', 1)}\nheal: closed unmerged, so "
+                           f"#{action.issue} is labelled `{HUMAN_LABEL}`."])
+        case Kill():
+            shell.run(["loom", "session", "kill", action.session.title, "--id",
+                       str(action.session.id), "-y", "-w", workspace])
+        case ClosePr():
+            shell.run(["gh", "pr", "close", str(action.pr), "--comment",
+                       f"{nudge_marker('closed', 1)}\nheal: the nightly closed #{action.issue}, "
+                       "so the drift is gone and this heal is no longer needed."])
+        case Wait():
+            pass
+
+
+def describe(action: Action) -> str:
+    match action:
+        case Start(branch=None):
+            return f"#{action.issue}: start `{action.title}`"
+        case Start():
+            return (f"#{action.issue}: start `{action.title}` on {action.branch} "
+                    f"for PR #{action.pr}")
+        case Send():
+            return (f"#{action.session.issue}: send `{action.session.title}` a {action.kind} "
+                    f"nudge ({action.n}) for PR #{action.pr}")
+        case Escalate():
+            return f"#{action.issue}: escalate: {action.reason}"
+        case Kill():
+            return f"#{action.session.issue}: kill `{action.session.title}`"
+        case ClosePr():
+            return f"#{action.issue}: close PR #{action.pr}"
+        case Wait():
+            return f"#{action.issue}: wait: {action.reason}"
+    raise AssertionError(action)
+
+
+def sessions_of(shell: Shell, workspace: str) -> list[Session]:
+    return [Session.from_loom(d) for d in
+            json.loads(shell.run(["loom", "session", "list", "--json", "-w", workspace]))]
+
+
+def snapshot(shell: Shell, now: dt.datetime, *, workspace: str = WORKSPACE,
+             repo: Path = REPO) -> tuple[list[Issue], list[Pr], list[Session], str]:
+    """What one poll reads (spec §3): the open drift issues, those closed in the last WINDOW and
+    any a heal session names; the heal PRs updated in the last WINDOW; the sessions; and
+    origin/main's divergences.md, for the DRIFT rows."""
+    sessions = sessions_of(shell, workspace)
+    since = (now - WINDOW).date().isoformat()
+    base = ["gh", "issue", "list", "--label", DRIFT_LABEL, "--limit", "100", "--json", ISSUE_FIELDS]
+    raw = json.loads(shell.run(base + ["--state", "open"]))
+    raw += json.loads(shell.run(base + ["--state", "closed", "--search", f"updated:>={since}"]))
+    seen = {d["number"] for d in raw}
+    for s in sessions:
+        if s.heal and s.issue not in seen:
+            raw.append(json.loads(shell.run(["gh", "issue", "view", str(s.issue), "--json",
+                                             ISSUE_FIELDS])))
+            seen.add(s.issue)
+    issues = [Issue.from_gh(d) for d in raw
+              if DRIFT_LABEL in {label["name"] for label in d["labels"]}]
+    listed = json.loads(shell.run(["gh", "pr", "list", "--state", "all", "--search",
+                                   f"updated:>={since}", "--limit", "100", "--json", PR_FIELDS]))
+    prs = [p for d in listed if (p := Pr.from_gh(d)) is not None]
+    shell.run(["git", "fetch", "--quiet", "origin", "main"], cwd=repo)
+    divergences = shell.run(["git", "show", f"origin/main:{DIVERGENCES}"], cwd=repo)
+    return issues, prs, sessions, divergences
+
+
+def cmd_run(shell: Shell, *, dry_run: bool, workspace: str) -> int:
+    now = dt.datetime.now(dt.timezone.utc)
+    issues, prs, sessions, divergences = snapshot(shell, now, workspace=workspace)
+    failures = 0
+    for action in decide(issues, prs, sessions, divergences, now):
+        print(("[dry run] " if dry_run else "") + describe(action), flush=True)
+        if dry_run:
+            continue
+        try:
+            execute(action, shell, workspace=workspace)
+        except subprocess.CalledProcessError as err:
+            failures += 1
+            print(f"  failed ({err.returncode}): {(err.stderr or '').strip()[:500]}",
+                  file=sys.stderr, flush=True)
+    return 1 if failures else 0
+
+
+def main(argv: Sequence[str] | None = None, shell: Shell | None = None) -> int:
+    parser = argparse.ArgumentParser(description="The drift heal loop (SELF-HEALING.md, Repair).")
+    parser.add_argument("--workspace", default=WORKSPACE,
+                        help="the loom workspace (default: %(default)s)")
+    sub = parser.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run", help="poll once and act: the timer's command")
+    run.add_argument("--dry-run", action="store_true", help="print the actions, take none")
+    args = parser.parse_args(argv)
+    shell = shell or Shell()
+    return cmd_run(shell, dry_run=args.dry_run, workspace=args.workspace)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

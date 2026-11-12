@@ -294,3 +294,122 @@ def test_the_third_nudge_of_a_kind_escalates():
     [action] = decide([issue()], prs=[pr(failing=True, comments=[nudge("ci"), nudge("ci", 2)])],
                       sessions=[session()])
     assert isinstance(action, heal.Escalate) and "nudged 2 times for `ci`" in action.reason
+
+
+# --- execute, snapshot ---------------------------------------------------------------------
+
+
+class FakeShell(heal.Shell):
+    """Answers gh, loom and systemctl from a table and records every call. git runs for real
+    (in the temporary repositories below) unless `real_git` is off, when the table answers it
+    too. An unanswered command prints nothing."""
+
+    def __init__(self, answers=None, *, real_git=True):
+        self.answers = dict(answers or {})
+        self.real_git = real_git
+        self.calls = []
+
+    def run(self, args, *, cwd=None, input=None):
+        args = [str(a) for a in args]
+        self.calls.append((args, input))
+        if args[0] == "git" and self.real_git:
+            return super().run(args, cwd=cwd, input=input)
+        for prefix, answer in self.answers.items():
+            if tuple(args[: len(prefix)]) == prefix:
+                return answer(args) if callable(answer) else answer
+        return ""
+
+    def commands(self, *prefix):
+        return [(args, input) for args, input in self.calls if tuple(args[: len(prefix)]) == prefix]
+
+
+def test_a_start_opens_a_heal_session_on_opus_at_high_effort():
+    shell = FakeShell()
+    heal.execute(heal.Start(96, "kalshi-ws", SHA_96, "R32"), shell)
+    [(args, _)] = shell.calls
+    assert args[:14] == ["loom", "session", "new", TITLE_96, "-w", "polyoxide", "--issue", "96",
+                         "--model", "opus", "--effort", "high", "--permission-mode", "auto"]
+    prompt = args[args.index("--prompt") + 1]
+    assert "heal-drift" in prompt and SHA_96 in prompt and "--drift-row R32" in prompt
+    assert "--branch" not in args
+
+
+def test_a_resume_checks_out_the_pr_branch():
+    shell = FakeShell()
+    heal.execute(heal.Start(96, "kalshi-ws", SHA_96, "R32", branch=BRANCH, pr=200), shell)
+    [(args, _)] = shell.calls
+    assert args[-2:] == ["--branch", BRANCH]
+    assert "PR #200" in args[args.index("--prompt") + 1]
+
+
+def test_a_ci_nudge_carries_each_failing_job_s_log_tail_and_leaves_its_count():
+    log = "\n".join(f"line {i}" for i in range(300))
+    shell = FakeShell({("gh", "run", "view"): log})
+    failing = pr(failing=True)
+    heal.execute(heal.Send(session(), 200, "ci", 1, "PR #200 has failing checks.",
+                           jobs=failing.failing), shell)
+    job = PR_65["statusCheckRollup"][1]["detailsUrl"].rsplit("/", 1)[1]
+    assert [args for args, _ in shell.commands("gh", "run", "view")] == [
+        ["gh", "run", "view", "--job", job, "--log-failed"]]
+    [(send, text)] = shell.commands("loom", "session", "send")
+    assert send == ["loom", "session", "send", TITLE_96, "--id", "1", "-w", "polyoxide",
+                    "--from", "heal-poller"]
+    lines = text.splitlines()
+    assert "line 299" in lines and "line 100" in lines and "line 99" not in lines
+    [(note, _)] = shell.commands("gh", "pr", "comment")
+    assert pr(comments=[comment(note[note.index("--body") + 1])]).nudges == {"ci": 1}
+
+
+def test_an_escalation_labels_the_issue_and_settles_a_rejected_pr():
+    shell = FakeShell()
+    heal.execute(heal.Escalate(96, "The heal PR #200 was closed unmerged.", reject_pr=200), shell)
+    assert [args[:3] for args, _ in shell.calls] == [
+        ["gh", "label", "create"], ["gh", "issue", "comment"], ["gh", "issue", "edit"],
+        ["gh", "pr", "comment"]]
+    [(_, text)] = shell.commands("gh", "issue", "comment")
+    assert "closed unmerged" in text
+    [(edit, _)] = shell.commands("gh", "issue", "edit")
+    assert edit[-2:] == ["--add-label", "needs-human"]
+    [(note, _)] = shell.commands("gh", "pr", "comment")
+    assert pr(state="CLOSED", comments=[comment(note[note.index("--body") + 1])]).settled
+
+
+def test_closing_a_stale_pr_settles_it():
+    shell = FakeShell()
+    heal.execute(heal.ClosePr(200, 96), shell)
+    [(args, _)] = shell.calls
+    assert args[:4] == ["gh", "pr", "close", "200"]
+    assert pr(state="CLOSED", comments=[comment(args[args.index("--comment") + 1])]).settled
+
+
+def test_a_kill_names_the_session_by_its_id():
+    shell = FakeShell()
+    heal.execute(heal.Kill(session(id=7)), shell)
+    assert shell.calls == [(["loom", "session", "kill", TITLE_96, "--id", "7", "-y", "-w",
+                             "polyoxide"], None)]
+
+
+def test_a_snapshot_reads_both_issue_lists_the_heal_prs_the_sessions_and_the_table():
+    named = {**SESSION, "title": "heal kalshi 80 R29", "issue": 80}
+    old = {**ISSUE_96, "number": 80, "state": "CLOSED"}
+    marker = heal.Marker(96, "kalshi-ws", SHA_96, "R32", NOW).render()
+    healing = {**PR_65, "number": 200, "state": "OPEN", "body": f"Adopted.\n\n{marker}\n"}
+
+    def issues(args):
+        return json.dumps([ISSUE_96] if args[args.index("--state") + 1] == "open" else [])
+
+    shell = FakeShell({
+        ("loom", "session", "list"): json.dumps([SESSION, named]),
+        ("gh", "issue", "list"): issues,
+        ("gh", "issue", "view"): json.dumps(old),
+        ("gh", "pr", "list"): json.dumps([PR_65, healing]),
+        ("git", "show"): TABLE,
+    }, real_git=False)
+    found, prs, sessions, table = heal.snapshot(shell, NOW)
+    assert [i.number for i in found] == [96, 80]
+    assert [p.number for p in prs] == [200]
+    assert [s.title for s in sessions] == [SESSION["title"], "heal kalshi 80 R29"]
+    assert table == TABLE
+    [closed] = [args for args, _ in shell.commands("gh", "issue", "list") if "closed" in args]
+    assert closed[closed.index("--search") + 1] == "updated:>=2026-10-29"
+    assert [args[3] for args, _ in shell.commands("gh", "issue", "view")] == ["80"]
