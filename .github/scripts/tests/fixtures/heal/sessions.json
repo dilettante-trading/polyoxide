@@ -1,0 +1,30 @@
+[
+  {
+    "id": 7050982639929396,
+    "title": "self-healing api",
+    "status": "Running",
+    "wait_reason": "",
+    "status_since": "2026-11-12T20:59:43.797266432+02:00",
+    "branch": "aidanb/self-healing-api",
+    "worktree": "/home/aidanb/Source/DilettanteTrading/polyoxide/.loom/worktrees/aidanb/self-healing-api_18e75a4a3b4d5d26",
+    "repo": "/home/aidanb/Source/DilettanteTrading/polyoxide",
+    "program": "/etc/profiles/per-user/aidanb/bin/claude --effort xhigh --model 'opus' --remote-control self-healing-api",
+    "account": "personal",
+    "issue": 0,
+    "pr": 0
+  },
+  {
+    "id": 1947114264101750,
+    "title": "error",
+    "status": "Ready",
+    "wait_reason": "",
+    "status_since": "2026-11-12T20:38:15.440809275+02:00",
+    "branch": "aidanb/error",
+    "worktree": "/home/aidanb/Source/DilettanteTrading/polyoxide/.loom/worktrees/aidanb/error_18e75cb31dd0be39",
+    "repo": "/home/aidanb/Source/DilettanteTrading/polyoxide",
+    "program": "/etc/profiles/per-user/aidanb/bin/claude --effort medium --model 'opus' --remote-control error",
+    "account": "personal",
+    "issue": 0,
+    "pr": 0
+  }
+]
