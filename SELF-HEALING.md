@@ -179,8 +179,10 @@ endpoint or channel is listed in the PR as a follow-up, not built.
 
 - **Nothing leaves the box but through `publish`.** A heal session never pushes or writes to
   GitHub itself. `heal_drift.py publish` refuses a dirty tree, a branch that is not the session's
-  own, a version bump, and any change to the release machinery or to the loop's own guard; then
-  it pushes the branch and opens the PR. Merging stays the owner's, so a heal can never land on
+  own, a version bump, and any change to a workflow (a PR's CI runs its branch's workflows with
+  the repository's secrets), the release machinery or the loop's own guard; then it pushes the
+  branch and opens the PR. Only PRs and marker comments the owner's account wrote count, since
+  the repository is public. Merging stays the owner's, so a heal can never land on
   `main` or publish a crate.
 - **It follows each PR to a close.** Later polls message the session when upstream moves again,
   the PR conflicts with `main`, or a check fails. The third nudge of one kind, a session stuck at

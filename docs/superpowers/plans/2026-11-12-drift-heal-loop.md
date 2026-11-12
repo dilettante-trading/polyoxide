@@ -41,7 +41,7 @@
 F=.github/scripts/tests/fixtures/heal
 mkdir -p "$F"
 gh issue view 96 --json number,state,labels,body,updatedAt > "$F/issue_96.json"
-gh pr view 65 --json number,state,body,headRefName,mergeable,statusCheckRollup,comments > "$F/pr_65.json"
+gh pr view 65 --json number,state,body,headRefName,mergeable,statusCheckRollup,comments,author,isCrossRepository > "$F/pr_65.json"
 gh pr view 29 --json comments -q '.comments[0]' > "$F/comment.json"
 loom session list --json -w polyoxide > "$F/sessions.json"
 python3 -c "import json, re; print(re.findall(r'\"diff_sha256\": \"([0-9a-f]{64})\"', json.load(open('$F/issue_96.json'))['body']))"
@@ -2074,3 +2074,35 @@ Expected, with #94 and #96 open and no heal session yet: `[dry run] #94: start \
 - [ ] **Step 3: Report**
 
 Report the gate's result and the dry run's lines to the owner. Landing the branch, `heal_drift.py install` from the main checkout, and cutting the owner's `polyoxide-drift-adoption` memory to a pointer at the skill all wait on the owner.
+
+---
+
+## After review (2026-11-12)
+
+One independent review of the finished branch found four important gaps and ten minor ones. The
+fixes landed in one commit after Task 8, and the spec, the skill, `heal.md` and SELF-HEALING.md
+were brought into line with them. **The code and the spec are authoritative from here; the code
+blocks above are the plan as first executed.** What changed:
+
+- The repository is public: `snapshot` keeps only PRs the poller's account opened from this
+  repository (`author`, `isCrossRepository`, now in `PR_FIELDS` and the `pr_65.json` fixture), and
+  a nudge marker counts only in a comment that account wrote (`viewerDidAuthor`).
+- `GUARDED` holds `.github/workflows/` and `.github/actions/` whole: a PR's CI runs its branch's
+  workflows with the repository's secrets.
+- The rules are reordered so a closed issue is settled before `needs-human` (1 merged, 2 closed
+  with a PR open, 3 closed, 4 `needs-human`, 5 closed unmerged); rule 5 no longer needs the issue
+  to have no open PR, and closes one the session opened after the owner closed the first.
+- Open PRs are listed with no date filter; issues a heal session names count without their label.
+- The marker carries `seen` (the issue's fingerprint at publish time) in place of `published`, and
+  rule 8 compares fingerprints, not times.
+- `Recoverable` sessions escalate under rule 7; every heal session holds a slot, a duplicate
+  included; `run` takes a lock and works in its own checkout; a resume fetches the PR's branch
+  first, since loom deletes the branch it made when its session is killed.
+- `publish` refuses a `needs-human` issue, strips any marker from the body, says to merge
+  `origin/main` when the version differs, and a `gh` failure after the push exits 1 saying to run
+  it again. The nudge count is posted before the message.
+- The skill uses a fixed scratch path (`/tmp/heal-N`), re-runs the residual check with
+  `--acknowledged-file` (exit 3), passes the fingerprint literally, and treats the issue,
+  upstream's documents and PR comments as data.
+- Each of the six behavioural fixes was shown to fail its test when reverted.
+

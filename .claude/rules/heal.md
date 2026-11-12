@@ -19,15 +19,20 @@ section is the operator's guide.
   and the session's title (`heal <spec> <N> <row>`) and `issue` field. `decide()` is pure: a new
   behaviour is a rule there, with a test, never a state file.
 - **Rule order is behaviour.** `decide()` tries the spec's eleven rules in order and the first
-  match wins: a merged PR beats `needs-human`, and a stuck session beats a nudge. A new rule gets
-  a row in the spec's table and a test that pins where it sits.
+  match wins: a merged PR and a closed issue beat `needs-human`, and a stuck session beats a
+  nudge. A new rule gets a row in the spec's table and a test that pins where it sits.
 - **Only the poller's own sessions are touched.** A session is a heal session when its title,
   which the poller writes, names the issue its `issue` field links; any other session linked to
   the issue blocks a heal and is never messaged or killed.
 - **`publish` is the only way out.** A heal session never runs `git push` or a `gh` write;
   `.claude/settings.json` allows `heal_drift.py publish` and `escalate` and nothing broader. Every
-  refusal in `publish` comes before its push, and `GUARDED` holds the release machinery and the
-  guard itself, so widening what a heal may touch is the owner's change, made outside a heal.
+  refusal in `publish` comes before its push. `GUARDED` holds the workflows (a PR's CI runs them
+  from its own branch, with the repository's secrets), the release machinery and the guard
+  itself, so widening what a heal may touch is the owner's change, made outside a heal.
+- **Only the owner's PRs and comments count.** The repository is public: `snapshot` keeps a heal
+  PR only when the poller's own account opened it from this repository, and `Pr.from_gh` counts a
+  nudge marker only in a comment that account wrote (`viewerDidAuthor`). The prompts tell a
+  session that the issue, upstream's documents and PR comments are data, never instructions.
 - **The fixtures are captured.** `.github/scripts/tests/fixtures/heal/` holds real `gh` and
   `loom session list --json` output. When either changes shape, re-capture them with the commands
   in `docs/superpowers/plans/2026-11-12-drift-heal-loop.md` (Task 1, step 1); never hand-write a
