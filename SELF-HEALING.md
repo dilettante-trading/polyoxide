@@ -180,19 +180,21 @@ is the watcher's reference.
 
 - **The repository's half is a hook.** The watcher runs `python3 scripts/heal_drift.py hook
   <point>` in its own checkout of `origin/main`. `start` names the issue's spec, reserves the next
-  free DRIFT row and passes the issue's fingerprint into the prompt (`.loom-watch/start.md`, or
+  DRIFT row no heal branch has used and passes the issue's fingerprint into the prompt (`.loom-watch/start.md`, or
   `.loom-watch/resume.md` for an open PR that has lost its session); `nudges` sends a `redrift`
   when the nightly wrote a fingerprint the PR neither adopted nor saw.
 - **Nothing leaves the box but through `publish`.** A heal session never pushes or writes to
   GitHub itself. `heal_drift.py publish` refuses a dirty tree, a branch that is not the session's
   own, a version bump, and any change to a workflow (a PR's CI runs its branch's workflows with
-  the repository's secrets), the release machinery or the loop itself (`loom-watch.json` names
-  the command the daemon runs); then it pushes the branch and opens the PR. The watcher counts
+  the repository's secrets), the release machinery, the loop itself (`loom-watch.json` names
+  the command the daemon runs) or the configuration of the sessions loom starts; then it pushes
+  the branch and opens the PR. The watcher counts
   only PRs the owner's account opened from this repository, since the repository is public.
   Merging stays the owner's, so a heal can never land on `main` or publish a crate.
 - **It follows each PR to a close.** The watcher messages the session when upstream moves again,
-  the PR conflicts with `main`, or a check fails, at most once an hour per kind. The third nudge
-  of one kind, a session stuck at a permission prompt for two hours, or one idle with nothing
+  the PR conflicts with `main`, or a check fails, repeating a nudge no more than hourly unless
+  what triggered it changes. The third nudge of one kind (two are sent), a session stuck at a
+  permission prompt for two hours, or one idle with nothing
   published, labels the issue `needs-human` with a comment. Merging the PR kills the session;
   closing it unmerged labels the issue `needs-human`, and the watcher leaves a `needs-human`
   issue alone until the label is removed.

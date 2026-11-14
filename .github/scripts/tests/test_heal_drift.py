@@ -99,8 +99,8 @@ def hook_input(point="start", *, body=None, labels=None, pr=None, sessions=(), p
     return data
 
 
-def start(table=TABLE, **kwargs):
-    return heal.hook_start(hook_input(**kwargs), table)
+def start(table=TABLE, refs=(), **kwargs):
+    return heal.hook_start(hook_input(**kwargs), table, refs)
 
 
 def nudges(**kwargs):
@@ -149,12 +149,13 @@ def test_the_highest_drift_row_reads_the_real_table():
     assert heal.highest_row(TABLE) == 31
 
 
-@pytest.mark.parametrize("branch,row", [
-    (BRANCH, "R32"), ("aidanb/heal-kalshi-ws-96-none", "none"), ("aidanb/heal-kalshi-ws-96", None),
-    ("aidanb/heal-kalshi-196-r32", None), ("aidanb/gamma-59", None),
-], ids=["row", "none", "no row", "another issue", "not a heal"])
-def test_a_branch_gives_back_the_row_its_title_reserved(branch, row):
-    assert heal.branch_row(branch, 96) == row
+@pytest.mark.parametrize("branch,found", [
+    (BRANCH, ("kalshi-ws", "R32")), ("aidanb/heal-kalshi-ws-96-none", ("kalshi-ws", "none")),
+    ("heal-kalshi-96-r7", ("kalshi", "R7")), ("aidanb/heal-kalshi-ws-96", None),
+    ("aidanb/heal-kalshi-196-r32", None), ("aidanb/kalshi-ws-96-r32", None), ("aidanb/gamma-59", None),
+], ids=["row", "none", "no prefix", "no row", "another issue", "not heal", "not a heal branch"])
+def test_a_branch_gives_back_the_spec_and_row_its_title_held(branch, found):
+    assert heal.heal_branch(branch, 96) == found
 
 
 # --- the hook's start (watch.md, "start") ---------------------------------------------------
@@ -174,11 +175,17 @@ HOLDERS = {
     # #97's acknowledgement PR holds R35 by its branch alone, since its marker says none.
     "a pr's branch": dict(prs=[watched_pr(202, issue=97, branch="aidanb/heal-kalshi-97-r35",
                                           body=marked(97, row="none"))]),
+    # A PR the owner closed unmerged left its branch on origin: R35 again would give the next
+    # heal of #96 that branch, with the rejected commits on it, or a push that never lands.
+    "a rejected pr's branch on origin": dict(
+        refs=["refs/heads/main", "refs/remotes/origin/aidanb/heal-kalshi-ws-96-r35"]),
+    # A resumed session's local branch outlives its kill, since loom did not create it.
+    "a local branch": dict(refs=["refs/heads/aidanb/heal-kalshi-ws-96-r35"]),
 }
 
 
 @pytest.mark.parametrize("held", HOLDERS.values(), ids=HOLDERS.keys())
-def test_start_skips_a_row_a_heal_session_or_an_open_heal_pr_holds(held):
+def test_start_skips_a_row_a_heal_session_a_heal_pr_or_a_heal_branch_holds(held):
     assert start(**held)["vars"]["row"] == "R36"
 
 
@@ -199,17 +206,19 @@ def test_start_refuses_an_issue_without_one_spec_label_a_title_can_hold(labels):
     assert found["start"] is False and "spec:" in found["reason"]
 
 
-def test_a_resume_keeps_the_row_its_pr_s_branch_encodes():
-    # An acknowledgement PR's marker says none; the branch still carries R30, and the watcher
-    # resumes only when the title it renders makes that branch again.
+def test_a_resume_keeps_the_spec_and_row_its_pr_s_branch_encodes():
+    # The watcher resumes only when the title it renders makes the PR's branch again. An
+    # acknowledgement PR's marker says none while its branch carries R30, and the issue's spec
+    # label has changed since the heal started.
     pr = watched_pr(branch="aidanb/heal-kalshi-ws-96-r30", body=marked(row="none"))
-    assert start(table="| R40 | later |\n", pr=pr, prs=[pr])["vars"] == {
-        "spec": "kalshi-ws", "row": "R30", "fingerprint": SHA_96}
+    found = start(table="| R40 | later |\n", refs=["refs/heads/aidanb/heal-kalshi-90-r50"],
+                  labels=["schema-drift", "spec:kalshi"], pr=pr, prs=[pr])
+    assert found["vars"] == {"spec": "kalshi-ws", "row": "R30", "fingerprint": SHA_96}
 
 
-def test_a_resume_refuses_a_branch_that_encodes_no_row():
+def test_a_resume_refuses_a_branch_that_is_not_this_issue_s_heal_branch():
     found = start(pr=watched_pr(branch="aidanb/kalshi-ws-by-hand"))
-    assert found["start"] is False and "encodes no DRIFT row" in found["reason"]
+    assert found["start"] is False and "not a heal branch for #96" in found["reason"]
 
 
 def test_start_answers_within_the_watcher_s_bounds():
@@ -249,12 +258,23 @@ def test_nudges_sends_nothing_for_a_pr_without_this_issue_s_marker(pr):
     assert nudges(pr=pr) == []
 
 
+@pytest.mark.parametrize("body", [
+    "no acknowledgement block",
+    f'"diff_sha256": "{THIRD_SHA}"\n"diff_sha256": "{OTHER_SHA}"',
+], ids=["none", "two"])
+def test_nudges_sends_nothing_while_the_issue_holds_no_single_fingerprint(body):
+    # A redrift keyed by nothing would fail the whole call, and with it loom's own conflict and
+    # ci nudges for the issue.
+    assert nudges(body=body, pr=watched_pr(body=marked(sha=SHA_96, seen=SHA_96))) == []
+
+
 # --- the hook as the watcher runs it --------------------------------------------------------
 
 
 def run_hook(point, data):
-    done = subprocess.run([sys.executable, str(REPO / "scripts" / "heal_drift.py"), "hook", point],
-                          input=json.dumps(data), cwd=REPO, capture_output=True, text=True)
+    command = CONFIG["hook"]["command"]
+    done = subprocess.run([sys.executable, *command[1:], point], input=json.dumps(data),
+                          cwd=REPO, capture_output=True, text=True)
     return done.returncode, done.stdout, done.stderr
 
 
@@ -262,11 +282,29 @@ def test_the_hook_reads_stdin_and_writes_one_json_object_to_stdout():
     code, out, _ = run_hook("start", hook_input())
     assert code == 0
     answer = json.loads(out)  # one object and nothing after it, or this raises
-    real = heal.highest_row((REPO / heal.DIVERGENCES).read_text())
+    real = max([heal.highest_row((REPO / heal.DIVERGENCES).read_text()),
+                *heal.branch_rows(heal.refs_of(REPO))])
     assert answer == {"start": True,
                       "vars": {"spec": "kalshi-ws", "row": f"R{real + 1}", "fingerprint": SHA_96}}
     code, out, _ = run_hook("nudges", hook_input("nudges", pr=watched_pr()))
     assert (code, json.loads(out)) == (0, {"nudges": []})
+
+
+def test_the_hook_reserves_past_the_heal_branches_git_knows(tmp_path):
+    git(tmp_path, "init", "--quiet", "--initial-branch=main")
+    write(tmp_path, heal.DIVERGENCES, TABLE)
+    git(tmp_path, "add", ".")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet",
+        "-m", "base")
+    head = git(tmp_path, "rev-parse", "HEAD").strip()
+    git(tmp_path, "update-ref", "refs/heads/aidanb/heal-kalshi-90-r50", head)
+    git(tmp_path, "update-ref", "refs/remotes/origin/aidanb/heal-kalshi-ws-96-r60", head)
+    assert heal.hook("start", hook_input(), repo=tmp_path)["vars"]["row"] == "R61"
+
+
+def test_the_hook_runs_isolated_from_the_files_beside_it():
+    # The daemon runs it from main's checkout: `-I` keeps a merged scripts/json.py from loading.
+    assert CONFIG["hook"]["command"][:2] == ["python3", "-I"]
 
 
 def test_a_hook_fault_exits_non_zero_with_nothing_on_stdout():
@@ -283,7 +321,7 @@ def test_the_watcher_config_names_this_loop():
     assert CONFIG["title"] == "heal {spec} {issue} {row}"
     # The nightly rewrites the issue body each night; the hook's redrift nudge reads it instead.
     assert CONFIG["issue_changed"] is False
-    assert CONFIG["hook"]["command"] == ["python3", "scripts/heal_drift.py", "hook"]
+    assert CONFIG["hook"]["command"] == ["python3", "-I", "scripts/heal_drift.py", "hook"]
     for key in ("loom-watch.json", CONFIG["session"]["prompt"], CONFIG["session"]["resume_prompt"]):
         assert heal.guarded([key]) == [key]
 
@@ -337,7 +375,8 @@ def write(root, path, text):
 
 def commit(work, path, text):
     write(work, path, text)
-    git(work, "add", path)
+    # -f: a guarded path may be in the user's global excludes (.claude/settings.local.json).
+    git(work, "add", "-f", path)
     git(work, "commit", "--quiet", "-m", f"touch {path}")
 
 

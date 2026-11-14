@@ -19,7 +19,9 @@ that closes it; the owner reviews and merges it. The design is
 - Never touch `main` or the main checkout, bump the workspace version, edit `CHANGELOG.md`
   (git-cliff writes it at release), or change `.github/workflows/release.yml`,
   `scripts/finish_release.sh`, `scripts/publish_order.py`, `scripts/heal_drift.py`,
-  `.claude/settings.json`, `loom-watch.json`, `.loom-watch/` or this skill.
+  `.claude/settings.json` or any other session configuration (`.claude/settings.local.json`,
+  `.claude/agents/`, `.claude/hooks/`, `.mcp.json`), `loom-watch.json`, `.loom-watch/` or this
+  skill.
 - Never run a credentialed live test: no `--ignored` run of a suite whose
   `[package.metadata.polyoxide.live.<target>]` entry lists `secrets`, no order or cancel route,
   no CLOB heartbeat (`live_heartbeat` cancels every resting order on the account).

@@ -17,9 +17,13 @@ this section binds:
 - **§2.** `heal_drift.py` has three subcommands: `hook` (the watcher's hook), `publish` and
   `escalate`. `run`, `install` and the units are gone. `loom-watch.json` at the repository root
   configures the watcher (label `schema-drift`, escalation label `needs-human`, title
-  `heal {spec} {issue} {row}`, cap 2, stuck after 2h, three nudges, one an hour per kind,
-  `issue_changed` off, opus at high effort in auto mode), and `.loom-watch/start.md` and
-  `resume.md` are its prompts. The watcher reads all three from `origin/main` only.
+  `heal {spec} {issue} {row}`, cap 2, stuck after 2h, `nudge_limit` 3 so two nudges of a kind
+  are sent and the third escalates, a repeat no sooner than an hour unless its trigger changed,
+  `issue_changed` off, opus at high effort in auto mode, and the hook run as `python3 -I`), and
+  `.loom-watch/start.md` and `resume.md` are its prompts. The watcher reads all three from
+  `origin/main` only. `GUARDED` adds them, with what configures the sessions loom starts in a
+  checkout of main (`.claude/settings.local.json`, `.claude/agents/`, `.claude/hooks/`,
+  `.mcp.json`).
 - **§3 and §3.1.** The lifecycle is watch.md's nine rules, which keep this table's order: its rule
   8 is rules 8 to 10 here, with the hook's `redrift` tried before loom's `conflict` and `ci`, and
   its rule 9 is rule 11. The poller's state on GitHub moves into loom's memory
@@ -30,9 +34,12 @@ this section binds:
   when its title parses to the issue its `issue` field links.
 - **§3.2.** The PR marker is unchanged; `hook nudges` reads it to decide `redrift`.
 - **§3.3.** `hook start` reserves the row, past main's table in the watcher's checkout, every
-  watcher session's title row, and every open heal PR's marker row and branch row. A resume takes
-  its PR's row from the PR's branch, since the watcher refuses a resume whose title does not
-  render that branch again, and an acknowledgement PR's marker says `none`.
+  watcher session's title row, every open heal PR's marker row and branch row, and every heal
+  branch git knows, local or on origin: the title names the branch, so a row a rejected PR's
+  branch still carries would give the next heal of that issue the same branch, with the rejected
+  commits on it. A resume takes its PR's spec and row from the PR's branch, since the watcher
+  refuses a resume whose title does not render that branch again; the issue's label may have
+  changed, and an acknowledgement PR's marker says `none`.
 - **§6.** The tests pin the hook (each row holder, the resume, the refusals, the nudge and its
   holds, stdout as one JSON object), `loom-watch.json` and the prompts' variables in place of the
   poller's rules, `execute`, `snapshot` and `install`.

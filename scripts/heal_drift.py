@@ -33,8 +33,9 @@ HUMAN_LABEL = "needs-human"
 DIVERGENCES = "_bmad-output/specs/spec-venue-extensibility/divergences.md"
 # What a heal may never change (spec §4.1 step 4): the workflows, which a PR's CI runs from its
 # own branch with the repository's secrets; the release machinery; and the loop itself, whose
-# `loom-watch.json` names the command the loom daemon runs as its hook. An entry ending in `/`
-# guards everything under it.
+# `loom-watch.json` names the command the loom daemon runs as its hook; and what configures the
+# Claude sessions loom starts in a checkout of main. An entry ending in `/` guards everything
+# under it.
 GUARDED = (
     ".github/workflows/",
     ".github/actions/",
@@ -42,7 +43,11 @@ GUARDED = (
     "scripts/publish_order.py",
     "scripts/heal_drift.py",
     ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".claude/agents/",
+    ".claude/hooks/",
     ".claude/skills/heal-drift/",
+    ".mcp.json",
     "loom-watch.json",
     ".loom-watch/",
 )
@@ -82,14 +87,33 @@ def fingerprint_of(body: str) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
-def branch_row(branch: str, issue: int) -> str | None:
-    """The DRIFT row a heal branch encodes. loom names a session's branch after its title,
-    `heal <spec> <issue> <row>`, lower-cased with dashes for spaces, so it ends `-<issue>-r<n>`
-    (or `-<issue>-none`)."""
-    m = re.search(rf"-{issue}-(r\d+|none)$", branch)
+# Any heal branch: loom names a session's branch after its title, `heal <spec> <issue> <row>`,
+# lower-cased with dashes for spaces, after the workspace's branch prefix.
+HEAL_BRANCH = re.compile(r"(?:^|/)heal-[a-z0-9._-]+-\d+-r(\d+)$")
+
+
+def heal_branch(branch: str, issue: int) -> tuple[str, str] | None:
+    """The spec and DRIFT row a heal branch for `issue` encodes, as the title held them (`R<n>`
+    or `none`), or None for any other branch."""
+    m = re.search(rf"(?:^|/)heal-(?P<spec>[a-z0-9._-]+)-{issue}-(?P<row>r\d+|none)$", branch)
     if m is None:
         return None
-    return "none" if m[1] == "none" else "R" + m[1][1:]
+    return m["spec"], "none" if m["row"] == "none" else "R" + m["row"][1:]
+
+
+def branch_rows(refs: Iterable[str]) -> list[int]:
+    """The DRIFT rows every heal branch git knows encodes, local or on origin, whatever became of
+    its session and PR: a PR the owner closed unmerged leaves its branch behind, and a new heal
+    given that row would get that branch again, with the commits the owner rejected."""
+    return [int(m[1]) for ref in refs if (m := HEAL_BRANCH.search(ref))]
+
+
+def refs_of(repo: Path) -> list[str]:
+    """The repository's local and remote-tracking branches. The watcher's checkout is a worktree
+    of the repository, so it sees every branch a heal session made or pushed."""
+    done = subprocess.run(["git", "for-each-ref", "--format=%(refname)", "refs/heads",
+                           "refs/remotes"], cwd=repo, capture_output=True, text=True, check=True)
+    return done.stdout.splitlines()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -177,30 +201,33 @@ def held_rows(data: Mapping) -> list[int]:
     for pr in data.get("prs") or []:
         if marker := Marker.parse(pr.get("body") or ""):
             rows.append(marker.row)
-        rows.append(branch_row(pr.get("branch") or "", pr["issue"]) or "")
+        rows.append((heal_branch(pr.get("branch") or "", pr["issue"]) or ("", ""))[1])
     return [int(r[1:]) for r in rows if re.fullmatch(r"R\d+", r)]
 
 
-def hook_start(data: Mapping, divergences: str) -> dict:
+def hook_start(data: Mapping, divergences: str, refs: Iterable[str] = ()) -> dict:
     """The `start` point: the title's `spec` and `row` and the prompt's `fingerprint`, or a
-    refusal. A new heal reserves the row past every one main's table, a heal session or an open
-    heal PR holds; a resume (`pr` set) takes the row its PR's branch encodes, since the watcher
-    starts a resume only when the title it renders makes that branch again."""
+    refusal. A new heal takes the issue's spec label and reserves the row past every one main's
+    table, a heal session, an open heal PR or any heal branch holds. A resume (`pr` set) takes
+    both from its PR's branch, since the watcher starts a resume only when the title it renders
+    makes that branch again: the issue's label may have changed since, and an acknowledgement
+    PR's marker says `none` for the row its branch carries."""
     issue = data["issue"]
     number = issue["number"]
     sha = fingerprint_of(issue.get("body") or "")
     if sha is None:
         return {"start": False, "reason": f"#{number}'s body holds no single diff_sha256"}
-    spec = spec_of(issue.get("labels") or [])
-    if spec is None or not TITLE_VALUE.match(spec):
-        return {"start": False, "reason": f"#{number} carries no single spec:<id> label"}
     if pr := data.get("pr"):
-        row = branch_row(pr["branch"], number)
-        if row is None:
-            return {"start": False,
-                    "reason": f"PR #{pr['number']}'s branch {pr['branch']} encodes no DRIFT row"}
+        found = heal_branch(pr["branch"], number)
+        if found is None:
+            return {"start": False, "reason": f"PR #{pr['number']}'s branch {pr['branch']} is "
+                    f"not a heal branch for #{number}"}
+        spec, row = found
     else:
-        row = f"R{max([highest_row(divergences), *held_rows(data)]) + 1}"
+        spec = spec_of(issue.get("labels") or [])
+        if spec is None or not TITLE_VALUE.match(spec):
+            return {"start": False, "reason": f"#{number} carries no single spec:<id> label"}
+        row = f"R{max([highest_row(divergences), *held_rows(data), *branch_rows(refs)]) + 1}"
     return {"start": True, "vars": {"spec": spec, "row": row, "fingerprint": sha}}
 
 
@@ -224,10 +251,12 @@ def hook_nudges(data: Mapping) -> dict:
 
 def hook(point: str, data: Mapping, repo: Path = REPO) -> dict:
     """Answer the watcher at `point`. It runs the hook in its own checkout of origin/main, which
-    it refreshes before the hook runs, so `repo`'s divergences.md is main's."""
+    it refreshes before the hook runs, so `repo`'s divergences.md is main's; a failed read of it
+    or of the refs fails the call, and the issue waits rather than take a row in use."""
     if point == "start":
-        divergences = "" if data.get("pr") else (repo / DIVERGENCES).read_text()
-        return hook_start(data, divergences)
+        if data.get("pr"):
+            return hook_start(data, "")
+        return hook_start(data, (repo / DIVERGENCES).read_text(), refs_of(repo))
     return hook_nudges(data)
 
 

@@ -16,5 +16,5 @@
     "prompt": ".loom-watch/start.md",
     "resume_prompt": ".loom-watch/resume.md"
   },
-  "hook": { "command": ["python3", "scripts/heal_drift.py", "hook"], "timeout": "60s" }
+  "hook": { "command": ["python3", "-I", "scripts/heal_drift.py", "hook"], "timeout": "60s" }
 }
