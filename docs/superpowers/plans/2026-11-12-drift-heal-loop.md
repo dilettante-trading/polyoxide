@@ -2106,3 +2106,10 @@ blocks above are the plan as first executed.** What changed:
   upstream's documents and PR comments as data.
 - Each of the six behavioural fixes was shown to fail its test when reverted.
 
+## Superseded (2026-11-14)
+
+loom's issue watcher replaced the poller before it was ever installed: `run`, `install`, the
+systemd units and their tasks' code are gone, and `heal_drift.py hook` answers the watcher
+instead. The design spec's §0 says what changed; Task 1's capture commands still re-capture the
+`gh` and `loom session list --json` fixtures that remain (`comment.json` went with the nudge
+markers).

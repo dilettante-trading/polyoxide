@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "label": "schema-drift",
+  "escalate_label": "needs-human",
+  "title": "heal {spec} {issue} {row}",
+  "cap": 2,
+  "stuck": "2h",
+  "nudge_limit": 3,
+  "nudge_gap": "1h",
+  "issue_changed": false,
+  "log_tail": 200,
+  "session": {
+    "model": "opus",
+    "effort": "high",
+    "permission_mode": "auto",
+    "prompt": ".loom-watch/start.md",
+    "resume_prompt": ".loom-watch/resume.md"
+  },
+  "hook": { "command": ["python3", "scripts/heal_drift.py", "hook"], "timeout": "60s" }
+}

@@ -5,6 +5,40 @@
 **Follows:** [2026-08-15-drift-convergence-design.md](2026-08-15-drift-convergence-design.md), whose
 nightly detection stands unchanged. Where this spec and an earlier record disagree, this spec binds.
 
+## 0. Superseded in part: loom's issue watcher (2026-11-14)
+
+The poller this spec designed (`heal_drift.py run`, its `install` and the two systemd units) was
+never installed. loom's issue watcher replaced it before it ran: loom feedback n30 asked for the
+generic half in loom, and the owner approved loom's design
+(`docs/superpowers/specs/2026-11-13-issue-watcher-design.md` in loom, §8 for this repository) and
+its reference, loom's `docs/specs/watch.md`. Where this section and the rest of this spec disagree,
+this section binds:
+
+- **§2.** `heal_drift.py` has three subcommands: `hook` (the watcher's hook), `publish` and
+  `escalate`. `run`, `install` and the units are gone. `loom-watch.json` at the repository root
+  configures the watcher (label `schema-drift`, escalation label `needs-human`, title
+  `heal {spec} {issue} {row}`, cap 2, stuck after 2h, three nudges, one an hour per kind,
+  `issue_changed` off, opus at high effort in auto mode), and `.loom-watch/start.md` and
+  `resume.md` are its prompts. The watcher reads all three from `origin/main` only.
+- **§3 and §3.1.** The lifecycle is watch.md's nine rules, which keep this table's order: its rule
+  8 is rules 8 to 10 here, with the hook's `redrift` tried before loom's `conflict` and `ci`, and
+  its rule 9 is rule 11. The poller's state on GitHub moves into loom's memory
+  (`<repo>/.loom/watch.json`): nudge counts are no longer comments with nudge markers, and a PR
+  closed unmerged is settled there rather than by a `kind=rejected` or `kind=closed` marker. A
+  heal PR is the watcher's when the owner's account opened it from this repository, its branch
+  matches the title template, and its `closingIssuesReferences` hold the issue; a heal session
+  when its title parses to the issue its `issue` field links.
+- **§3.2.** The PR marker is unchanged; `hook nudges` reads it to decide `redrift`.
+- **§3.3.** `hook start` reserves the row, past main's table in the watcher's checkout, every
+  watcher session's title row, and every open heal PR's marker row and branch row. A resume takes
+  its PR's row from the PR's branch, since the watcher refuses a resume whose title does not
+  render that branch again, and an acknowledgement PR's marker says `none`.
+- **§6.** The tests pin the hook (each row holder, the resume, the refusals, the nudge and its
+  holds, stdout as one JSON object), `loom-watch.json` and the prompts' variables in place of the
+  poller's rules, `execute`, `snapshot` and `install`.
+- **§8.** The rollout is: push `main`, then `loom watch on -w polyoxide`; `loom watch dry-run` shows
+  what the next tick would do and `loom watch status` its state. `loom watch off` pauses it.
+
 ## 1. Goal
 
 `SELF-HEALING.md` describes a loop that detects and reports drift by itself; the fix is still made

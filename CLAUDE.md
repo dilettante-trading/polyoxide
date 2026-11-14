@@ -17,7 +17,7 @@ This file holds the commands, the CI gates and the rules that cut across crates.
 | `testing.md` | mock suites, `polyoxide-test-support`, capture scripts |
 | `live-tests.md` | live suites, failure tags, the nightly classifier, `live_unwraps.py` |
 | `specs.md` | the `docs/specs/` mirrors and the schema-drift check |
-| `heal.md` | the drift heal loop: its stateless poller, the `heal-drift` skill, `publish`'s refusals, the timer |
+| `heal.md` | the drift heal loop: loom's issue watcher and `loom-watch.json`, the hook, the `heal-drift` skill, `publish`'s refusals |
 | `send-loop.md` | core's send loop, hooks, pings, retry policies, the HTTP transport and `Response`, reqwest, gzip, the header pins |
 | `rate-limits.md` | window quotas, 429 holds, `Retry-After`, per-signer buckets, the measured tables |
 | `errors.md` | the error hierarchy, `Classify`, `Retry-After` parsing, socket error classification |

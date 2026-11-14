@@ -1,16 +1,17 @@
-"""scripts/heal_drift.py: the drift heal loop's poller, its publish guard and its timer.
+"""scripts/heal_drift.py: the loom watcher's hook, the publish guard, and loom-watch.json.
 
 docs/superpowers/specs/2026-11-12-drift-heal-loop-design.md is the design. The fixtures under
 fixtures/heal/ are captured `gh` and `loom session list --json` output, so a field renamed by
-either fails here rather than in the timer.
+either fails here rather than in a heal. The hook's input is loom's wire (docs/specs/watch.md in
+loom, "The hook"), built here from the captured issue.
 """
 
 from __future__ import annotations
 
 import copy
-import datetime as dt
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -39,52 +40,71 @@ def fixture(name):
 
 ISSUE_96 = fixture("issue_96.json")
 PR_65 = fixture("pr_65.json")
-COMMENT = fixture("comment.json")
 SESSION = fixture("sessions.json")[0]
 SHA_96 = "7a09009f7ccff02c68ebab5b80141459b655586bb68f8bdf293fedc25b428464"
 OTHER_SHA = "0" * 64
 THIRD_SHA = "1" * 64
-NOW = dt.datetime(2026, 11, 12, 12, 0, tzinfo=dt.timezone.utc)
 BRANCH = "aidanb/heal-kalshi-ws-96-r32"
 TITLE_96 = "heal kalshi-ws 96 R32"
 TABLE = "| R28 | the reconnect jitter |\n| R31 | perps' new route |\n"
+CONFIG = json.loads((REPO / "loom-watch.json").read_text())
+# The variables loom gives every prompt (watch.md, "Prompts"); a hook variable may not reuse one.
+PROMPT_VARS = {"issue", "issue_title", "issue_url", "pr", "pr_url", "branch", "base"}
 
 
-def issue(number=96, *, state="OPEN", labels=(), body=None, updated=None):
+def issue(number=96, *, state="OPEN", labels=(), body=None):
     d = copy.deepcopy(ISSUE_96)
     d["number"], d["state"] = number, state
     d["labels"] += [{**d["labels"][0], "name": name} for name in labels]
     if body is not None:
         d["body"] = body
-    if updated is not None:
-        d["updatedAt"] = updated
     return heal.Issue.from_gh(d)
 
 
-def comment(body):
-    return {**COMMENT, "body": body}
-
-
-def nudge(kind, n=1):
-    return comment(f"<!-- polyoxide-heal-nudge: kind={kind} n={n} -->\nheal: nudged.")
-
-
-def pr(number=200, *, issue=96, state="OPEN", sha=SHA_96, seen=SHA_96, row="R32",
-       mergeable="MERGEABLE", failing=False, comments=(), branch=BRANCH):
-    d = copy.deepcopy(PR_65)
-    marker = heal.Marker(issue, "kalshi-ws", sha, seen, row)
-    d.update(number=number, state=state, headRefName=branch, mergeable=mergeable,
-             body=f"Adopted.\n\nCloses #{issue}\n\n{marker.render()}\n", comments=list(comments))
-    if failing:
-        d["statusCheckRollup"][1]["conclusion"] = "FAILURE"
-    return heal.Pr.from_gh(d)
-
-
-def session(issue=96, *, title=TITLE_96, status="Ready", since="2026-11-12T11:30:00Z", id=1,
-            branch=BRANCH, worktree="/nowhere"):
-    return heal.Session.from_loom({**SESSION, "id": id, "title": title, "issue": issue,
-                                   "status": status, "status_since": since, "branch": branch,
+def session(issue=96, *, title=TITLE_96, branch=BRANCH, worktree="/nowhere"):
+    return heal.Session.from_loom({**SESSION, "title": title, "issue": issue, "branch": branch,
                                    "worktree": worktree})
+
+
+def marked(issue=96, *, sha=SHA_96, seen=SHA_96, row="R32"):
+    """A heal PR's body as publish writes it."""
+    marker = heal.Marker(issue, "kalshi-ws", sha, seen, row).render()
+    return f"Adopted.\n\nCloses #{issue}\n\n{marker}\n"
+
+
+def watched_pr(number=200, *, issue=96, branch=BRANCH, body=None):
+    return {"number": number, "issue": issue, "branch": branch,
+            "body": marked(issue) if body is None else body}
+
+
+def watched_session(issue, row, spec="kalshi"):
+    return {"title": f"heal {spec} {issue} {row}", "issue": issue,
+            "branch": f"aidanb/heal-{spec}-{issue}-{row.lower()}", "status": "Running",
+            "vars": {"spec": spec, "row": row}}
+
+
+def hook_input(point="start", *, body=None, labels=None, pr=None, sessions=(), prs=()):
+    """What the watcher writes to the hook's stdin, for issue #96."""
+    names = [label["name"] for label in ISSUE_96["labels"]] if labels is None else list(labels)
+    data = {
+        "point": point, "workspace": "polyoxide", "repo": "dilettante-trading/polyoxide",
+        "base": "main", "base_sha": "e" * 40,
+        "issue": {"number": 96, "title": "Schema drift: kalshi-ws", "labels": names,
+                  "body": ISSUE_96["body"] if body is None else body,
+                  "url": "https://github.com/dilettante-trading/polyoxide/issues/96"},
+        "pr": pr, "sessions": list(sessions), "prs": list(prs)}
+    if point == "nudges":
+        data["session"] = watched_session(96, "R32", "kalshi-ws")
+        data["head_sha"] = "f" * 40
+    return data
+
+
+def start(table=TABLE, **kwargs):
+    return heal.hook_start(hook_input(**kwargs), table)
+
+
+def nudges(**kwargs):
+    return heal.hook_nudges(hook_input("nudges", **kwargs))["nudges"]
 
 
 # --- parsing -------------------------------------------------------------------------------
@@ -117,32 +137,7 @@ def test_a_body_with_two_markers_has_none():
     assert heal.Marker.parse(f"{text}\n{text}") is None
 
 
-def test_a_pr_without_a_marker_is_not_a_heal_pr():
-    # #65 adopted drift by hand, before the loop.
-    assert heal.Pr.from_gh(PR_65) is None
-
-
-def test_a_failed_check_and_the_nudges_are_read_off_the_pr():
-    found = pr(failing=True, comments=[nudge("ci"), nudge("ci", 2), comment("looks good")])
-    assert found.failing == (("Lint & Test", PR_65["statusCheckRollup"][1]["detailsUrl"]),)
-    assert found.nudges == {"ci": 2}
-    assert not found.settled
-
-
-def test_a_marker_comment_someone_else_wrote_counts_for_nothing():
-    # The repository is public: a stranger's comment must not settle or escalate a PR.
-    forged = [{**nudge(kind), "viewerDidAuthor": False} for kind in ("ci", "ci", "closed")]
-    found = pr(failing=True, comments=forged)
-    assert found.nudges == {} and not found.settled
-
-
-def test_loom_and_github_timestamps_parse():
-    assert heal.parse_time(SESSION["status_since"]).tzinfo is not None
-    assert heal.parse_time("2026-11-10T13:59:57Z") == dt.datetime(
-        2026, 11, 10, 13, 59, 57, tzinfo=dt.timezone.utc)
-
-
-def test_a_heal_session_is_titled_by_the_poller_and_linked_to_its_issue():
+def test_a_heal_session_is_titled_by_the_watcher_and_linked_to_its_issue():
     assert session().heal and session().row == "R32"
     assert not session(issue=94).heal
     assert not session(title="kalshi-ws adoption").heal
@@ -154,198 +149,159 @@ def test_the_highest_drift_row_reads_the_real_table():
     assert heal.highest_row(TABLE) == 31
 
 
-# --- decide: spec §3.1, one test per rule and per ordering --------------------------------
+@pytest.mark.parametrize("branch,row", [
+    (BRANCH, "R32"), ("aidanb/heal-kalshi-ws-96-none", "none"), ("aidanb/heal-kalshi-ws-96", None),
+    ("aidanb/heal-kalshi-196-r32", None), ("aidanb/gamma-59", None),
+], ids=["row", "none", "no row", "another issue", "not a heal"])
+def test_a_branch_gives_back_the_row_its_title_reserved(branch, row):
+    assert heal.branch_row(branch, 96) == row
 
 
-def decide(issues, prs=(), sessions=(), table=TABLE):
-    return heal.decide(issues, prs, sessions, table, NOW)
+# --- the hook's start (watch.md, "start") ---------------------------------------------------
 
 
-def test_rule_11_starts_a_heal_session_with_the_next_drift_row():
-    assert decide([issue()]) == [heal.Start(96, "kalshi-ws", SHA_96, "R32")]
+def test_start_reserves_the_row_after_main_s_table():
+    assert start() == {"start": True,
+                       "vars": {"spec": "kalshi-ws", "row": "R32", "fingerprint": SHA_96}}
 
 
-def test_rule_11_gives_two_issues_consecutive_rows_in_issue_order():
-    assert decide([issue(96), issue(94)]) == [
-        heal.Start(94, "kalshi-ws", SHA_96, "R32"), heal.Start(96, "kalshi-ws", SHA_96, "R33")]
+HOLDERS = {
+    # #94's session holds R35 by its title.
+    "a session's title": dict(sessions=[watched_session(94, "R35")]),
+    # #95's PR holds R35 by its marker (its branch says r33).
+    "a pr's marker": dict(prs=[watched_pr(201, issue=95, branch="aidanb/heal-kalshi-95-r33",
+                                          body=marked(95, row="R35"))]),
+    # #97's acknowledgement PR holds R35 by its branch alone, since its marker says none.
+    "a pr's branch": dict(prs=[watched_pr(202, issue=97, branch="aidanb/heal-kalshi-97-r35",
+                                          body=marked(97, row="none"))]),
+}
 
 
-def test_a_reservation_skips_rows_a_heal_session_or_an_open_pr_holds():
-    actions = decide([issue(94), issue(96)],
-                     prs=[pr(201, issue=90, row="R34")],
-                     sessions=[session(94, title="heal kalshi-ws 94 R33", status="Running")])
-    assert actions == [heal.Start(96, "kalshi-ws", SHA_96, "R35")]
+@pytest.mark.parametrize("held", HOLDERS.values(), ids=HOLDERS.keys())
+def test_start_skips_a_row_a_heal_session_or_an_open_heal_pr_holds(held):
+    assert start(**held)["vars"]["row"] == "R36"
 
 
-def test_rule_11_waits_when_both_slots_are_taken():
-    busy = [session(90, title="heal kalshi-ws 90 R32", status="Running", id=2),
-            session(92, title="heal kalshi-ws 92 R33", status="Running", id=3)]
-    assert decide([issue(90), issue(92), issue(96)], sessions=busy) == [
-        heal.Wait(96, "all 2 heal slots are taken")]
+@pytest.mark.parametrize("body", [
+    "no acknowledgement block",
+    f'"diff_sha256": "{SHA_96}"\n"diff_sha256": "{OTHER_SHA}"',
+], ids=["none", "two"])
+def test_start_refuses_an_issue_without_exactly_one_fingerprint(body):
+    found = start(body=body)
+    assert found["start"] is False and "diff_sha256" in found["reason"]
 
 
-def test_rule_11_leaves_an_issue_a_hand_started_session_holds():
-    assert decide([issue()], sessions=[session(title="kalshi-ws adoption")]) == [
-        heal.Wait(96, "a session the poller did not start is linked to it")]
+@pytest.mark.parametrize("labels", [
+    ["schema-drift"], ["schema-drift", "spec:kalshi", "spec:kalshi-ws"], ["spec:kalshi ws"],
+], ids=["none", "two", "not a title value"])
+def test_start_refuses_an_issue_without_one_spec_label_a_title_can_hold(labels):
+    found = start(labels=labels)
+    assert found["start"] is False and "spec:" in found["reason"]
 
 
-def test_rule_11_waits_without_a_fingerprint():
-    assert decide([issue(body="no block")]) == [
-        heal.Wait(96, "its body holds no single diff_sha256")]
+def test_a_resume_keeps_the_row_its_pr_s_branch_encodes():
+    # An acknowledgement PR's marker says none; the branch still carries R30, and the watcher
+    # resumes only when the title it renders makes that branch again.
+    pr = watched_pr(branch="aidanb/heal-kalshi-ws-96-r30", body=marked(row="none"))
+    assert start(table="| R40 | later |\n", pr=pr, prs=[pr])["vars"] == {
+        "spec": "kalshi-ws", "row": "R30", "fingerprint": SHA_96}
 
 
-def test_rule_1_kills_the_session_once_its_pr_merged_even_under_needs_human():
-    s = session()
-    assert decide([issue(state="CLOSED", labels=("needs-human",))],
-                  prs=[pr(state="MERGED")], sessions=[s]) == [heal.Kill(s)]
+def test_a_resume_refuses_a_branch_that_encodes_no_row():
+    found = start(pr=watched_pr(branch="aidanb/kalshi-ws-by-hand"))
+    assert found["start"] is False and "encodes no DRIFT row" in found["reason"]
 
 
-def test_rule_4_leaves_a_needs_human_issue_alone():
-    assert decide([issue(labels=("needs-human",))], prs=[pr(mergeable="CONFLICTING")],
-                  sessions=[session()]) == []
+def test_start_answers_within_the_watcher_s_bounds():
+    found = start()
+    assert set(found) == {"start", "vars"} and len(found["vars"]) <= 16
+    for name, value in found["vars"].items():
+        assert re.fullmatch(r"[a-z][a-z0-9_]*", name) and name not in PROMPT_VARS
+        assert len(value.encode()) <= 64
+    title_vars = set(re.findall(r"\{([a-z][a-z0-9_]*)\}", CONFIG["title"])) - {"issue"}
+    for name in title_vars:
+        assert heal.TITLE_VALUE.match(found["vars"][name])
+    # The title the watcher renders is one publish recognises as this issue's heal session.
+    title = CONFIG["title"].replace("{issue}", "96").format(**found["vars"])
+    assert session(title=title).heal and session(title=title).row == "R32"
 
 
-def test_rule_5_escalates_a_pr_closed_unmerged_and_kills_its_session():
-    s = session()
-    assert decide([issue()], prs=[pr(state="CLOSED")], sessions=[s]) == [
-        heal.Escalate(96, "The heal PR #200 was closed unmerged; the poller will not heal this "
-                          "issue again until `needs-human` is removed.", reject_prs=(200,)),
-        heal.Kill(s)]
+# --- the hook's nudges (watch.md, "nudges") -------------------------------------------------
 
 
-def test_rule_5_closes_the_pr_a_session_opened_after_the_owner_closed_its_first():
-    s = session()
-    assert decide([issue()], prs=[pr(200, state="CLOSED"), pr(201)], sessions=[s]) == [
-        heal.Escalate(96, "The heal PR #200 was closed unmerged; the poller will not heal this "
-                          "issue again until `needs-human` is removed.", reject_prs=(200,)),
-        heal.ClosePr(201, 96, rejected=200), heal.Kill(s)]
+def test_nudges_sends_a_redrift_when_the_nightly_wrote_a_fingerprint_the_pr_never_saw():
+    [nudge] = nudges(body=f'"diff_sha256": "{THIRD_SHA}"',
+                     pr=watched_pr(body=marked(sha=SHA_96, seen=OTHER_SHA)))
+    assert nudge["kind"] == "redrift" and nudge["key"] == THIRD_SHA
+    assert THIRD_SHA in nudge["text"] and "PR #200" in nudge["text"]
 
 
-def test_a_rejected_pr_does_not_block_a_fresh_heal_once_the_label_is_removed():
-    assert decide([issue()], prs=[pr(state="CLOSED", comments=[nudge("rejected")])]) == [
-        heal.Start(96, "kalshi-ws", SHA_96, "R32")]
+@pytest.mark.parametrize("sha,seen", [(SHA_96, OTHER_SHA), (THIRD_SHA, SHA_96)],
+                         ids=["adopted it", "adopted a newer upstream than the issue shows"])
+def test_nudges_holds_while_the_issue_shows_what_the_pr_adopted_or_saw(sha, seen):
+    assert nudges(pr=watched_pr(body=marked(sha=sha, seen=seen))) == []
 
 
-def test_rule_2_closes_the_pr_when_the_nightly_closed_the_issue():
-    s = session()
-    assert decide([issue(state="CLOSED")], prs=[pr()], sessions=[s]) == [
-        heal.ClosePr(200, 96), heal.Kill(s)]
+@pytest.mark.parametrize("pr", [
+    watched_pr(body=PR_65["body"]), watched_pr(body=marked(95, sha=OTHER_SHA, seen=OTHER_SHA)),
+], ids=["no marker", "another issue's marker"])
+def test_nudges_sends_nothing_for_a_pr_without_this_issue_s_marker(pr):
+    assert nudges(pr=pr) == []
 
 
-def test_a_pr_the_poller_closed_never_reads_as_a_rejection():
-    # The owner reopened the issue after rule 4 closed its PR: heal it afresh.
-    assert decide([issue()], prs=[pr(state="CLOSED", comments=[nudge("closed")])]) == [
-        heal.Start(96, "kalshi-ws", SHA_96, "R32")]
+# --- the hook as the watcher runs it --------------------------------------------------------
 
 
-def test_rule_3_kills_a_session_left_on_a_closed_issue():
-    s = session(status="Running")
-    assert decide([issue(state="CLOSED")], sessions=[s]) == [heal.Kill(s)]
+def run_hook(point, data):
+    done = subprocess.run([sys.executable, str(REPO / "scripts" / "heal_drift.py"), "hook", point],
+                          input=json.dumps(data), cwd=REPO, capture_output=True, text=True)
+    return done.returncode, done.stdout, done.stderr
 
 
-def test_a_closed_issue_frees_its_session_even_under_needs_human():
-    # A heal that escalated "the drift is gone" must not hold its slot after the nightly closes.
-    s = session()
-    assert decide([issue(state="CLOSED", labels=("needs-human",))], sessions=[s]) == [heal.Kill(s)]
+def test_the_hook_reads_stdin_and_writes_one_json_object_to_stdout():
+    code, out, _ = run_hook("start", hook_input())
+    assert code == 0
+    answer = json.loads(out)  # one object and nothing after it, or this raises
+    real = heal.highest_row((REPO / heal.DIVERGENCES).read_text())
+    assert answer == {"start": True,
+                      "vars": {"spec": "kalshi-ws", "row": f"R{real + 1}", "fingerprint": SHA_96}}
+    code, out, _ = run_hook("nudges", hook_input("nudges", pr=watched_pr()))
+    assert (code, json.loads(out)) == (0, {"nudges": []})
 
 
-def test_rule_6_resumes_an_open_pr_that_has_no_session():
-    assert decide([issue()], prs=[pr(sha=OTHER_SHA, row="R30")]) == [
-        heal.Start(96, "kalshi-ws", OTHER_SHA, "R30", branch=BRANCH, pr=200)]
+def test_a_hook_fault_exits_non_zero_with_nothing_on_stdout():
+    code, out, err = run_hook("start", {"point": "start"})
+    assert code != 0 and out == "" and "KeyError" in err
 
 
-def test_rule_6_leaves_an_open_pr_a_hand_started_session_holds():
-    assert decide([issue()], prs=[pr()], sessions=[session(title="kalshi-ws adoption")]) == [
-        heal.Wait(96, "a session the poller did not start is linked to it")]
+# --- loom-watch.json and its prompts ---------------------------------------------------------
 
 
-def test_rule_6_waits_for_a_slot():
-    busy = [session(90, title="heal kalshi-ws 90 R30", status="Running", id=2),
-            session(92, title="heal kalshi-ws 92 R31", status="Running", id=3)]
-    assert decide([issue(90), issue(92), issue(96)], prs=[pr()], sessions=busy) == [
-        heal.Wait(96, "all 2 heal slots are taken")]
+def test_the_watcher_config_names_this_loop():
+    assert CONFIG["version"] == 1
+    assert (CONFIG["label"], CONFIG["escalate_label"]) == (heal.DRIFT_LABEL, heal.HUMAN_LABEL)
+    assert CONFIG["title"] == "heal {spec} {issue} {row}"
+    # The nightly rewrites the issue body each night; the hook's redrift nudge reads it instead.
+    assert CONFIG["issue_changed"] is False
+    assert CONFIG["hook"]["command"] == ["python3", "scripts/heal_drift.py", "hook"]
+    for key in ("loom-watch.json", CONFIG["session"]["prompt"], CONFIG["session"]["resume_prompt"]):
+        assert heal.guarded([key]) == [key]
 
 
-def test_a_second_heal_session_for_one_issue_still_holds_a_slot():
-    twins = [session(90, title="heal kalshi-ws 90 R30", status="Running", id=2),
-             session(90, title="heal kalshi-ws 90 R30", status="Running", id=3)]
-    assert decide([issue(90), issue(96)], sessions=twins) == [
-        heal.Wait(96, "all 2 heal slots are taken")]
+@pytest.mark.parametrize("key", ["prompt", "resume_prompt"])
+def test_a_prompt_names_only_variables_the_watcher_and_the_hook_give(key):
+    text = (REPO / CONFIG["session"][key]).read_text()
+    names = set(re.findall(r"\{([a-z][a-z0-9_]*)\}", text))
+    assert names <= PROMPT_VARS | set(start()["vars"])
+    assert {"issue", "spec", "row", "fingerprint"} <= names
+    assert "heal_drift.py publish" in text and len(text.encode()) <= 64 * 1024
 
 
-def test_rule_7_escalates_a_session_stuck_at_a_prompt_before_any_nudge():
-    s = session(status="Prompting", since="2026-11-12T09:00:00Z")
-    [action] = decide([issue()], prs=[pr(failing=True)], sessions=[s])
-    assert isinstance(action, heal.Escalate) and "permission prompt" in action.reason
-
-
-def test_rule_7_waits_two_hours_before_calling_a_prompt_stuck():
-    assert decide([issue()], sessions=[session(status="Prompting",
-                                               since="2026-11-12T10:30:00Z")]) == []
-
-
-def test_rule_7_escalates_a_session_idle_with_nothing_published():
-    [action] = decide([issue()], sessions=[session(since="2026-11-12T09:00:00Z")])
-    assert isinstance(action, heal.Escalate) and "without publishing" in action.reason
-
-
-def test_rule_7_escalates_a_session_loom_lists_as_recoverable():
-    [action] = decide([issue()], prs=[pr()],
-                      sessions=[session(status="Recoverable", since="2026-11-12T09:00:00Z")])
-    assert isinstance(action, heal.Escalate) and "Recoverable" in action.reason
-
-
-def test_an_idle_session_with_a_green_pr_is_left_alone():
-    assert decide([issue()], prs=[pr()], sessions=[session(since="2026-11-12T09:00:00Z")]) == []
-
-
-def test_rule_8_sends_a_redrift_when_the_nightly_wrote_a_fingerprint_the_pr_never_saw():
-    s = session()
-    [action] = decide([issue()], prs=[pr(sha=OTHER_SHA, seen=THIRD_SHA)], sessions=[s])
-    assert (action.kind, action.n, action.session, action.pr) == ("redrift", 1, s, 200)
-    assert SHA_96 in action.text
-
-
-def test_rule_8_holds_when_the_pr_adopted_a_newer_upstream_than_the_issue_shows():
-    # The issue still shows what it showed at publish time, whatever else touched it since.
-    assert decide([issue(updated="2026-11-12T11:59:00Z")], prs=[pr(sha=OTHER_SHA, seen=SHA_96)],
-                  sessions=[session()]) == []
-
-
-def test_rule_9_sends_a_conflict():
-    [action] = decide([issue()], prs=[pr(mergeable="CONFLICTING")], sessions=[session()])
-    assert action.kind == "conflict"
-
-
-def test_rule_10_sends_the_failing_jobs():
-    failing = pr(failing=True)
-    [action] = decide([issue()], prs=[failing], sessions=[session()])
-    assert (action.kind, action.jobs) == ("ci", failing.failing)
-
-
-@pytest.mark.parametrize("status", ["Running", "Loading", "Paused"])
-def test_a_busy_or_paused_session_is_not_nudged(status):
-    assert decide([issue()], prs=[pr(mergeable="CONFLICTING")],
-                  sessions=[session(status=status)]) == []
-
-
-def test_a_second_nudge_is_numbered():
-    [action] = decide([issue()], prs=[pr(failing=True, comments=[nudge("ci")])],
-                      sessions=[session()])
-    assert (action.kind, action.n) == ("ci", 2)
-
-
-def test_the_third_nudge_of_a_kind_escalates():
-    [action] = decide([issue()], prs=[pr(failing=True, comments=[nudge("ci"), nudge("ci", 2)])],
-                      sessions=[session()])
-    assert isinstance(action, heal.Escalate) and "nudged 2 times for `ci`" in action.reason
-
-
-# --- execute, snapshot ---------------------------------------------------------------------
+# --- publish: spec §4.1 ------------------------------------------------------------------
 
 
 class FakeShell(heal.Shell):
-    """Answers gh, loom and systemctl from a table and records every call. git runs for real
+    """Answers gh and loom from a table and records every call. git runs for real
     (in the temporary repositories below) unless `real_git` is off, when the table answers it
     too. An unanswered command prints nothing."""
 
@@ -366,122 +322,6 @@ class FakeShell(heal.Shell):
 
     def commands(self, *prefix):
         return [(args, input) for args, input in self.calls if tuple(args[: len(prefix)]) == prefix]
-
-
-def test_a_start_opens_a_heal_session_on_opus_at_high_effort():
-    shell = FakeShell()
-    heal.execute(heal.Start(96, "kalshi-ws", SHA_96, "R32"), shell)
-    [(args, _)] = shell.calls
-    assert args[:14] == ["loom", "session", "new", TITLE_96, "-w", "polyoxide", "--issue", "96",
-                         "--model", "opus", "--effort", "high", "--permission-mode", "auto"]
-    prompt = args[args.index("--prompt") + 1]
-    assert "heal-drift" in prompt and SHA_96 in prompt and "--drift-row R32" in prompt
-    assert "--branch" not in args
-
-
-def test_a_resume_fetches_the_pr_branch_and_checks_it_out():
-    shell = FakeShell(real_git=False)
-    heal.execute(heal.Start(96, "kalshi-ws", SHA_96, "R32", branch=BRANCH, pr=200), shell)
-    [(fetch, _), (args, _)] = shell.calls
-    assert fetch == ["git", "fetch", "--quiet", "origin", BRANCH]
-    assert args[-2:] == ["--branch", BRANCH]
-    prompt = args[args.index("--prompt") + 1]
-    assert "PR #200" in prompt and "--comments" not in prompt
-
-
-def test_a_ci_nudge_carries_each_failing_job_s_log_tail_and_leaves_its_count():
-    log = "\n".join(f"line {i}" for i in range(300))
-    shell = FakeShell({("gh", "run", "view"): log})
-    failing = pr(failing=True)
-    heal.execute(heal.Send(session(), 200, "ci", 1, "PR #200 has failing checks.",
-                           jobs=failing.failing), shell)
-    job = PR_65["statusCheckRollup"][1]["detailsUrl"].rsplit("/", 1)[1]
-    # The count goes on the PR before the message goes to the session.
-    assert [args[:3] for args, _ in shell.calls][1:] == [["gh", "pr", "comment"],
-                                                        ["loom", "session", "send"]]
-    assert [args for args, _ in shell.commands("gh", "run", "view")] == [
-        ["gh", "run", "view", "--job", job, "--log-failed"]]
-    [(send, text)] = shell.commands("loom", "session", "send")
-    assert send == ["loom", "session", "send", TITLE_96, "--id", "1", "-w", "polyoxide",
-                    "--from", "heal-poller"]
-    lines = text.splitlines()
-    assert "line 299" in lines and "line 100" in lines and "line 99" not in lines
-    [(note, _)] = shell.commands("gh", "pr", "comment")
-    assert pr(comments=[comment(note[note.index("--body") + 1])]).nudges == {"ci": 1}
-
-
-def test_an_escalation_labels_the_issue_and_settles_a_rejected_pr():
-    shell = FakeShell()
-    heal.execute(heal.Escalate(96, "The heal PR #200 was closed unmerged.", reject_prs=(200,)),
-                 shell)
-    assert [args[:3] for args, _ in shell.calls] == [
-        ["gh", "label", "create"], ["gh", "issue", "comment"], ["gh", "issue", "edit"],
-        ["gh", "pr", "comment"]]
-    [(_, text)] = shell.commands("gh", "issue", "comment")
-    assert "closed unmerged" in text
-    [(edit, _)] = shell.commands("gh", "issue", "edit")
-    assert edit[-2:] == ["--add-label", "needs-human"]
-    [(note, _)] = shell.commands("gh", "pr", "comment")
-    assert pr(state="CLOSED", comments=[comment(note[note.index("--body") + 1])]).settled
-
-
-def test_closing_a_stale_pr_settles_it():
-    shell = FakeShell()
-    heal.execute(heal.ClosePr(200, 96), shell)
-    [(args, _)] = shell.calls
-    assert args[:4] == ["gh", "pr", "close", "200"]
-    assert pr(state="CLOSED", comments=[comment(args[args.index("--comment") + 1])]).settled
-
-
-def test_closing_a_pr_with_a_rejected_one_says_so():
-    shell = FakeShell()
-    heal.execute(heal.ClosePr(201, 96, rejected=200), shell)
-    [(args, _)] = shell.calls
-    assert "#200 was closed unmerged" in args[args.index("--comment") + 1]
-
-
-def test_a_kill_names_the_session_by_its_id():
-    shell = FakeShell()
-    heal.execute(heal.Kill(session(id=7)), shell)
-    assert shell.calls == [(["loom", "session", "kill", TITLE_96, "--id", "7", "-y", "-w",
-                             "polyoxide"], None)]
-
-
-def test_a_snapshot_reads_both_issue_lists_the_heal_prs_the_sessions_and_the_table():
-    named = {**SESSION, "title": "heal kalshi 80 R29", "issue": 80}
-    old = {**ISSUE_96, "number": 80, "state": "CLOSED"}
-    marker = heal.Marker(96, "kalshi-ws", SHA_96, SHA_96, "R32").render()
-    healing = {**PR_65, "number": 200, "state": "OPEN", "body": f"Adopted.\n\n{marker}\n"}
-    # The repository is public: a stranger's PR, or one from a fork, carries a marker too.
-    foreign = {**healing, "number": 201, "author": {**PR_65["author"], "login": "stranger"}}
-    forked = {**healing, "number": 202, "isCrossRepository": True}
-
-    def issues(args):
-        return json.dumps([ISSUE_96] if args[args.index("--state") + 1] == "open" else [])
-
-    shell = FakeShell({
-        ("loom", "session", "list"): json.dumps([SESSION, named]),
-        ("gh", "issue", "list"): issues,
-        ("gh", "issue", "view"): json.dumps(old),
-        ("gh", "api", "user"): PR_65["author"]["login"] + "\n",
-        ("gh", "pr", "list"): json.dumps([PR_65, healing, foreign, forked]),
-        ("git", "show"): TABLE,
-    }, real_git=False)
-    found, prs, sessions, table = heal.snapshot(shell, NOW)
-    assert [i.number for i in found] == [96, 80]
-    assert [p.number for p in prs] == [200]
-    # Open PRs are read with no date filter, so a quiet open PR never drops out.
-    [opened, recent] = [args for args, _ in shell.commands("gh", "pr", "list")]
-    assert "open" in opened and "--search" not in opened
-    assert recent[recent.index("--search") + 1] == "updated:>=2026-10-29"
-    assert [s.title for s in sessions] == [SESSION["title"], "heal kalshi 80 R29"]
-    assert table == TABLE
-    [closed] = [args for args, _ in shell.commands("gh", "issue", "list") if "closed" in args]
-    assert closed[closed.index("--search") + 1] == "updated:>=2026-10-29"
-    assert [args[3] for args, _ in shell.commands("gh", "issue", "view")] == ["80"]
-
-
-# --- publish: spec §4.1 --------------------------------------------------------------------
 
 
 def git(cwd, *args):
@@ -661,39 +501,3 @@ def test_main_reports_a_refusal_and_exits_2(tmp_path, capsys):
     assert heal.main(["escalate", "--issue", "96", "--body-file", str(body)], shell=shell) == 2
     assert "refused" in capsys.readouterr().err
     assert shell.commands("gh") == []
-
-
-# --- install -------------------------------------------------------------------------------
-
-
-def test_install_writes_the_hourly_timer_and_its_service(tmp_path):
-    checkout = Path("/home/u/Source/polyoxide")
-    written = heal.install(checkout, tmp_path, "/usr/bin:/bin", "/usr/bin/direnv")
-    assert [p.name for p in written] == ["polyoxide-heal.service", "polyoxide-heal.timer"]
-    assert (tmp_path / "polyoxide-heal.service").read_text() == (
-        "[Unit]\n"
-        "Description=polyoxide drift heal poller (scripts/heal_drift.py run)\n"
-        "\n"
-        "[Service]\n"
-        "Type=oneshot\n"
-        "WorkingDirectory=/home/u/Source/polyoxide\n"
-        'Environment="PATH=/usr/bin:/bin"\n'
-        "ExecStart=/usr/bin/direnv exec /home/u/Source/polyoxide python3 scripts/heal_drift.py run\n")
-    assert (tmp_path / "polyoxide-heal.timer").read_text() == (
-        "[Unit]\n"
-        "Description=Run the polyoxide drift heal poller hourly\n"
-        "\n"
-        "[Timer]\n"
-        "OnCalendar=hourly\n"
-        "Persistent=true\n"
-        "RandomizedDelaySec=120\n"
-        "\n"
-        "[Install]\n"
-        "WantedBy=timers.target\n")
-
-
-def test_install_refuses_a_loom_worktree(tmp_path):
-    with pytest.raises(heal.Refused):
-        heal.install(Path("/home/u/polyoxide/.loom/worktrees/aidanb/x"), tmp_path, "/usr/bin",
-                     "/usr/bin/direnv")
-    assert list(tmp_path.iterdir()) == []
