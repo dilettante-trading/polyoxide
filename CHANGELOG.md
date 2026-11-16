@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.49.0] - 2026-11-16
+
 - **Kalshi OpenAPI drift (#88).** Mirror only, with no code change (3.35.0 to 3.36.0).
   `Settlement.market_result` gains `""`, which `Market.result` already listed; the client decodes
   `Market.result` as a string, and 15,000 settled and archived markets read on 2026-11-06 all
@@ -63,6 +65,11 @@
   `MarketSubscriptionOptions::initial_dump`, `MarketSubscriptionUpdate`, `MarketWsBuilder::options`
   and `MarketEvent::Reconnected` now say so.
 
+- **Gamma markets without `marketMakerAddress` (fix).** Gamma's served `Market.json` no longer
+  requires `marketMakerAddress`, and the host now omits it on markets with no AMM (99 of the 100
+  newest open markets on 2026-11-12), so every `/events/keyset` page carrying a new market failed to
+  decode. `Market::market_maker_address` now defaults to `""`, the value it used to carry.
+
 Reconnect waits are now jittered, and a caller can cut one short when the network comes back
 (#93). Nothing breaks: the new items are additions, so a patch or minor bump serves.
 
@@ -77,6 +84,51 @@ Reconnect waits are now jittered, and a caller can cut one short when the networ
   `Supervisor::wake`). Fire `notify()` from a browser's `online` listener: a socket waiting to
   reconnect redials at once and starts its backoff again from `initial_backoff`. Only a wait in
   progress is cut, and a wait a `Retry-After` asked for is not. Without a wake nothing changes.
+
+### 🚀 Features
+
+- *(clob)* Deposit Wallet open orders and cancels, and read-only keys ([#91](https://github.com/dilettante-trading/polyoxide/issues/91))
+- *(ws)* Jitter the reconnect Backoff and add NetworkWake ([#93](https://github.com/dilettante-trading/polyoxide/issues/93))
+- *(heal)* The heal loop's parsers for drift issues, heal PRs and loom sessions
+- *(heal)* Decide, the poller's eleven lifecycle rules as a pure function
+- *(heal)* Run, the poller's snapshot and the actions it takes
+- *(heal)* Publish and escalate, behind refusals no heal can get past
+- *(heal)* Install, the hourly systemd user timer
+- *(heal)* The heal-drift skill and the two allow rules a heal session publishes through
+- *(heal)* Loom's issue watcher replaces the poller; heal_drift.py answers it as a hook
+
+### 🐛 Bug Fixes
+
+- *(clob)* Read not_canceled, the cancel routes' snake_case key ([#91](https://github.com/dilettante-trading/polyoxide/issues/91))
+- *(gamma)* Decode a market that omits marketMakerAddress
+- *(heal)* The first review's findings: foreign PRs and markers, guarded workflows, rule order, quiet open PRs
+- *(heal)* The review's findings: a rejected PR's row and branch, resume from the branch, -I, session config
+
+### 📚 Documentation
+
+- *(spec)* CLOB live fills, a manual live test that buys, fills and sells back
+- *(plan)* CLOB live fills; the spec reads the cost from the trades' maker entries
+- *(clob)* What the first live fills showed about marketable orders, trades and balances
+- *(clob)* Name the three outcome-token spenders by their contracts
+- *(spec)* Adopt kalshi drift, Settlement.market_result gains "" ([#88](https://github.com/dilettante-trading/polyoxide/issues/88))
+- *(spec)* Adopt perps-ws drift, order status links terminal outcomes ([#89](https://github.com/dilettante-trading/polyoxide/issues/89))
+- *(spec)* Adopt clob-ws-market drift, initial_dump only on the first subscription ([#92](https://github.com/dilettante-trading/polyoxide/issues/92))
+- *(spec)* Adopt perps drift, /v1/info/fills, liquidation details and unqualified rows ([#90](https://github.com/dilettante-trading/polyoxide/issues/90))
+- *(spec)* Adopt clob drift, signature type 3 and the Deposit Wallet routes ([#91](https://github.com/dilettante-trading/polyoxide/issues/91))
+- *(spec)* The drift heal loop design
+- *(plan)* The drift heal loop's implementation plan, and the spec's refinements from planning
+- *(heal)* The heal loop's rules file, its Repair section in SELF-HEALING.md, and the specs rule naming it
+- *(plan)* The heal plan's fingerprint check reads the decoded body, and its mutation selector matches
+
+### 🧪 Testing
+
+- *(clob)* Live_clob_fills, a manual live test that buys, fills and sells back
+- *(clob)* Live_clob_fills selects by 24-hour volume, takes 0.001-tick books in lots of ten, and a $3 top level
+
+### ⚙️ Miscellaneous Tasks
+
+- *(flow)* The repo's flow profile
+- *(registry)* A live entry may be manual, registered and checked but never a nightly job
 
 ## [0.48.0] - 2026-11-05
 

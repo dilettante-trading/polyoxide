@@ -22,5 +22,5 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-binance = "0.48"
+polyoxide-binance = "0.49"
 ```
