@@ -4,7 +4,9 @@
 //! in memory into the form the shared helpers read (see `mirror`); the file is never changed.
 //! Only the schemas the six public routes reach are checked. A key the host sends and the
 //! schema lacks is modelled as an optional field, excused in `OBSERVED_EXTRA` and recorded in
-//! `docs/specs/kalshi/OBSERVED.md`, as perps' are.
+//! `docs/specs/kalshi/OBSERVED.md`, as perps' are. A field skipped when absent is never emitted
+//! from the synthesised object, so it cannot be held there: `Market.expiration_time`, which the
+//! schema dropped and the host still sends (#94), is recorded in `OBSERVED.md` alone.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -57,8 +59,8 @@ const DEFAULTED: &[(&str, &str, &str)] = &[
 ];
 
 /// `(schema, field)` pairs on the wire but not in the spec, each an optional field of its type
-/// and recorded in `docs/specs/kalshi/OBSERVED.md`. Empty until the capture sends a key the
-/// schema lacks; a developer who meets one adds its row here.
+/// and recorded in `docs/specs/kalshi/OBSERVED.md`; a developer who meets one adds its row here,
+/// unless the field is skipped when absent (see the module's docs). Empty so far.
 const OBSERVED_EXTRA: &[(&str, &str)] = &[];
 
 fn raw_spec() -> Value {

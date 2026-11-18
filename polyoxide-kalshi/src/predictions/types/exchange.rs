@@ -24,6 +24,9 @@ pub struct ExchangeStatus {
 }
 
 /// The status of one exchange index (a shard of the exchange), such as `Default` or `Combos`.
+///
+/// Kalshi reports an index other than 0 whose status it could not read with every flag `false`,
+/// so one `false` reading of one index is not yet a pause: read the status again.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ExchangeIndexStatus {
     /// What the index is.
