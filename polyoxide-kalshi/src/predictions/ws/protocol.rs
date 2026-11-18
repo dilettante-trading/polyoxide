@@ -1177,10 +1177,9 @@ impl Protocol for PredictionsProtocol {
     /// is such a refusal of a change); a gap reconnects, and so does a snapshot that never
     /// came; a connection used after it closed reconnects (D19), and so does Kalshi's
     /// slow-reader close (`1008`, `WebSocket server delivery exceeded …`, #96), where any
-    /// other `1008` stops as a refusal; and anything else reconnects
-    /// exactly when its class is retriable, so a refused handshake's 401 or 403 stops, and a
-    /// 429 or 5xx retries. No code here matches over `tungstenite::Error`: the socket table
-    /// decides the class.
+    /// other `1008` stops as a refusal; and anything else reconnects exactly when its class
+    /// is retriable, so a refused handshake's 401 or 403 stops, and a 429 or 5xx retries. No
+    /// code here matches over `tungstenite::Error`: the socket table decides the class.
     ///
     /// A skipped error during an attempt reads as a reconnect, the kit's rule for a failed
     /// attempt, which is why a refused replay has its own row: it would otherwise

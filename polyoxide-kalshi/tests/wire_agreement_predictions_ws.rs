@@ -439,3 +439,51 @@ fn a_snapshot_for_a_ticker_no_market_has_is_an_empty_snapshot_carrying_the_comma
         "{answer:?}"
     );
 }
+
+#[test]
+fn the_mirrors_snapshot_of_a_market_with_no_recorded_change_decodes_and_empties_its_book() {
+    // Upstream's AsyncAPI (#96): a snapshot may carry an empty `market_id`, a clock of 0
+    // and neither side, as Kalshi sends for a market with no recorded change and for a
+    // market just determined. It must decode, and it replaces the book it names.
+    use polyoxide_kalshi::predictions::ws::{Books, Event, OrderbookSnapshot};
+
+    let spec = asyncapi();
+    let examples = spec["components"]["messages"]["orderbookSnapshot"]["examples"]
+        .as_array()
+        .expect("the mirror's orderbookSnapshot has examples");
+    let payload = |name: &str| {
+        examples
+            .iter()
+            .find(|example| example["name"] == name)
+            .unwrap_or_else(|| panic!("the mirror has no {name} example"))["payload"]
+            .clone()
+    };
+    let empty: Snapshot = serde_json::from_value(payload("marketWithNoRecordedChange"))
+        .expect("the empty snapshot decodes");
+    assert_eq!(empty.msg.market_id, "", "{empty:?}");
+    assert_eq!(empty.msg.clock, Some(0), "{empty:?}");
+    let ticker = empty.msg.market_ticker.clone();
+
+    // A book with levels for the same market, from the mirror's first example.
+    let mut full = payload("orderbookWithBothSides");
+    full["msg"]["market_ticker"] = Value::String(ticker.clone());
+    let full: Snapshot = serde_json::from_value(full).expect("the full snapshot decodes");
+
+    let mut books = Books::new();
+    let before = books
+        .apply(&Event::Snapshot(OrderbookSnapshot::from(full.msg)))
+        .expect("a snapshot makes a book");
+    assert!(before.best_bid().is_some() && before.best_ask().is_some());
+    let after = books
+        .apply(&Event::Snapshot(OrderbookSnapshot::from(empty.msg)))
+        .expect("a snapshot makes a book");
+    assert!(
+        after.bids().is_empty() && after.asks().is_empty(),
+        "{after:?}"
+    );
+    assert!(books
+        .get(&ticker)
+        .expect("the book stays")
+        .bids()
+        .is_empty());
+}
