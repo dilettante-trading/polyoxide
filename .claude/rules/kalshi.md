@@ -126,6 +126,9 @@ mirrored in `docs/specs/kalshi/`, and `OBSERVED.md` records where its hosts part
 - **Recovery** follows the error's class (a refused handshake's 401 or 403 stops the stream; a 429
   or 5xx retries after at least its `Retry-After`, through `Protocol::retry_after`), except:
   - a frame that does not decode is skipped, and a connection used after it closed reconnects;
+  - Kalshi's slow-reader close, `1008` with a reason starting `WebSocket server delivery
+    exceeded` (the AsyncAPI's `Disconnects`, #96), reconnects, though the socket table classes
+    `1008` a refusal; any other `1008` stops;
   - an error frame's code decides: 9 stops the stream; 10, 17, 18, 25 and 27 reconnect (Kalshi's
     AsyncAPI calls 10 and 25 terminal, "the user must resubscribe", which the replay does, and 17
     and 18 are the venue's own failures, all `Unavailable`); any other is yielded and skipped;
