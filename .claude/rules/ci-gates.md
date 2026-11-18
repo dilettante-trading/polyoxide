@@ -368,6 +368,10 @@ stage does not hold, printing each one's key to copy there.
   `take_at_least`, `supervision_sports`' `backoff_grows_while_connections_receive_nothing` floors
   each gap at half its step, and rtds' `delays_while_running` reads the logged `step` for the
   `delay` it read; no assertion changes.
+  R31 is the perps drift that added `/v1/info/fills` (#90): `spec_agreement_perps`'s
+  `OBSERVED_EXTRA`, `ROUTES` and `agreement!#1` and `wire_agreement_perps`' `EXPECTED_ABSENT`,
+  each already under R18, now cite it. R36 is `spec_agreement_perps`'s `SPEC`, which reads the
+  mirror and moved with both adoptions (#90, then #100's removal of the OI rewards).
 - `[gates]` also holds two entries for the kit's host-only code, `polyoxide-ws/src/test_server` and
   `polyoxide-ws/src/tls.rs`, each dropping `not(target_arch = "wasm32")`: the wasm32 seams gate
   that code off the browser build, which changes what gates its tests and nothing they assert.
