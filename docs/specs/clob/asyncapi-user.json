@@ -254,9 +254,7 @@
               "original_size": "10",
               "size_matched": "5",
               "price": "0.57",
-              "associate_trades": [
-                "trade-id-1"
-              ],
+              "associate_trades": ["trade-id-1"],
               "outcome": "YES",
               "type": "CANCELLATION",
               "created_at": "1672290687",
@@ -363,11 +361,7 @@
       "WebSocketAuth": {
         "type": "object",
         "description": "CLOB API credentials for authentication",
-        "required": [
-          "apiKey",
-          "secret",
-          "passphrase"
-        ],
+        "required": ["apiKey", "secret", "passphrase"],
         "properties": {
           "apiKey": {
             "type": "string",
@@ -386,10 +380,7 @@
       "UserSubscriptionRequest": {
         "type": "object",
         "description": "Authenticated subscription request for the user channel",
-        "required": [
-          "auth",
-          "type"
-        ],
+        "required": ["auth", "type"],
         "properties": {
           "auth": {
             "$ref": "#/components/schemas/WebSocketAuth"
@@ -402,296 +393,116 @@
           "markets": {
             "type": "array",
             "description": "Optional condition IDs to filter events. If omitted, receives events for all markets.",
-            "items": {
-              "type": "string"
-            }
+            "items": { "type": "string" }
           }
         }
       },
       "UserSubscriptionRequestUpdate": {
         "type": "object",
         "description": "Dynamically update market subscriptions",
-        "required": [
-          "operation",
-          "markets"
-        ],
+        "required": ["operation", "markets"],
         "properties": {
           "operation": {
             "type": "string",
-            "enum": [
-              "subscribe",
-              "unsubscribe"
-            ]
+            "enum": ["subscribe", "unsubscribe"]
           },
           "markets": {
             "type": "array",
             "description": "Condition IDs to subscribe to or unsubscribe from",
-            "items": {
-              "type": "string"
-            }
+            "items": { "type": "string" }
           }
         }
       },
       "OrderEvent": {
         "type": "object",
         "description": "Order placement, update, or cancellation event",
-        "required": [
-          "event_type",
-          "id",
-          "owner",
-          "market",
-          "asset_id",
-          "side",
-          "original_size",
-          "size_matched",
-          "price",
-          "type",
-          "timestamp"
-        ],
+        "required": ["event_type", "id", "owner", "market", "asset_id", "side", "original_size", "size_matched", "price", "type", "timestamp"],
         "properties": {
-          "event_type": {
-            "type": "string",
-            "const": "order"
-          },
-          "id": {
-            "type": "string",
-            "description": "Order ID (hash)"
-          },
-          "owner": {
-            "type": "string",
-            "description": "API key of the order owner"
-          },
-          "market": {
-            "type": "string",
-            "description": "Condition ID of the market"
-          },
-          "asset_id": {
-            "type": "string",
-            "description": "Asset ID (token ID)"
-          },
-          "side": {
-            "type": "string",
-            "enum": [
-              "BUY",
-              "SELL"
-            ]
-          },
-          "order_owner": {
-            "type": "string"
-          },
-          "original_size": {
-            "type": "string",
-            "description": "Original order size"
-          },
-          "size_matched": {
-            "type": "string",
-            "description": "Amount matched so far"
-          },
-          "price": {
-            "type": "string"
-          },
+          "event_type": { "type": "string", "const": "order" },
+          "id": { "type": "string", "description": "Order ID (hash)" },
+          "owner": { "type": "string", "description": "API key of the order owner" },
+          "market": { "type": "string", "description": "Condition ID of the market" },
+          "asset_id": { "type": "string", "description": "Asset ID (token ID)" },
+          "side": { "type": "string", "enum": ["BUY", "SELL"] },
+          "order_owner": { "type": "string" },
+          "original_size": { "type": "string", "description": "Original order size" },
+          "size_matched": { "type": "string", "description": "Amount matched so far" },
+          "price": { "type": "string" },
           "associate_trades": {
             "type": "array",
-            "items": {
-              "type": "string"
-            },
+            "items": { "type": "string" },
             "nullable": true,
-            "description": "Trade IDs this order has been matched in"
+            "description": "Optional legacy trade IDs. Use size_matched for cumulative fills or match trade events by taker_order_id or maker_orders[].order_id. Absence, null, or an empty array does not mean the order has no fills."
           },
-          "outcome": {
-            "type": "string",
-            "description": "e.g. 'YES', 'NO'"
-          },
+          "outcome": { "type": "string", "description": "e.g. 'YES', 'NO'" },
           "type": {
             "type": "string",
-            "enum": [
-              "PLACEMENT",
-              "UPDATE",
-              "CANCELLATION"
-            ]
+            "enum": ["PLACEMENT", "UPDATE", "CANCELLATION"]
           },
-          "created_at": {
-            "type": "string"
-          },
-          "expiration": {
-            "type": "string",
-            "description": "For GTD orders"
-          },
+          "created_at": { "type": "string" },
+          "expiration": { "type": "string", "description": "For GTD orders" },
           "order_type": {
             "type": "string",
-            "enum": [
-              "GTC",
-              "GTD",
-              "FOK"
-            ]
+            "enum": ["GTC", "GTD", "FOK"]
           },
-          "status": {
-            "type": "string",
-            "description": "e.g. 'LIVE', 'MATCHED', 'CANCELED'"
-          },
-          "maker_address": {
-            "type": "string"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "Event timestamp in milliseconds"
-          }
+          "status": { "type": "string", "description": "e.g. 'LIVE', 'MATCHED', 'CANCELED'" },
+          "maker_address": { "type": "string" },
+          "timestamp": { "type": "string", "description": "Event timestamp in milliseconds" }
         }
       },
       "TradeMakerOrder": {
         "type": "object",
         "description": "Maker order details within a trade",
-        "required": [
-          "order_id",
-          "owner",
-          "matched_amount",
-          "price",
-          "asset_id"
-        ],
+        "required": ["order_id", "owner", "matched_amount", "price", "asset_id"],
         "properties": {
-          "order_id": {
-            "type": "string"
-          },
-          "owner": {
-            "type": "string"
-          },
-          "maker_address": {
-            "type": "string"
-          },
-          "matched_amount": {
-            "type": "string"
-          },
-          "price": {
-            "type": "string"
-          },
-          "fee_rate_bps": {
-            "type": "string"
-          },
-          "asset_id": {
-            "type": "string"
-          },
-          "outcome": {
-            "type": "string"
-          },
-          "side": {
-            "type": "string",
-            "enum": [
-              "BUY",
-              "SELL"
-            ]
-          }
+          "order_id": { "type": "string" },
+          "owner": { "type": "string" },
+          "maker_address": { "type": "string" },
+          "matched_amount": { "type": "string" },
+          "price": { "type": "string" },
+          "fee_rate_bps": { "type": "string" },
+          "asset_id": { "type": "string" },
+          "outcome": { "type": "string" },
+          "side": { "type": "string", "enum": ["BUY", "SELL"] }
         }
       },
       "TradeEvent": {
         "type": "object",
         "description": "Trade match, confirmation, or status change event",
-        "required": [
-          "event_type",
-          "type",
-          "id",
-          "taker_order_id",
-          "market",
-          "asset_id",
-          "side",
-          "size",
-          "price",
-          "status",
-          "owner",
-          "timestamp"
-        ],
+        "required": ["event_type", "type", "id", "taker_order_id", "market", "asset_id", "side", "size", "price", "status", "owner", "timestamp"],
         "properties": {
-          "event_type": {
-            "type": "string",
-            "const": "trade"
-          },
-          "type": {
-            "type": "string",
-            "const": "TRADE"
-          },
-          "id": {
-            "type": "string",
-            "description": "Trade ID"
-          },
-          "taker_order_id": {
-            "type": "string"
-          },
-          "market": {
-            "type": "string",
-            "description": "Condition ID"
-          },
-          "asset_id": {
-            "type": "string"
-          },
-          "side": {
-            "type": "string",
-            "enum": [
-              "BUY",
-              "SELL"
-            ],
-            "description": "From taker's perspective"
-          },
-          "size": {
-            "type": "string"
-          },
-          "price": {
-            "type": "string"
-          },
-          "fee_rate_bps": {
-            "type": "string"
-          },
+          "event_type": { "type": "string", "const": "trade" },
+          "type": { "type": "string", "const": "TRADE" },
+          "id": { "type": "string", "description": "Trade ID" },
+          "taker_order_id": { "type": "string" },
+          "market": { "type": "string", "description": "Condition ID" },
+          "asset_id": { "type": "string" },
+          "side": { "type": "string", "enum": ["BUY", "SELL"], "description": "From taker's perspective" },
+          "size": { "type": "string" },
+          "price": { "type": "string" },
+          "fee_rate_bps": { "type": "string" },
           "status": {
             "type": "string",
-            "enum": [
-              "MATCHED",
-              "MINED",
-              "CONFIRMED",
-              "RETRYING",
-              "FAILED"
-            ]
+            "enum": ["MATCHED", "MINED", "CONFIRMED", "RETRYING", "FAILED"]
           },
-          "match_time": {
-            "type": "string"
-          },
-          "last_update": {
-            "type": "string"
-          },
-          "outcome": {
-            "type": "string"
-          },
-          "owner": {
-            "type": "string",
-            "description": "API key of the taker"
-          },
-          "trade_owner": {
-            "type": "string"
-          },
-          "maker_address": {
-            "type": "string"
-          },
-          "transaction_hash": {
-            "type": "string"
-          },
-          "bucket_index": {
-            "type": "integer"
-          },
+          "match_time": { "type": "string" },
+          "last_update": { "type": "string" },
+          "outcome": { "type": "string" },
+          "owner": { "type": "string", "description": "API key of the taker" },
+          "trade_owner": { "type": "string" },
+          "maker_address": { "type": "string" },
+          "transaction_hash": { "type": "string" },
+          "bucket_index": { "type": "integer" },
           "maker_orders": {
             "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TradeMakerOrder"
-            }
+            "items": { "$ref": "#/components/schemas/TradeMakerOrder" }
           },
           "trader_side": {
             "type": "string",
-            "enum": [
-              "TAKER",
-              "MAKER"
-            ],
+            "enum": ["TAKER", "MAKER"],
             "description": "Whether the receiving user was TAKER or MAKER"
           },
-          "timestamp": {
-            "type": "string",
-            "description": "Event timestamp in milliseconds"
-          }
+          "timestamp": { "type": "string", "description": "Event timestamp in milliseconds" }
         }
       }
     }

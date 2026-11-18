@@ -299,7 +299,12 @@ pub struct OpenOrder {
     pub expiration: String,
     /// Order type, e.g. `GTC`.
     pub order_type: String,
-    /// IDs of trades associated with this order.
+    /// IDs of trades associated with this order: a legacy field, not a
+    /// complete record of fills.
+    ///
+    /// Upstream's user-channel AsyncAPI calls it optional (2026-11) and says
+    /// that an empty list does not mean the order has no fills: read
+    /// [`size_matched`](Self::size_matched) for what it filled.
     #[serde(default)]
     pub associate_trades: Vec<String>,
     /// Creation time as a Unix timestamp in **seconds** — an integer on the
