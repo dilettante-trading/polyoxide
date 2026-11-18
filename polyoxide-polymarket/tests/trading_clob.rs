@@ -2124,7 +2124,7 @@ async fn open_orders_of_a_key_name_its_market_and_token_on_every_page() {
 }
 
 #[tokio::test]
-async fn open_orders_of_a_token_the_clob_does_not_know_list_nothing() {
+async fn open_orders_of_a_token_the_clob_does_not_know_are_refused_before_any_list() {
     let mut server = Server::new_async().await;
     let lookup = server
         .mock("GET", format!("/markets-by-token/{TOKEN}").as_str())

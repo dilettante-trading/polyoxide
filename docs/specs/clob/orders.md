@@ -84,7 +84,8 @@ remain on `GET /data/trades`.
 From 2026-12-14 an `asset_id` without `market` is a 400 (upstream's description
 of the route, added 2026-11, #99); unfiltered and market-only queries stay
 supported. `Trading::open_orders` for a key resolves the token's condition
-through `/markets-by-token` and sends both.
+through `/markets-by-token` and sends both; a token the CLOB does not know is
+that lookup's 404, a `VenueRefusal`, and nothing is listed.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|

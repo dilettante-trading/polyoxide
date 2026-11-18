@@ -161,7 +161,8 @@ crate list shows it.
   condition through `/markets-by-token` and sends both it and the token, which the route requires.
 - `open_orders` pages `/data/orders` to the `LTE=` sentinel and refuses a repeated cursor. For a
   key it resolves the token's condition as `cancel_all` does and sends `market` with `asset_id`,
-  since from 2026-12-14 the route refuses `asset_id` alone with a 400.
+  since from 2026-12-14 the route refuses `asset_id` alone with a 400; a token the CLOB does not
+  know is the lookup's 404, a `VenueRefusal`, and nothing is listed.
   `positions` is Data v2 `/v2/positions` for the maker address, `status=OPEN` (which includes
   redeemable rows), walked by cursor in pages of 500. v2 serves a holding of 0.1 share or less
   only as `CLOSED`, whatever `filter_amount` says, so such dust is not listed
