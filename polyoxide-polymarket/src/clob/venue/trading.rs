@@ -81,7 +81,12 @@ pub struct OrderExt {
     /// Protocol V2 order, which is signed for ExchangeV3 whatever
     /// [`ClobOrderOptions::neg_risk`] says.
     pub neg_risk: Option<bool>,
-    /// The ids of the trades the order took part in.
+    /// The ids of the trades the order took part in, as `associate_trades`
+    /// lists them.
+    ///
+    /// Upstream deprecated that field in 2026-11: the CLOB may omit it, so
+    /// an empty list does not mean the order has no fills. `filled` (from
+    /// `size_matched`) is the order's cumulative fill.
     pub trade_ids: Vec<String>,
     /// The settling transactions' hashes a placement reported.
     pub transaction_hashes: Vec<String>,
@@ -700,14 +705,28 @@ impl Trading for Clob {
 
     async fn open_orders(&self, key: Option<&MarketKey>) -> Result<Vec<Order>, ClassifiedError> {
         let orders = self.orders()?;
-        let token = key.map(keys::token_id).transpose()?;
+        // The CLOB filters a token's orders by market and token together: from
+        // 2026-12-14 `asset_id` without `market` is a 400. The token's market
+        // is resolved as `cancel_all` resolves it.
+        let filter = match key {
+            None => None,
+            Some(key) => {
+                let token = keys::token_id(key)?;
+                let market = self
+                    .markets()
+                    .market_by_token(token.as_str())
+                    .send()
+                    .await?;
+                Some((market.condition_id, token))
+            }
+        };
         let mut cursor: Option<String> = None;
         let mut followed = HashSet::new();
         let mut open = Vec::new();
         loop {
             let mut list = orders.list();
-            if let Some(token) = &token {
-                list = list.asset_id(token.as_str());
+            if let Some((market, token)) = &filter {
+                list = list.market(market.as_str()).asset_id(token.as_str());
             }
             if let Some(cursor) = &cursor {
                 list = list.next_cursor(cursor.as_str());

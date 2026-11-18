@@ -81,11 +81,16 @@ also returned when canceled or fully matched, but only within the last hour
 (upstream's `x-mint` warning on the route, added 2026-11, #91). Historical fills
 remain on `GET /data/trades`.
 
+From 2026-12-14 an `asset_id` without `market` is a 400 (upstream's description
+of the route, added 2026-11, #99); unfiltered and market-only queries stay
+supported. `Trading::open_orders` for a key resolves the token's condition
+through `/markets-by-token` and sends both.
+
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
 | id | query | string | no | Order ID filter (any status) |
-| market | query | string | no | Condition ID filter |
-| asset_id | query | string | no | Token ID filter |
+| market | query | string | no | Condition ID filter; required with `asset_id` |
+| asset_id | query | string | no | Outcome filter (CTF token ID or Protocol V2 position ID); send `market` too |
 | next_cursor | query | string | no | Pagination cursor |
 
 **Response:** `OrdersResponse`
@@ -122,6 +127,9 @@ these with an `ORDER_STATUS_` prefix and described both sizes as 6-decimal
 fixed-point; a 2026-07-24 live capture already had neither, and upstream has
 since corrected the schema. `size_matched` is what the order filled, not the
 current position balance. `created_at` is an integer of Unix seconds.
+`associate_trades` is deprecated upstream (2026-11, #99) and may be omitted;
+an empty or missing list does not mean the order has no fills. Match
+`taker_order_id` or `maker_orders[].order_id` on `GET /data/trades` instead.
 
 ## Get Single Order
 
