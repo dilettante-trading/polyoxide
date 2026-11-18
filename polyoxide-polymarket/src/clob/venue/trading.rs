@@ -81,7 +81,9 @@ pub struct OrderExt {
     /// Protocol V2 order, which is signed for ExchangeV3 whatever
     /// [`ClobOrderOptions::neg_risk`] says.
     pub neg_risk: Option<bool>,
-    /// The ids of the trades the order took part in.
+    /// The ids of the trades the order took part in, from the CLOB's legacy
+    /// `associate_trades`, which upstream says may be absent or empty for an
+    /// order that has filled: an empty list is no sign of no fills.
     pub trade_ids: Vec<String>,
     /// The settling transactions' hashes a placement reported.
     pub transaction_hashes: Vec<String>,
