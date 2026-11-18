@@ -38,6 +38,21 @@ const EVENT_QUEUE: usize = 1024;
 /// `follow_up`, which has no connection to take an id from. The kit's own ids count from 1 on
 /// each connection, so the two never meet.
 const FOLLOW_UP_ID_BASE: u64 = 1_000_000_000;
+/// The close code of Kalshi's slow-reader close: a message still unwritten to the socket 15
+/// seconds after the server received it ends the connection with `1008` and the reason
+/// `WebSocket server delivery exceeded 15 seconds` (the AsyncAPI's `Disconnects`, #96).
+const SLOW_READER_CODE: u16 = 1008;
+/// The start of that close's reason, without the window, which Kalshi may retune.
+const SLOW_READER_REASON: &str = "WebSocket server delivery exceeded";
+
+/// Whether a closed connection is Kalshi's slow-reader close, which the AsyncAPI answers
+/// with a reconnect and a fresh subscribe, where any other `1008` is a refusal and stops.
+fn slow_reader_close(err: &WsError) -> bool {
+    matches!(
+        err.kind(),
+        Kind::Closed { code: Some(SLOW_READER_CODE), reason } if reason.starts_with(SLOW_READER_REASON)
+    )
+}
 
 polyoxide_venue::wire_enum! {
     /// A channel of Kalshi's socket this client carries. One ticker set serves every channel
@@ -169,6 +184,8 @@ impl Refusal {
 /// - **D6, a delivered connection:** one that decoded an event.
 /// - **D8:** `Event::Disconnected`, then `Event::Reconnected`, once each per outage.
 /// - **D19:** a connection used after it closed reconnects.
+/// - **The slow-reader close:** Kalshi closing with `1008` and `WebSocket server delivery
+///   exceeded …` reconnects, as its AsyncAPI asks (#96); any other `1008` stops.
 /// - **A refused replay stops the stream:** Kalshi refusing the replay's `subscribe` with a
 ///   code that does not reconnect, or answering it with a frame that does not decode, ends
 ///   the stream with that error, where the same error frame, or a frame that does not
@@ -1158,10 +1175,11 @@ impl Protocol for PredictionsProtocol {
     /// reconnect, any other is skipped on a live connection, stops the stream when it refused
     /// the replay's `subscribe`, and reconnects when it answers the re-snapshot's command or
     /// is such a refusal of a change); a gap reconnects, and so does a snapshot that never
-    /// came; a connection used after it closed reconnects (D19); and anything else reconnects
-    /// exactly when its class is retriable, so a refused handshake's 401 or 403 stops, and a
-    /// 429 or 5xx retries. No code here matches over `tungstenite::Error`: the socket table
-    /// decides the class.
+    /// came; a connection used after it closed reconnects (D19), and so does Kalshi's
+    /// slow-reader close (`1008`, `WebSocket server delivery exceeded …`, #96), where any
+    /// other `1008` stops as a refusal; and anything else reconnects exactly when its class
+    /// is retriable, so a refused handshake's 401 or 403 stops, and a 429 or 5xx retries. No
+    /// code here matches over `tungstenite::Error`: the socket table decides the class.
     ///
     /// A skipped error during an attempt reads as a reconnect, the kit's rule for a failed
     /// attempt, which is why a refused replay has its own row: it would otherwise
@@ -1184,6 +1202,7 @@ impl Protocol for PredictionsProtocol {
             PredictionsWsError::Connection(err) if matches!(err.kind(), Kind::AlreadyClosed) => {
                 Recovery::Reconnect
             }
+            PredictionsWsError::Connection(err) if slow_reader_close(err) => Recovery::Reconnect,
             err if err.is_retriable() => Recovery::Reconnect,
             _ => Recovery::Stop,
         }
@@ -2873,6 +2892,35 @@ mod tests {
         match decoded(&mut protocol, &delta_of("A-1", 1, 12)) {
             Decoded::Event(Event::Resyncing { tickers }) => assert_eq!(tickers, ["A-1"]),
             other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_slow_reader_close_reconnects_where_any_other_1008_stops() {
+        // Kalshi's AsyncAPI (#96): a socket whose messages wait 15 s to be written is closed
+        // with 1008 and this reason, and the client should reconnect and subscribe again.
+        // Its class is still a venue refusal, so without its own row it would stop.
+        let protocol = protocol();
+        let slow = PredictionsWsError::from(WsError::closed(
+            Some(1008),
+            "WebSocket server delivery exceeded 15 seconds",
+        ));
+        assert!(!slow.is_retriable());
+        assert_eq!(protocol.recover(&slow), Recovery::Reconnect);
+        // A retuned window still reads as the slow-reader close.
+        let retuned = PredictionsWsError::from(WsError::closed(
+            Some(1008),
+            "WebSocket server delivery exceeded 30 seconds",
+        ));
+        assert_eq!(protocol.recover(&retuned), Recovery::Reconnect);
+        // The reason on another code, and another reason on 1008, keep their rows.
+        for err in [
+            WsError::closed(Some(1008), "policy"),
+            WsError::closed(Some(1008), ""),
+            WsError::closed(Some(1003), "WebSocket server delivery exceeded 15 seconds"),
+        ] {
+            let err = PredictionsWsError::from(err);
+            assert_eq!(protocol.recover(&err), Recovery::Stop, "{err:?}");
         }
     }
 }

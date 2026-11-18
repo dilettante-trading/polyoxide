@@ -60,7 +60,7 @@ pub enum Event {
 pub struct OrderbookSnapshot {
     /// The market's ticker.
     pub market_ticker: String,
-    /// The market's id.
+    /// The market's id: a UUID, or empty for a market with no recorded change.
     pub market_id: String,
     /// The YES bids, highest price first.
     pub bids: Vec<Level>,
@@ -423,7 +423,7 @@ pub mod frames {
     pub struct SnapshotMsg {
         /// The market's ticker.
         pub market_ticker: String,
-        /// The market's id.
+        /// The market's id: a UUID, or empty for a market with no recorded change.
         pub market_id: String,
         /// The exchange clock of the newest change the snapshot includes. The mirror
         /// requires it (#72); the captures predate it, so it is optional.
