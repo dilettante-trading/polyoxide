@@ -972,20 +972,20 @@ async fn open_orders_pages_to_the_end_sentinel() {
 #[tokio::test]
 async fn open_orders_of_a_key_filters_by_its_token() {
     let mut server = Server::new_async().await;
+    let lookup = token_market(&mut server).await;
     let list = server
         .mock("GET", "/data/orders")
-        .match_query(Matcher::UrlEncoded("asset_id".into(), TOKEN.into()))
+        .match_query(market_and_token())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(orders_page(vec![open_order("0xa", "LIVE", "0")], "LTE="))
         .expect(1)
         .create_async()
         .await;
-
     let orders = client(&server).open_orders(Some(&key())).await.unwrap();
-
     assert_eq!(orders.len(), 1);
     list.assert_async().await;
+    lookup.assert_async().await;
 }
 
 #[tokio::test]
@@ -2057,4 +2057,93 @@ async fn place_on_a_protocol_v2_key_reports_neg_risk_false_whatever_the_options_
     post.assert_async().await;
     let ext = placed.extensions.get::<OrderExt>().unwrap();
     assert_eq!(ext.neg_risk, Some(false));
+}
+
+/// `GET /markets-by-token/{TOKEN}` answering that the token is in [`MARKET`],
+/// read once.
+async fn token_market(server: &mut ServerGuard) -> Mock {
+    server
+        .mock("GET", format!("/markets-by-token/{TOKEN}").as_str())
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            json!({"condition_id": MARKET, "primary_token_id": TOKEN, "secondary_token_id": "101"})
+                .to_string(),
+        )
+        .expect(1)
+        .create_async()
+        .await
+}
+
+/// The query of a token's orders: its market and the token together, since
+/// from 2026-12-14 `/data/orders` refuses `asset_id` without `market`.
+fn market_and_token() -> Matcher {
+    Matcher::AllOf(vec![
+        Matcher::UrlEncoded("market".into(), MARKET.into()),
+        Matcher::UrlEncoded("asset_id".into(), TOKEN.into()),
+    ])
+}
+
+#[tokio::test]
+async fn open_orders_of_a_key_name_its_market_and_token_on_every_page() {
+    let mut server = Server::new_async().await;
+    let lookup = token_market(&mut server).await;
+    // The first page sends the two filters and nothing else.
+    let first = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::AllOf(vec![
+            market_and_token(),
+            Matcher::Regex("^[^&]*&[^&]*$".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(orders_page(vec![open_order("0xa", "LIVE", "0")], "MQ=="))
+        .expect(1)
+        .create_async()
+        .await;
+    let second = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::AllOf(vec![
+            market_and_token(),
+            Matcher::UrlEncoded("next_cursor".into(), "MQ==".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(orders_page(vec![open_order("0xb", "LIVE", "0")], "LTE="))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let orders = client(&server).open_orders(Some(&key())).await.unwrap();
+
+    let ids: Vec<&str> = orders.iter().map(|order| order.id.as_str()).collect();
+    assert_eq!(ids, ["0xa", "0xb"]);
+    lookup.assert_async().await;
+    first.assert_async().await;
+    second.assert_async().await;
+}
+
+#[tokio::test]
+async fn open_orders_of_a_token_the_clob_does_not_know_are_refused_before_any_list() {
+    let mut server = Server::new_async().await;
+    let lookup = server
+        .mock("GET", format!("/markets-by-token/{TOKEN}").as_str())
+        .with_status(404)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error":"market not found"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let list = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let err = client(&server).open_orders(Some(&key())).await.unwrap_err();
+
+    assert!(matches!(err.class, Class::VenueRefusal { .. }), "{err}");
+    lookup.assert_async().await;
+    list.assert_async().await;
 }
