@@ -299,13 +299,15 @@ pub struct OpenOrder {
     pub expiration: String,
     /// Order type, e.g. `GTC`.
     pub order_type: String,
-    /// IDs of trades associated with this order.
+    /// IDs of trades associated with this order: a legacy field, not a
+    /// complete record of fills.
     ///
-    /// Deprecated upstream (2026-11) and possibly omitted, which decodes as
-    /// empty: an empty list does not mean the order has no fills. Use
-    /// `size_matched` for the cumulative fill, or `GET /data/trades`, matching
-    /// `taker_order_id` or `maker_orders[].order_id` to this order's `id`, for
-    /// each fill.
+    /// Upstream deprecated it (2026-11): the REST schema says it may be
+    /// omitted, which decodes as empty, and the user-channel AsyncAPI calls it
+    /// optional; both say an empty list does not mean the order has no fills.
+    /// Read [`size_matched`](Self::size_matched) for what it filled, or
+    /// `GET /data/trades`, matching `taker_order_id` or
+    /// `maker_orders[].order_id` to this order's `id`, for each fill.
     #[serde(default)]
     pub associate_trades: Vec<String>,
     /// Creation time as a Unix timestamp in **seconds** — an integer on the

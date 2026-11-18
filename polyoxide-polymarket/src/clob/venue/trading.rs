@@ -81,12 +81,11 @@ pub struct OrderExt {
     /// Protocol V2 order, which is signed for ExchangeV3 whatever
     /// [`ClobOrderOptions::neg_risk`] says.
     pub neg_risk: Option<bool>,
-    /// The ids of the trades the order took part in, as `associate_trades`
-    /// lists them.
-    ///
-    /// Upstream deprecated that field in 2026-11: the CLOB may omit it, so
-    /// an empty list does not mean the order has no fills. `filled` (from
-    /// `size_matched`) is the order's cumulative fill.
+    /// The ids of the trades the order took part in, from the CLOB's legacy
+    /// `associate_trades`, which upstream deprecated (2026-11) and says may be
+    /// absent or empty for an order that has filled: an empty list is no sign
+    /// of no fills. `filled` (from `size_matched`) is the order's cumulative
+    /// fill.
     pub trade_ids: Vec<String>,
     /// The settling transactions' hashes a placement reported.
     pub transaction_hashes: Vec<String>,
