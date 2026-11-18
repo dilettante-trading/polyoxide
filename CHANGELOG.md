@@ -1,5 +1,43 @@
 ## [Unreleased]
 
+## [0.49.1] - 2026-11-18
+
+- **CLOB OpenAPI drift (#105).** Upstream's `/data/orders` says that from 2026-12-14 an
+  `asset_id` without `market` is a `400`, so `Trading::open_orders(Some(key))` now resolves the
+  token's condition through `/markets-by-token`, as `cancel_all` does, and sends both on every
+  page. A token the CLOB does not know fails with that lookup's `404` before anything is listed.
+  `associate_trades` is deprecated and may be omitted: `OpenOrder` already decodes its absence as
+  empty, and `OpenOrder::associate_trades` and `OrderExt::trade_ids` now say an empty list is not
+  a sign of no fills.
+
+- **Kalshi AsyncAPI drift.** A socket whose messages wait 15 s to be written is closed with
+  `1008` "WebSocket server delivery exceeded 15 seconds", and upstream says to reconnect. The
+  socket table classes `1008` a refusal, so the stream stopped; `PredictionsProtocol::recover`
+  now reconnects on that close, and any other `1008` still stops. The new `ebattle_scores`
+  channel is not implemented, and an `orderbook_snapshot` with an empty `market_id` and no sides
+  decodes and empties its book.
+
+- **Mirror-only drift (#102, #103, #104).** Kalshi's OpenAPI (3.36.0 to 3.37.0) drops
+  `Market.expiration_time` from the schema, though the routes still send it, so the crate keeps the
+  optional, deprecated field and its doc points at `latest_expiration_time`; the order-book
+  `depth` setter's doc names the 0-100 cap. The CLOB user socket's `associate_trades` is optional
+  legacy, and perps' account rewards drop the open-interest reward; neither is modelled.
+
+### 🐛 Bug Fixes
+
+- *(kalshi)* Adopt kalshi-ws drift: reconnect on the slow-reader close, eBattle scores
+- *(clob)* Adopt clob drift: a key's open orders name its market, associate_trades deprecated ([#105](https://github.com/dilettante-trading/polyoxide/issues/105))
+
+### 📚 Documentation
+
+- *(spec)* Adopt kalshi drift: Market.expiration_time leaves the schema, still on the wire ([#102](https://github.com/dilettante-trading/polyoxide/issues/102))
+- *(spec)* Adopt clob-ws-user drift: associate_trades is optional legacy, not a fill record ([#103](https://github.com/dilettante-trading/polyoxide/issues/103))
+- *(spec)* Adopt perps drift: account rewards drop the OI reward ([#104](https://github.com/dilettante-trading/polyoxide/issues/104))
+
+### 🧪 Testing
+
+- *(kalshi)* The mirror's empty snapshot decodes and empties its book
+
 ## [0.49.0] - 2026-11-16
 
 - **Kalshi OpenAPI drift (#88).** Mirror only, with no code change (3.35.0 to 3.36.0).
