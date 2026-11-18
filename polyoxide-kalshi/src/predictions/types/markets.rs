@@ -139,7 +139,8 @@ pub struct Market {
     /// When it is expected to expire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_expiration_time: Option<String>,
-    /// Deprecated: when it expires.
+    /// Deprecated: when it expires. Kalshi's OpenAPI no longer lists it (since 3.37.0), though
+    /// the hosts still send it; read [`latest_expiration_time`](Self::latest_expiration_time).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expiration_time: Option<String>,
     /// The latest it can expire.

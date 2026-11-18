@@ -303,7 +303,8 @@ pub struct GetOrderbook {
 
 impl GetOrderbook {
     polyoxide_core::query_setters! {
-        /// Levels kept on each side, the best ones; 0 keeps every level.
+        /// Levels kept on each side, the best ones, up to 100; 0 keeps every level. Kalshi
+        /// refuses a depth above 100 with a `400`.
         depth: u32 => "depth",
     }
 
