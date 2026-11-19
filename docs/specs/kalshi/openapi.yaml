@@ -4228,11 +4228,23 @@ paths:
         market. A rounded location exactly on the boundary between two NOAA
         MRMS grid cells is moved 0.001° north or east, into one of them. The
         response carries the market's coordinates. Markets are only offered
-        where `GET /weather_point_markets/availability` says so, and not over
-        open water.
+        where `GET /weather_point_markets/availability` says so, and only
+        where the market's grid cell touches land in a US state or territory:
+        a cell entirely over open water or outside the US is refused, while
+        any point in a coastal cell that touches land is accepted.
 
-        The window is whole local hours on one calendar day. A new market's
-        window must start at least 15 minutes from now and within 365 days.
+        The window is whole local hours, on one calendar day or, with
+        `end_date` set to the day after `date`, from one day into the next.
+        A window that crosses midnight is at most 24 hours long, and only
+        offered where `GET /weather_point_markets/availability` returns
+        `max_window_days: 2`. Where it returns 1, the limit applies to the
+        local dates the market stores, which are those of the first request
+        for its variable, location and window: a new threshold on an event
+        first requested across midnight is refused even when your request
+        names one date in another time zone, and one on an event first
+        requested within one date is accepted even with `end_date`. A market
+        that already exists is returned either way. A new market's window must start at least 15
+        minutes from now and within 365 days.
 
         A market is traded through RFQs: pass the returned `market_ticker` to
         `POST /communications/rfqs`. These markets are in series starting with
@@ -4247,8 +4259,8 @@ paths:
         | --- | --- | --- |
         | 400 | `bad_request` | The body isn't valid JSON, or a field has the wrong type. |
         | 400 | `missing_parameters` | A required field is missing or empty. |
-        | 400 | `invalid_parameters` | A field is present but unusable, or the request can't define a market: a latitude or hour out of range, an `end_hour` not after `start_hour`, an unknown variable or strike type, thresholds that don't fit the strike type or the variable's range, a location outside NOAA MRMS coverage, an unknown time zone, a window that doesn't start and end on whole UTC hours, has already ended or starts more than 365 days out, or an hour that a clock change skips or repeats. |
-        | 409 | `weather_point_market_unavailable` | The request is valid but the market isn't offered: the variable isn't offered at that location, the location is over open water, or the window starts in less than 15 minutes. |
+        | 400 | `invalid_parameters` | A field is present but unusable, or the request can't define a market: a latitude or hour out of range, an `end_hour` not after `start_hour` on one day, an `end_date` other than `date` or the day after it, a window across midnight longer than 24 hours, an unknown variable or strike type, thresholds that don't fit the strike type or the variable's range, a location outside NOAA MRMS coverage, an unknown time zone, a window that doesn't start and end on whole UTC hours, has already ended or starts more than 365 days out, or an hour that a clock change skips or repeats. |
+        | 409 | `weather_point_market_unavailable` | The request is valid but the market isn't offered: the variable isn't offered at that location, the market's grid cell is entirely over open water or outside US land, the window starts in less than 15 minutes, or the market's window is stored across two local dates where `max_window_days` is 1. |
         | 429 | `weather_point_market_limit_exceeded` | A creation limit was reached: the daily limit on new weather markets across all users, or 40 markets for one variable, location and window. Retrying at once doesn't help. |
         | 429 | `too_many_requests` | Your API rate limit. This endpoint is charged against your write budget. |
       tags:
@@ -4291,10 +4303,12 @@ paths:
         Returns which on-request weather markets can be created: whether
         creation is on, the NOAA MRMS domains a location may lie in, and the
         domains each offered variable may use. A variable missing from
-        `variables` can't be created. Existing markets are unaffected.
+        `variables` can't be created. `max_window_days` and
+        `max_window_hours` say whether a window may cross midnight and how
+        long it may then be. Existing markets are unaffected.
 
         A location inside an offered domain can still be refused at creation
-        when it is over open water.
+        when its grid cell is entirely over open water or outside US land.
       tags:
         - markets
       responses:
@@ -4328,8 +4342,9 @@ paths:
         refused when the show has moved to another date or has already been
         canceled or postponed.
 
-        An existing market is returned until it closes, even when new markets
-        are no longer offered. A new market's show must start more than an
+        An existing market is usually returned until it closes, even when new
+        markets are no longer offered; where creation or its cover is switched
+        off, the request returns 409. A new market's show must start more than an
         hour from now and within the `max_days_ahead` that
         `GET /concert_cancellation_markets/availability` reports.
 
@@ -4384,17 +4399,21 @@ paths:
           $ref: '#/components/responses/RateLimitError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
 
   /concert_cancellation_markets/availability:
     get:
       operationId: GetConcertCancellationAvailability
       summary: Get Concert Cancellation Market Availability
       description: |
-        Returns which on-request concert markets can be created: whether
-        creation is on, the covers offered, how far ahead a show may be
+        Returns which on-request concert markets are offered: whether they
+        are listed, the covers offered, how far ahead a show may be
         scheduled, and the metros whose concerts
         `GET /concert_cancellation_markets/concerts` lists. A cover missing
-        from `covers` can't be created. Existing markets are unaffected.
+        from `covers` can't be created. Where concerts are listed before
+        markets are offered, `enabled` is true and every create request
+        returns 409. Existing markets are unaffected.
 
         Each metro carries the number of upcoming shows listed for it. Pass
         `date_from` and `date_to` to count only the shows a listing with the
@@ -4507,13 +4526,16 @@ paths:
           $ref: '#/components/responses/RateLimitError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
 
   /concert_cancellation_markets/concerts/search:
     get:
       operationId: SearchConcerts
       summary: Search Concerts
       description: |
-        Lists upcoming concerts matching a name, across metros, that a
+        Lists upcoming concerts matching a name, across the metros that
+        availability lists, that a
         cancellation market can still be created for: up to 50, in the same
         shape as `GET /concert_cancellation_markets/concerts`. The name is
         matched against the acts on the bill, and may also match venues and
@@ -4556,6 +4578,204 @@ paths:
           $ref: '#/components/responses/RateLimitError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+
+  /flight_disruption_markets:
+    post:
+      operationId: CreateFlightDisruptionMarket
+      # Hidden from the published docs until flight disruption markets launch.
+      x-excluded: true
+      summary: Create Flight Disruption Market
+      description: |
+        Returns the on-request market on whether a flight is canceled or
+        delayed, creating it if it doesn't exist yet. A market is defined by
+        the flight (`carrier`, `flight_number`, `departure_airport`,
+        `arrival_airport` and `scheduled_date`), the `cover` (`cancelled`,
+        `delayed` or `either`) and, for `delayed` and `either`, the
+        `delay_basis` and `delay_minutes`. The same request always returns the
+        same market, so call this before sending an RFQ for a market you
+        haven't seen. `created` tells you whether the market is new.
+
+        Take the flight's five fields from
+        `GET /flight_disruption_markets/flights`. A flight is one nonstop leg:
+        a flight number that flies several legs in a day is several flights.
+        `carrier` and `flight_number` are the operating carrier's, which the
+        lookup returns even when you searched by a codeshare number.
+
+        `delay_minutes` is a multiple of `delay_step_minutes`, up to
+        `max_delay_minutes`, both from
+        `GET /flight_disruption_markets/availability`. A `cancelled` market
+        takes neither `delay_basis` nor `delay_minutes`.
+
+        An existing market is returned until it closes, even when new markets
+        are no longer offered. A new market's flight must be scheduled to
+        leave more than `min_lead_minutes` from now and within
+        `max_days_ahead` days, from an airport in one of
+        `departure_countries`.
+
+        A market is traded through RFQs: pass the returned `market_ticker` to
+        `POST /communications/rfqs`. These markets are in series starting with
+        `KXRFQ` and are left out of unscoped market listings.
+
+        A market created a moment ago may not be readable yet: if
+        `GET /markets/{ticker}` returns 404 right after creation, retry.
+
+        Errors carry the specific reason in `details`:
+
+        | Status | `code` | When |
+        | --- | --- | --- |
+        | 400 | `bad_request` | The body isn't valid JSON, or a field has the wrong type. |
+        | 400 | `missing_parameters` | A required field is missing or empty. |
+        | 400 | `invalid_parameters` | A field is present but unusable: an unknown cover or delay basis, a carrier, flight number or airport code of the wrong form, a `scheduled_date` that isn't YYYY-MM-DD, a `delayed` or `either` request without `delay_basis` and `delay_minutes`, a `cancelled` request with either of them, a `delay_minutes` that isn't a multiple of `delay_step_minutes` or is above `max_delay_minutes`, or a flight scheduled further ahead than `max_days_ahead`. |
+        | 404 | `not_found` | No such flight is scheduled on that date. |
+        | 409 | `flight_disruption_market_unavailable` | The request is valid but the market isn't offered: flight markets or the cover are switched off, the flight leaves too soon, departs from a country that isn't offered, or its market has closed. |
+        | 429 | `flight_disruption_market_limit_exceeded` | A limit on new flight markets was reached. Retrying at once doesn't help. |
+        | 429 | `too_many_requests` | Your API rate limit. This endpoint is charged against your write budget. |
+      tags:
+        - markets
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFlightDisruptionMarketRequest'
+      responses:
+        '200':
+          description: Market returned or created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateFlightDisruptionMarketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+
+  /flight_disruption_markets/availability:
+    get:
+      operationId: GetFlightDisruptionAvailability
+      # Hidden from the published docs until flight disruption markets launch.
+      x-excluded: true
+      summary: Get Flight Disruption Market Availability
+      description: |
+        Returns which on-request flight markets can be created: whether
+        creation is on, the covers and delay bases offered, the delay
+        thresholds a market may use, how soon and how far ahead a flight may
+        be scheduled, and the countries it may depart from. A cover missing
+        from `covers` can't be created. Existing markets are unaffected.
+      tags:
+        - markets
+      responses:
+        '200':
+          description: Availability retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFlightDisruptionAvailabilityResponse'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /flight_disruption_markets/flights:
+    get:
+      operationId: GetFlights
+      # Hidden from the published docs until flight disruption markets launch.
+      x-excluded: true
+      summary: Get Flights
+      description: |
+        Looks up a flight number on a departure date and returns the flights
+        a disruption market can still be created for, in departure order. A
+        flight is one nonstop leg, so a number that flies several legs that
+        day returns several flights, and one that flies none returns an empty
+        list.
+
+        `carrier` and `flight_number` may be the operating carrier's or a
+        codeshare number. Each flight returned is the operating flight, with
+        the number you asked for in `requested_carrier` and
+        `requested_flight_number` when it differs.
+
+        Each flight carries the five fields
+        `POST /flight_disruption_markets` takes, and the series and event
+        tickers it has or would get for each offered cover. A ticker listed
+        here names an event or market that may not exist yet: create the
+        market before sending an RFQ.
+
+        Lookups can be limited across all users. When the limit is reached
+        the request returns 429 `flight_lookup_limit_exceeded`; retry later.
+      tags:
+        - markets
+      security:
+        - kalshiAccessKey: []
+          kalshiAccessSignature: []
+          kalshiAccessTimestamp: []
+      parameters:
+        - name: carrier
+          in: query
+          required: true
+          description: The airline's 2-character code, such as `AA`. The operating carrier's or a codeshare partner's.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          x-oapi-codegen-extra-tags:
+            validate: required,alphanum,len=2
+        - name: flight_number
+          in: query
+          required: true
+          description: The flight number without the airline code, 1 to 4 digits, such as `100`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 4
+          x-oapi-codegen-extra-tags:
+            validate: required,number,max=4
+        - name: date
+          in: query
+          required: true
+          description: The scheduled departure date at the departure airport, as YYYY-MM-DD.
+          schema:
+            type: string
+          x-oapi-codegen-extra-tags:
+            validate: required,datetime=2006-01-02
+      responses:
+        '200':
+          description: Flights retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetFlightsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
 
   /multivariate_event_collections/{collection_ticker}:
     get:
@@ -4945,7 +5165,7 @@ paths:
         Returns the event-contract daily premium cap configured for an FCM member's subtrader,
         together with its live utilization. Executed utilization is the net premium deployed by
         fills today (sells and settlements credit back); resting and pending utilization reserve
-        open and in-flight orders at their full worst-case cost plus fees. Executed utilization
+        open orders and orders still being placed at their full worst-case cost plus fees. Executed utilization
         resets at midnight New York time on the returned cap date; resting and pending
         reservations persist for as long as their orders remain open, including across the reset.
         Returns 404 when the subtrader has no cap configured — in that state every order placed
@@ -11437,6 +11657,12 @@ components:
           example: '2026-11-11'
           x-oapi-codegen-extra-tags:
             validate: required,datetime=2006-01-02
+        end_date:
+          type: string
+          description: Local calendar date the window ends on, as YYYY-MM-DD in `timezone`. Leave it out, or repeat `date`, for a window within one day. Set it to the day after `date` for a window that crosses midnight, where availability returns `max_window_days` 2; `end_hour` is then read on this date, and the window is at most 24 hours long. Any other date is refused.
+          example: '2026-11-12'
+          x-oapi-codegen-extra-tags:
+            validate: omitempty,datetime=2006-01-02
         start_hour:
           type: integer
           format: int32
@@ -11451,10 +11677,10 @@ components:
           format: int32
           minimum: 1
           maximum: 24
-          description: Local hour the window ends at, exclusive (1-24, after `start_hour`). 24 is the following midnight, so 0 to 24 is the whole day.
+          description: Local hour the window ends at, exclusive (1-24). Within one day it must be after `start_hour`; 24 is the following midnight, so 0 to 24 is the whole day. With `end_date` the day after `date` it is an hour of that day and must not be after `start_hour`, so 23 to 3 is 11pm to 3am and 8 to 8 is 24 hours.
           x-go-type: '*int32'
           x-oapi-codegen-extra-tags:
-            validate: required,gte=1,lte=24,gtfield=StartHour
+            validate: required,gte=1,lte=24
         timezone:
           type: string
           description: IANA time zone of the location, which the date and hours are read in. The window must start and end on whole UTC hours, so zones offset by a fraction of an hour are refused.
@@ -11539,6 +11765,8 @@ components:
         - enabled
         - domains
         - variables
+        - max_window_days
+        - max_window_hours
       properties:
         enabled:
           type: boolean
@@ -11553,6 +11781,16 @@ components:
           items:
             $ref: '#/components/schemas/WeatherPointVariableAvailability'
           description: The variables on offer and where. A variable left out can't be created.
+        max_window_days:
+          type: integer
+          format: int32
+          description: How many local calendar days a new market's window may touch. 2 means a window may cross midnight into the next day (`end_date` on the create request); anything less means it must start and end on one day. Every offered variable follows it.
+          example: 2
+        max_window_hours:
+          type: integer
+          format: int32
+          description: The longest window that crosses midnight, in hours. A window within one day can be the whole day, which lasts 25 hours when clocks go back.
+          example: 24
 
     ConcertCover:
       type: string
@@ -11656,7 +11894,10 @@ components:
       properties:
         enabled:
           type: boolean
-          description: Whether concert cancellation markets can be created at all.
+          description: >-
+            Whether concert cancellation markets are listed. It doesn't promise that they can be created:
+            where concerts are listed before markets are offered, it is true and every create request
+            returns 409.
         covers:
           type: array
           items:
@@ -11785,6 +12026,289 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Concert'
+
+    FlightCover:
+      type: string
+      enum:
+        - cancelled
+        - delayed
+        - either
+      # Named so the generated constants don't collide with status values.
+      x-enum-varnames:
+        - FlightCoverCancelled
+        - FlightCoverDelayed
+        - FlightCoverEither
+      description: |
+        What a flight disruption market pays on, read from the flight's
+        status after it was scheduled to arrive:
+        - `cancelled`: Yes when the flight is canceled.
+        - `delayed`: Yes when the flight operates and is at least
+          `delay_minutes` late on its `delay_basis`. A canceled flight
+          resolves to No.
+        - `either`: Yes in both of those cases.
+
+    FlightDelayBasis:
+      type: string
+      enum:
+        - departure
+        - arrival
+      x-enum-varnames:
+        - FlightDelayBasisDeparture
+        - FlightDelayBasisArrival
+      description: |
+        Which gate time a delay is measured at:
+        - `departure`: the actual gate departure against the published
+          departure.
+        - `arrival`: the actual gate arrival against the published arrival.
+
+    CreateFlightDisruptionMarketRequest:
+      type: object
+      required:
+        - carrier
+        - flight_number
+        - departure_airport
+        - arrival_airport
+        - scheduled_date
+        - cover
+      properties:
+        carrier:
+          type: string
+          description: The operating carrier's 2-character code, from the flight lookup.
+          example: AA
+          x-oapi-codegen-extra-tags:
+            validate: required,alphanum,len=2
+        flight_number:
+          type: string
+          description: The operating carrier's flight number, 1 to 4 digits, from the flight lookup.
+          example: '100'
+          x-oapi-codegen-extra-tags:
+            validate: required,number,max=4
+        departure_airport:
+          type: string
+          description: The departure airport's 3-letter code.
+          example: JFK
+          x-oapi-codegen-extra-tags:
+            validate: required,alpha,len=3
+        arrival_airport:
+          type: string
+          description: The arrival airport's 3-letter code.
+          example: LHR
+          x-oapi-codegen-extra-tags:
+            validate: required,alpha,len=3
+        scheduled_date:
+          type: string
+          description: The scheduled departure date at the departure airport, as YYYY-MM-DD.
+          example: '2026-11-25'
+          x-oapi-codegen-extra-tags:
+            validate: required,datetime=2006-01-02
+        cover:
+          $ref: '#/components/schemas/FlightCover'
+        delay_basis:
+          $ref: '#/components/schemas/FlightDelayBasis'
+        delay_minutes:
+          type: integer
+          format: int32
+          description: The delay, in minutes, at which the market pays. Required for the `delayed` and `either` covers and left out for `cancelled`. A multiple of the availability's `delay_step_minutes`, up to its `max_delay_minutes`.
+          example: 120
+          x-oapi-codegen-extra-tags:
+            validate: omitempty,min=1
+
+    CreateFlightDisruptionMarketResponse:
+      type: object
+      required:
+        - cover
+        - event_ticker
+        - market_ticker
+        - created
+      properties:
+        cover:
+          $ref: '#/components/schemas/FlightCover'
+        delay_basis:
+          $ref: '#/components/schemas/FlightDelayBasis'
+        delay_minutes:
+          type: integer
+          format: int32
+          description: The market's delay threshold in minutes. Left out for the `cancelled` cover.
+          example: 120
+        event_ticker:
+          type: string
+          description: Event ticker of the market.
+          example: KXRFQFLIGHTD-AA100-JFKLHR-26NOV25
+        market_ticker:
+          type: string
+          description: Market ticker of the market.
+          example: KXRFQFLIGHTD-AA100-JFKLHR-26NOV25-DEP120
+        created:
+          type: boolean
+          description: False when a market for the same request already existed.
+
+    GetFlightDisruptionAvailabilityResponse:
+      type: object
+      required:
+        - enabled
+        - covers
+        - delay_bases
+        - delay_step_minutes
+        - max_delay_minutes
+        - max_days_ahead
+        - min_lead_minutes
+        - departure_countries
+      properties:
+        enabled:
+          type: boolean
+          description: Whether flight disruption markets can be created at all.
+        covers:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightCover'
+          description: The covers on offer. A cover left out can't be created.
+        delay_bases:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightDelayBasis'
+          description: The delay bases on offer for the `delayed` and `either` covers.
+        delay_step_minutes:
+          type: integer
+          format: int32
+          description: A market's `delay_minutes` is a multiple of this, from one step up to `max_delay_minutes`.
+          example: 30
+        max_delay_minutes:
+          type: integer
+          format: int32
+          description: The largest `delay_minutes` a market may use.
+          example: 360
+        max_days_ahead:
+          type: integer
+          format: int32
+          description: How many days ahead a flight may be scheduled for a new market.
+        min_lead_minutes:
+          type: integer
+          format: int32
+          description: A new market's flight must be scheduled to leave more than this many minutes from now.
+        departure_countries:
+          type: array
+          items:
+            type: string
+          description: ISO country codes a flight must depart from, such as `US`. An empty list means every country is offered.
+
+    FlightCoverEvent:
+      type: object
+      required:
+        - cover
+        - series_ticker
+        - event_ticker
+      properties:
+        cover:
+          $ref: '#/components/schemas/FlightCover'
+        series_ticker:
+          type: string
+          description: Series ticker of the cover.
+          example: KXRFQFLIGHTD
+        event_ticker:
+          type: string
+          description: Event ticker the flight has or would get for this cover. It holds every market of the cover for the flight.
+          example: KXRFQFLIGHTD-AA100-JFKLHR-26NOV25
+        market_ticker:
+          type: string
+          description: Market ticker of the `cancelled` cover's one market. Left out for `delayed` and `either`, whose market tickers depend on the delay requested. The market may not exist yet.
+          example: KXRFQFLIGHTC-AA100-JFKLHR-26NOV25-CXL
+
+    Flight:
+      type: object
+      required:
+        - carrier
+        - flight_number
+        - departure_airport
+        - arrival_airport
+        - scheduled_date
+        - events
+      properties:
+        carrier:
+          type: string
+          description: The operating carrier's 2-character code.
+          example: AA
+        flight_number:
+          type: string
+          description: The operating carrier's flight number.
+          example: '100'
+        airline_name:
+          type: string
+          description: The operating carrier's name.
+        departure_airport:
+          type: string
+          description: The departure airport's 3-letter code.
+          example: JFK
+        departure_airport_name:
+          type: string
+          description: The departure airport's name.
+        departure_city:
+          type: string
+          description: The departure airport's city.
+        departure_country:
+          type: string
+          description: The departure airport's ISO country code.
+        departure_timezone:
+          type: string
+          description: IANA time zone of the departure airport, which `scheduled_date` is local to.
+          example: America/New_York
+        arrival_airport:
+          type: string
+          description: The arrival airport's 3-letter code.
+          example: LHR
+        arrival_airport_name:
+          type: string
+          description: The arrival airport's name.
+        arrival_city:
+          type: string
+          description: The arrival airport's city.
+        arrival_country:
+          type: string
+          description: The arrival airport's ISO country code.
+        arrival_timezone:
+          type: string
+          description: IANA time zone of the arrival airport.
+          example: Europe/London
+        scheduled_date:
+          type: string
+          description: The scheduled departure date at the departure airport, as YYYY-MM-DD.
+          example: '2026-11-25'
+        scheduled_departure:
+          type: string
+          format: date-time
+          description: The published departure time, in UTC.
+        scheduled_arrival:
+          type: string
+          format: date-time
+          description: The published arrival time, in UTC.
+        close_time:
+          type: string
+          format: date-time
+          description: When the flight's markets close, which is its scheduled departure.
+        settle_after:
+          type: string
+          format: date-time
+          description: The earliest the flight's status is read to determine its markets.
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightCoverEvent'
+          description: One entry per offered cover.
+        requested_carrier:
+          type: string
+          description: The carrier code the lookup asked for, when it is a codeshare number and not the operating flight's. Left out otherwise.
+        requested_flight_number:
+          type: string
+          description: The flight number the lookup asked for, when it is a codeshare number and not the operating flight's. Left out otherwise.
+
+    GetFlightsResponse:
+      type: object
+      required:
+        - flights
+      properties:
+        flights:
+          type: array
+          items:
+            $ref: '#/components/schemas/Flight'
 
     # Market Orderbook schemas
     PriceLevelDollarsCountFp:
