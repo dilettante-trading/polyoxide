@@ -335,7 +335,7 @@ nightly browser job, `browser_live`, does not open it), and these are the reason
 
 ## Issue #106: the 7-year Treasury yield joins `pyth_value` (AsyncAPI, adopted 2026-11-19)
 
-Description-only: `pyth_value`'s ticker table gains `InterestRate.US7Y` (Pyth feed 1536), its prose names a `KX7YRRATEH` market among the yield markets, and `value_usd`'s description adds the symbol to the Treasury yields quoted in percent. The adopted file's diff fingerprint matches the issue's (`2b4763e0…`), so upstream had not moved again. The socket implements no `pyth_value` channel, so nothing in the client changes, and the channel count stays at 16. Not probed: the channel needs an authenticated, paid subscription.
+Description-only: `pyth_value`'s ticker table gains `InterestRate.US7Y` (Pyth feed 1536), its prose names a `KX7YRRATEH` market among the hourly yield markets (the 15-minute series stays at 2, 5, 10 and 30 years), and `value_usd`'s description adds the symbol to the Treasury yields quoted in percent. The adopted file's diff fingerprint matches the issue's (`2b4763e0…`), so upstream had not moved again. The socket implements no `pyth_value` channel, so nothing in the client changes, and the channel count stays at 16. Not probed: the channel needs an authenticated, paid subscription.
 
 ## Issue #96: eBattle scores, empty snapshots and disconnects (AsyncAPI, adopted 2026-11-18)
 
